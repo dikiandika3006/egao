@@ -1,0 +1,153 @@
+@php
+    use App\Enums\VisitStatus;
+    use App\Support\Format;
+@endphp
+<div wire:poll.30s class="mx-auto max-w-[1152px]">
+    <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
+        @if ($canRegister)
+            <button type="button" wire:click="register" class="btn-primary">+ &nbsp;Daftarkan kunjungan</button>
+        @endif
+    </x-page-header>
+
+    <p class="mt-3 text-sm text-muted">{{ now()->translatedFormat('l, j F Y') }} · {{ $context->label() }}</p>
+
+    <section class="card mt-6 overflow-hidden">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-5 pt-4">
+            <div class="-mb-px flex gap-6 overflow-x-auto text-sm">
+                @foreach (['aktif' => 'Aktif', 'menunggu' => 'Menunggu', 'diperiksa' => 'Diperiksa', 'bayar' => 'Bayar', 'selesai' => 'Selesai', 'batal' => 'Tidak hadir'] as $key => $label)
+                    <button type="button" wire:click="$set('filter', '{{ $key }}')" @class([
+                        'shrink-0 border-b-2 pb-3 transition',
+                        'border-leaf-500 font-semibold text-brand-600' => $filter === $key,
+                        'border-transparent text-muted hover:text-brand-700' => $filter !== $key,
+                    ])>{{ $label }} ({{ $counts[$key] }})</button>
+                @endforeach
+            </div>
+            <div class="mb-3 flex flex-1 items-center gap-3">
+                <input type="search" wire:model.live.debounce.300ms="search" placeholder="Cari nama atau no. RM…" class="input min-h-9 flex-1">
+                @if ($isDoctor)
+                    <label class="flex shrink-0 items-center gap-2 text-xs text-muted">
+                        <input type="checkbox" wire:model.live="mine" class="accent-brand-600"> Pasien saya
+                    </label>
+                @endif
+            </div>
+        </div>
+
+        <ul class="divide-y divide-line">
+            @forelse ($visits as $v)
+                <li wire:key="v-{{ $v->id }}" class="flex flex-wrap items-center gap-4 px-5 py-4">
+                    <span class="flex h-10 w-12 shrink-0 items-center justify-center rounded-full bg-mist text-sm font-semibold">{{ $v->queueLabel() }}</span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-semibold">
+                            {{ $v->patient->name }}
+                            @if ($v->patient->hasAllergy())<span class="ml-1 text-[11px] font-medium text-rose-ink">Alergi {{ $v->patient->allergies }}</span>@endif
+                        </p>
+                        <p class="mt-0.5 text-[12px] text-muted">
+                            {{ $v->patient->rmCode() }} · {{ $v->purpose }} · {{ $v->doctor->name }}
+                            @if ($context->isAll()) · {{ $v->branch->shortName() }}@endif
+                            @if ($v->scheduled_at) · {{ Format::jam($v->scheduled_at) }}@endif
+                        </p>
+                        @if ($v->complaint)<p class="mt-1 text-[12px] italic text-muted">“{{ $v->complaint }}”</p>@endif
+                    </div>
+                    <span class="badge {{ $v->status->badgeClass() }}">{{ $v->status->label() }}</span>
+                    <div class="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+                        @switch($v->status)
+                            @case(VisitStatus::Menunggu)
+                                <button type="button" wire:click="callVisit({{ $v->id }})" class="btn-soft min-h-9 px-4">Panggil</button>
+                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
+                                @break
+                            @case(VisitStatus::Dipanggil)
+                                @if ($canExamine)
+                                    <button type="button" wire:click="examine({{ $v->id }})" class="btn-primary min-h-9 px-4">Mulai periksa</button>
+                                @endif
+                                <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Kembalikan</button>
+                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
+                                @break
+                            @case(VisitStatus::Diperiksa)
+                                @if ($canExamine)
+                                    <a href="{{ route('rekam-medis.periksa', $v) }}" wire:navigate class="btn-soft min-h-9 px-4">Lanjut periksa</a>
+                                @endif
+                                @break
+                            @case(VisitStatus::MenungguPembayaran)
+                                @if ($canRegister)
+                                    <a href="{{ route('kasir', ['kunjungan' => $v->id]) }}" wire:navigate class="btn-soft min-h-9 px-4">Ke kasir</a>
+                                @endif
+                                @break
+                            @case(VisitStatus::Batal)
+                                <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Masukkan lagi</button>
+                                @break
+                            @default
+                                <span class="text-xs text-muted">{{ $v->completed_at?->format('H.i') }}</span>
+                        @endswitch
+                    </div>
+                </li>
+            @empty
+                <li class="py-14 text-center text-sm text-muted">{{ $search ? 'Tidak ada pasien yang cocok.' : 'Belum ada antrean.' }}</li>
+            @endforelse
+        </ul>
+    </section>
+
+    @if ($showForm)
+        <x-modal title="Daftarkan kunjungan">
+            <form wire:submit="save" class="space-y-4">
+                <x-branch-pick :context="$context" />
+                <div>
+                    <label class="label">Pasien</label>
+                    @if ($chosen)
+                        <div class="flex items-center justify-between rounded-lg bg-leaf-50 px-4 py-3">
+                            <div>
+                                <p class="font-semibold">{{ $chosen->name }}</p>
+                                <p class="text-xs text-muted">{{ $chosen->rmCode() }} · {{ $chosen->age() }} th @if ($chosen->hasAllergy())<span class="text-rose-ink">• Alergi {{ $chosen->allergies }}</span>@endif</p>
+                            </div>
+                            <button type="button" wire:click="$set('visit.patient_id', null)" class="text-xs text-brand-600 hover:underline">Ganti</button>
+                        </div>
+                    @else
+                        <input type="search" wire:model.live.debounce.250ms="patientSearch" class="input" placeholder="Ketik nama, no. RM, atau telepon…" autofocus>
+                        @if ($candidates->isNotEmpty())
+                            <ul class="mt-2 divide-y divide-line rounded-lg border border-line">
+                                @foreach ($candidates as $c)
+                                    <li><button type="button" wire:click="pickPatient({{ $c->id }})" class="w-full px-4 py-2.5 text-left text-sm hover:bg-mist">
+                                        <b>{{ $c->name }}</b> <span class="text-xs text-muted">{{ $c->rmCode() }} · {{ $c->age() }} th · {{ $c->maskedPhone() }}</span>
+                                    </button></li>
+                                @endforeach
+                            </ul>
+                        @elseif (mb_strlen(trim($patientSearch)) >= 2)
+                            <p class="mt-2 text-xs text-muted">Tidak ditemukan. <a href="{{ route('pasien', ['baru' => 1]) }}" wire:navigate class="text-brand-600 underline">Daftarkan pasien baru</a></p>
+                        @endif
+                    @endif
+                    <x-error for="visit.patient_id" />
+                </div>
+                <div>
+                    <label class="label">Dokter</label>
+                    <select wire:model="visit.doctor_id" class="input">
+                        @foreach ($doctorOptions as $row)
+                            <option value="{{ $row['doctor']->id }}">{{ $row['doctor']->name }}@if ($row['schedule']) ({{ Format::jam($row['schedule']['starts_at']) }}–{{ Format::jam($row['schedule']['ends_at']) }})@endif</option>
+                        @endforeach
+                    </select>
+                    <x-error for="visit.doctor_id" />
+                </div>
+                <div class="grid gap-4 sm:grid-cols-[1fr_140px]">
+                    <div>
+                        <label class="label">Keperluan</label>
+                        <input type="text" wire:model="visit.purpose" class="input" list="purposes" placeholder="mis. Scaling, Tambal gigi">
+                        <datalist id="purposes">
+                            @foreach (['Konsultasi', 'Pemeriksaan rutin', 'Scaling', 'Tambal gigi', 'Cabut gigi', 'Kontrol behel'] as $p)<option value="{{ $p }}">@endforeach
+                        </datalist>
+                        <x-error for="visit.purpose" />
+                    </div>
+                    <div>
+                        <label class="label">Jam</label>
+                        <input type="time" wire:model="visit.scheduled_at" class="input">
+                    </div>
+                </div>
+                <div>
+                    <label class="label">Keluhan</label>
+                    <textarea wire:model="visit.complaint" rows="2" class="input py-2.5"></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" wire:click="closeForm" class="btn-ghost">Batal</button>
+                    <button class="btn-primary">Ambil nomor antrean</button>
+                </div>
+            </form>
+        </x-modal>
+    @endif
+</div>

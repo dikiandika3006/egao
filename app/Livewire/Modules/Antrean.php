@@ -24,8 +24,9 @@ class Antrean extends Component
 {
     use ModulePage, PicksBranch;
 
-    #[Url(as: 'status', except: 'aktif')]
-    public string $filter = 'aktif';
+    /** Tab antrean: menunggu | selesai (selesai tindakan) | batal (tidak hadir). */
+    #[Url(as: 'status', except: 'menunggu')]
+    public string $filter = 'menunggu';
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
@@ -131,18 +132,9 @@ class Antrean extends Component
 
     // ---- Alur status (SRS §3.4.1) -----------------------------------------------------
 
-    public function callVisit(int $id, BranchContext $context): void
-    {
-        $visit = $this->find($id, $context);
-        if ($visit->status === VisitStatus::Menunggu) {
-            $visit->update(['status' => VisitStatus::Dipanggil, 'called_at' => now()]);
-            $this->toast("{$visit->patient->name} dipanggil.");
-        }
-    }
-
     public function examine(int $id, BranchContext $context)
     {
-        abort_unless($context->is(Role::Dokter, Role::Owner), 403);
+        abort_unless($context->is(Role::Dokter, Role::Admin, Role::Owner), 403);
         $visit = $this->find($id, $context);
 
         return $this->redirectRoute('rekam-medis.periksa', ['visit' => $visit->id], navigate: true);
@@ -206,24 +198,14 @@ class Antrean extends Component
             ->orderBy('branch_id')->orderBy('doctor_id')->orderBy('queue_number')
             ->get();
 
-        $counts = [
-            'aktif' => $visits->filter(fn (Visit $v) => $v->status->isActive())->count(),
-            'menunggu' => $visits->whereIn('status', [VisitStatus::Menunggu, VisitStatus::Dipanggil])->count(),
-            'diperiksa' => $visits->where('status', VisitStatus::Diperiksa)->count(),
-            'bayar' => $visits->where('status', VisitStatus::MenungguPembayaran)->count(),
-            'selesai' => $visits->where('status', VisitStatus::Selesai)->count(),
-            'batal' => $visits->where('status', VisitStatus::Batal)->count(),
-        ];
+        $counts = ['menunggu' => 0, 'selesai' => 0, 'batal' => 0];
+        foreach ($visits as $v) {
+            $counts[$v->status->queueGroup()]++;
+        }
+        $tab = array_key_exists($this->filter, $counts) ? $this->filter : 'menunggu';
 
         $list = $visits
-            ->filter(fn (Visit $v) => match ($this->filter) {
-                'menunggu' => in_array($v->status, [VisitStatus::Menunggu, VisitStatus::Dipanggil], true),
-                'diperiksa' => $v->status === VisitStatus::Diperiksa,
-                'bayar' => $v->status === VisitStatus::MenungguPembayaran,
-                'selesai' => $v->status === VisitStatus::Selesai,
-                'batal' => $v->status === VisitStatus::Batal,
-                default => $v->status->isActive(),
-            })
+            ->filter(fn (Visit $v) => $v->status->queueGroup() === $tab)
             ->when($this->search !== '', function ($c) {
                 $term = mb_strtolower($this->search);
 
@@ -243,8 +225,9 @@ class Antrean extends Component
             'context' => $context,
             'visits' => $list,
             'counts' => $counts,
+            'tab' => $tab,
             'canRegister' => $context->is(Role::Admin, Role::Owner),
-            'canExamine' => $context->is(Role::Dokter, Role::Owner),
+            'canExamine' => $context->is(Role::Dokter, Role::Admin, Role::Owner),
             'isDoctor' => (bool) $myDoctorId,
             'candidates' => $candidates,
             'chosen' => $chosen,

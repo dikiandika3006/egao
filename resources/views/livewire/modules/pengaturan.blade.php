@@ -38,7 +38,12 @@
                             <dl class="mt-4 grid grid-cols-[150px_1fr] gap-y-2 text-sm">
                                 <dt class="text-muted">Alamat</dt><dd>{{ $b->address ?: '—' }}</dd>
                                 <dt class="text-muted">Telepon</dt><dd>{{ $b->phone ?: '—' }}</dd>
-                                <dt class="text-muted">Jam praktik</dt><dd>{{ Format::jam($b->opens_at) }}–{{ Format::jam($b->closes_at) }}</dd>
+                                <dt class="text-muted">Jam kerja</dt>
+                                <dd class="space-y-0.5">
+                                    @foreach (\App\Models\Branch::DAY_NAMES as $d => $dayName)
+                                        <p><span class="inline-block w-16 text-muted">{{ $dayName }}</span> {{ $b->hoursLabel(now()->startOfWeek(\Carbon\CarbonInterface::MONDAY)->addDays($d - 1)) }}</p>
+                                    @endforeach
+                                </dd>
                                 <dt class="text-muted">Nomor awal kwitansi</dt><dd>{{ $b->receipt_start_number }}</dd>
                                 <dt class="text-muted">Catatan kwitansi</dt><dd>{{ $b->receipt_footer ?: '—' }}</dd>
                             </dl>
@@ -50,21 +55,73 @@
             @case('bagi-hasil')
                 <div class="rounded-xl bg-mist px-5 py-4 text-sm">
                     <p class="font-medium">Urutan tarif yang dipakai</p>
-                    <p class="mt-1 text-muted">Khusus dokter × tindakan → tarif tindakan → tarif dokter → tarif global. Kolom kosong berarti ikut tarif di bawahnya.</p>
+                    <p class="mt-1 text-muted">Khusus dokter × tindakan → tarif tindakan → tarif dokter → tarif global. Kolom kosong berarti ikut tarif di bawahnya. Biaya modal (mis. alat behel, x-ray) dikurangkan dari harga tindakan sebelum fee dokter dihitung.</p>
                 </div>
 
                 <form wire:submit="saveShares" class="mt-5 space-y-6">
                     @if ($errors->has('shares.doctors.*') || $errors->has('shares.procedures.*'))
                         <p class="rounded-lg bg-rose-soft px-4 py-3 text-sm text-rose-ink">Periksa lagi isian: persentase 0–100 (boleh desimal, mis. 12,5) dan gaji pokok tidak boleh negatif.</p>
                     @endif
-                    <section class="card p-5 lg:p-6">
-                        <h2 class="text-lg font-semibold">Tarif global</h2>
-                        <div class="mt-3 flex max-w-xs items-center gap-2">
-                            <input type="text" inputmode="decimal" wire:model="shares.global" class="input">
-                            <span class="text-sm text-muted">%</span>
-                        </div>
-                        <x-error for="shares.global" />
-                    </section>
+                    @if ($errors->has('shares.roles.*') || $errors->has('shares.costs.*'))
+                        <p class="rounded-lg bg-rose-soft px-4 py-3 text-sm text-rose-ink">Periksa lagi isian gaji per peran & biaya modal: nominal tidak boleh negatif, fee asisten 0–100%.</p>
+                    @endif
+                    <div class="grid gap-4 lg:grid-cols-3">
+                        <section class="card p-5">
+                            <p class="eyebrow">Dokter</p>
+                            <div class="mt-3 space-y-3">
+                                <div>
+                                    <label class="label">Fee tindakan (tarif global)</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" inputmode="decimal" wire:model="shares.global" class="input">
+                                        <span class="text-sm text-muted">%</span>
+                                    </div>
+                                    <x-error for="shares.global" />
+                                    <p class="mt-1 text-[11px] text-muted">Dihitung setelah dipotong biaya modal tindakan & biaya order lab.</p>
+                                </div>
+                                <div>
+                                    <label class="label">Uang duduk per jam</label>
+                                    <x-money model="shares.roles.doctor_hourly_rate" placeholder="0" />
+                                </div>
+                                <p class="text-[11px] text-muted">Gaji pokok per dokter diisi di tabel "Per dokter" di bawah.</p>
+                            </div>
+                        </section>
+                        <section class="card p-5">
+                            <p class="eyebrow">Asisten</p>
+                            <div class="mt-3 space-y-3">
+                                <div>
+                                    <label class="label">Uang duduk per jam</label>
+                                    <x-money model="shares.roles.assistant_hourly_rate" placeholder="0" />
+                                </div>
+                                <div>
+                                    <label class="label">Fee dari tindakan yang didampingi</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" inputmode="decimal" wire:model="shares.roles.assistant_share_percent" class="input" placeholder="2">
+                                        <span class="text-sm text-muted">%</span>
+                                    </div>
+                                    <x-error for="shares.roles.assistant_share_percent" />
+                                </div>
+                                <div>
+                                    <label class="label">Lembur per jam</label>
+                                    <x-money model="shares.roles.assistant_overtime_rate" placeholder="0" />
+                                </div>
+                            </div>
+                        </section>
+                        <section class="card p-5">
+                            <p class="eyebrow">Admin & staf lain</p>
+                            <div class="mt-3 space-y-3">
+                                <div>
+                                    <label class="label">Lembur per jam</label>
+                                    <x-money model="shares.roles.admin_overtime_rate" placeholder="0" />
+                                </div>
+                                <p class="text-[11px] text-muted">Gaji pokok per orang diisi di menu Gaji → Karyawan.</p>
+                                <div class="border-t border-line pt-3">
+                                    <label class="label">Target omzet tahunan (bonus akhir tahun)</label>
+                                    <x-money model="shares.roles.annual_revenue_target" placeholder="0" />
+                                    <p class="mt-1 text-[11px] text-muted">Berlaku untuk semua peran. Menu Gaji menampilkan apakah target tercapai. THR & bonus akhir tahun diisi per orang di menu Gaji.</p>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
 
                     <div class="grid gap-6 lg:grid-cols-2">
                         <section class="card overflow-x-auto">
@@ -92,14 +149,15 @@
 
                         <section class="card overflow-x-auto">
                             <h2 class="px-5 pt-5 text-lg font-semibold">Per tindakan</h2>
-                            <table class="mt-3 w-full min-w-[380px] text-left text-sm">
+                            <table class="mt-3 w-full min-w-[500px] text-left text-sm">
                                 <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
-                                    <tr><th class="py-3 pl-5">Tindakan</th><th class="w-[120px] pr-5">Bagi hasil</th></tr>
+                                    <tr><th class="py-3 pl-5">Tindakan</th><th class="w-[150px]">Biaya modal</th><th class="w-[120px] pr-5">Bagi hasil</th></tr>
                                 </thead>
                                 <tbody>
                                     @foreach ($shareProcedures as $p)
                                         <tr wire:key="sp-{{ $p->id }}" @class(['border-b border-line last:border-0', 'opacity-60' => ! $p->is_active])>
                                             <td class="py-2.5 pl-5"><p class="font-medium">{{ $p->name }}</p><p class="text-[11px] text-muted">{{ $p->category ?: '—' }}</p></td>
+                                            <td class="py-2.5 pr-2"><x-money model="shares.costs.{{ $p->id }}" placeholder="0" class="min-h-10 text-[13px]" /></td>
                                             <td class="py-2.5 pr-5">
                                                 <div class="flex items-center gap-1.5">
                                                     <input type="text" inputmode="decimal" wire:model="shares.procedures.{{ $p->id }}" class="input min-h-10 text-[13px]" placeholder="ikut dokter">
@@ -114,7 +172,7 @@
                     </div>
 
                     <div class="flex justify-end">
-                        <button class="btn-primary min-w-[200px]" wire:loading.attr="disabled" wire:target="saveShares">Simpan bagi hasil</button>
+                        <button class="btn-primary min-w-[200px]" wire:loading.attr="disabled" wire:target="saveShares">Simpan gaji & bagi hasil</button>
                     </div>
                 </form>
 
@@ -324,6 +382,14 @@
                 </section>
                 @break
 
+            @case('satusehat')
+                <livewire:satu-sehat-panel />
+                @break
+
+            @case('google-calendar')
+                <livewire:google-calendar-panel />
+                @break
+
             @case('audit')
                 <section class="card overflow-x-auto">
                     <table class="w-full min-w-[640px] text-left text-sm">
@@ -368,8 +434,35 @@
                 <div class="sm:col-span-2"><label class="label">Nama cabang</label><input type="text" wire:model="data.name" class="input"><x-error for="data.name" /></div>
                 <div class="sm:col-span-2"><label class="label">Alamat</label><textarea wire:model="data.address" rows="2" class="input py-2.5"></textarea></div>
                 <div class="sm:col-span-2"><label class="label">Telepon</label><input type="text" wire:model="data.phone" class="input"></div>
-                <div><label class="label">Buka</label><input type="time" wire:model="data.opens_at" class="input"></div>
-                <div><label class="label">Tutup</label><input type="time" wire:model="data.closes_at" class="input"><x-error for="data.closes_at" /></div>
+                <div class="sm:col-span-2">
+                    <p class="label">Jam kerja</p>
+                    <p class="mb-2 text-xs text-muted">Sesi 2 untuk jam setelah istirahat (kosongkan bila tanpa istirahat). Janji di luar jam ini hanya diberi peringatan.</p>
+                    <div class="space-y-2">
+                        @foreach (\App\Models\Branch::DAY_NAMES as $d => $dayName)
+                            <div wire:key="h-{{ $d }}" class="rounded-xl border border-line p-2.5">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="w-16 text-sm font-medium">{{ $dayName }}</span>
+                                    <label class="flex items-center gap-1.5 text-xs text-muted"><input type="checkbox" wire:model.live="data.hours.{{ $d }}.closed" class="accent-brand-600"> Tutup</label>
+                                    @unless ($data['hours'][$d]['closed'] ?? false)
+                                        <span class="flex items-center gap-1">
+                                            <input type="time" wire:model="data.hours.{{ $d }}.s1_start" class="input h-9 w-[104px] px-2 text-sm" aria-label="{{ $dayName }} sesi 1 mulai">
+                                            <span class="text-muted">–</span>
+                                            <input type="time" wire:model="data.hours.{{ $d }}.s1_end" class="input h-9 w-[104px] px-2 text-sm" aria-label="{{ $dayName }} sesi 1 selesai">
+                                        </span>
+                                        <span class="flex items-center gap-1">
+                                            <span class="text-xs text-muted">&amp;</span>
+                                            <input type="time" wire:model="data.hours.{{ $d }}.s2_start" class="input h-9 w-[104px] px-2 text-sm" aria-label="{{ $dayName }} sesi 2 mulai">
+                                            <span class="text-muted">–</span>
+                                            <input type="time" wire:model="data.hours.{{ $d }}.s2_end" class="input h-9 w-[104px] px-2 text-sm" aria-label="{{ $dayName }} sesi 2 selesai">
+                                        </span>
+                                    @endunless
+                                </div>
+                                <x-error for="data.hours.{{ $d }}.s1_end" />
+                                <x-error for="data.hours.{{ $d }}.s2_end" />
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
                 <div class="sm:col-span-2"><label class="label">Nomor awal kwitansi</label><input type="number" min="1" wire:model="data.receipt_start_number" class="input"><x-error for="data.receipt_start_number" /></div>
                 <div class="sm:col-span-2"><label class="label">Catatan bawah kwitansi</label><input type="text" wire:model="data.receipt_footer" class="input"></div>
                 <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" wire:model="data.is_active" class="accent-brand-600"> Cabang aktif</label>

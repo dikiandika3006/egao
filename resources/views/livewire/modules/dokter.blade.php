@@ -45,6 +45,7 @@
                             <td class="text-[13px]">
                                 <p>{{ $doctor->str_number ?: '—' }}</p>
                                 <p class="mt-1 text-[11px] text-muted">{{ $doctor->sip_number ?: '—' }}</p>
+                                <p class="mt-1 text-[11px] {{ $doctor->nik ? 'text-muted' : 'text-amber-ink' }}">{{ $doctor->maskedNik() ?? 'NIK belum diisi' }}</p>
                             </td>
                             <td class="text-[13px]">
                                 @if ($doctor->joined_at)
@@ -115,6 +116,20 @@
                         <input wire:model="sip_number" id="sip_number" type="text" class="input">
                         <x-error for="sip_number" />
                     </div>
+                </div>
+
+                <div>
+                    <label for="nik" class="label">NIK <span class="font-normal text-muted">(untuk SATUSEHAT)</span></label>
+                    <input wire:model="nik" id="nik" type="text" inputmode="numeric" maxlength="16" class="input" autocomplete="off">
+                    <x-error for="nik" />
+                    <p class="mt-1 text-xs text-muted">16 digit sesuai KTP. Dipakai mencocokkan dokter dengan data tenaga kesehatan di SATUSEHAT.</p>
+                </div>
+
+                <div>
+                    <label for="calendar_email" class="label">Email Google Calendar <span class="font-normal text-muted">(opsional)</span></label>
+                    <input wire:model="calendar_email" id="calendar_email" type="email" class="input" autocomplete="off" placeholder="nama@gmail.com">
+                    <x-error for="calendar_email" />
+                    <p class="mt-1 text-xs text-muted">Dokter menerima undangan kalender "Egao – nama dokter" di email ini (cukup dibuka sekali); janji temunya otomatis masuk ke sana.</p>
                 </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">

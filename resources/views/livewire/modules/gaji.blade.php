@@ -21,6 +21,12 @@
             @if ($posted && $posted !== $grandTotal) · <span class="text-orange-ink">ada perubahan, perbarui</span> @endif
         </p>
     </div>
+    @if ($ytd['target'] > 0)
+        <p class="mt-2 text-xs text-muted">
+            Omzet {{ $start->year }} s.d. {{ $start->translatedFormat('F') }}: <b class="text-brand-700">@rupiah($ytd['revenue'])</b> dari target @rupiah($ytd['target']) ·
+            @if ($ytd['reached']) <span class="font-semibold text-brand-600">target tercapai, bonus akhir tahun bisa diberikan</span> @else belum tercapai ({{ min(100, (int) floor($ytd['revenue'] * 100 / $ytd['target'])) }}%) @endif
+        </p>
+    @endif
 
     {{-- Tab --}}
     <div class="mt-5 flex gap-10 border-b border-line text-sm">
@@ -35,7 +41,7 @@
 
     @if ($tab === 'dokter')
         <div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-            @foreach (['gross' => 'Tindakan kotor', 'share' => 'Bagi hasil', 'base' => 'Gaji pokok', 'bonus' => 'Bonus − potongan', 'total' => 'Total dibayar'] as $key => $label)
+            @foreach (['gross' => 'Tindakan kotor', 'share' => 'Fee dokter', 'base' => 'Gaji pokok + UD', 'bonus' => 'Bonus/THR − potongan', 'total' => 'Total dibayar'] as $key => $label)
                 <div @class(['card p-4 lg:p-5', 'bg-brand-600 text-white' => $key === 'total'])>
                     <p @class(['text-[13px]', 'text-white/85' => $key === 'total', 'text-muted' => $key !== 'total'])>{{ $label }}</p>
                     <p class="mt-3 text-[18px] font-semibold tracking-tight lg:text-[22px]">{{ $totals[$key] < 0 ? '−' : '' }}@rupiah(abs($totals[$key]))</p>
@@ -50,8 +56,9 @@
                         <th class="py-3.5 pl-5">Dokter</th>
                         @foreach ($branches as $b)<th class="py-3.5 text-right">{{ $b->shortName() }}</th>@endforeach
                         <th class="py-3.5 text-right">Kotor</th>
-                        <th class="py-3.5 text-right">Bagi hasil</th>
-                        <th class="py-3.5 text-right">Gaji pokok</th>
+                        <th class="py-3.5 text-right">Biaya</th>
+                        <th class="py-3.5 text-right">Fee</th>
+                        <th class="py-3.5 text-right">Pokok + UD</th>
                         <th class="py-3.5 text-right">Bonus/potongan</th>
                         <th class="py-3.5 text-right">Total</th>
                         <th class="py-3.5 pr-5 text-right">Slip</th>
@@ -69,8 +76,11 @@
                                 <td class="text-right text-[13px]">@rupiah($row['branches'][$id]['gross'] ?? 0)</td>
                             @endforeach
                             <td class="text-right">@rupiah($row['gross'])</td>
+                            <td @class(['text-right text-[13px]', 'text-muted' => $row['cost'] + $row['lab'] === 0])>@rupiah($row['cost'] + $row['lab'])</td>
                             <td class="text-right">@rupiah($row['share'])</td>
-                            <td class="text-right">@rupiah($row['base'])</td>
+                            <td class="text-right">@rupiah($row['base'] + $row['ud'])
+                                @if ($row['hours'] > 0)<span class="block text-[11px] text-muted">{{ $pct($row['hours']) }} jam</span>@endif
+                            </td>
                             <td @class(['text-right', 'text-rose-ink' => $adjNet < 0, 'text-muted' => $adjNet === 0])>{{ $adjNet < 0 ? '−' : ($adjNet > 0 ? '+' : '') }}@rupiah(abs($adjNet))</td>
                             <td class="text-right font-semibold">@rupiah($row['total'])</td>
                             <td class="pr-5 text-right" wire:click.stop>
@@ -79,7 +89,7 @@
                         </tr>
                         @if ($expanded === $key)
                             <tr class="border-b border-line bg-mist/60">
-                                <td colspan="{{ 8 + $branches->count() }}" class="px-5 py-4">
+                                <td colspan="{{ 9 + $branches->count() }}" class="px-5 py-4">
                                     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
                                         <div>
                                             <p class="text-xs font-semibold text-muted uppercase">Rincian per tindakan</p>
@@ -87,31 +97,37 @@
                                                 <p class="mt-2 text-sm text-muted">Belum ada tindakan lunas di bulan ini.</p>
                                             @else
                                                 <table class="mt-2 w-full text-[13px]">
-                                                    <thead class="text-[10px] text-muted uppercase"><tr><th class="py-1.5 text-left">Tindakan</th><th class="text-right">Jumlah</th><th class="text-right">Kotor</th><th class="text-right">Tarif</th><th class="text-right">Bagi hasil</th></tr></thead>
+                                                    <thead class="text-[10px] text-muted uppercase"><tr><th class="py-1.5 text-left">Tindakan</th><th class="text-right">Jumlah</th><th class="text-right">Kotor</th><th class="text-right">Biaya modal</th><th class="text-right">Tarif</th><th class="text-right">Fee</th></tr></thead>
                                                     <tbody>
                                                         @foreach ($row['procedures'] as $p)
-                                                            <tr><td class="py-1">{{ $p['name'] }}</td><td class="text-right">{{ $p['count'] }}</td><td class="text-right">@rupiah($p['gross'])</td><td class="text-right">{{ $pct($p['percent']) }}%</td><td class="text-right">@rupiah($p['share'])</td></tr>
+                                                            <tr><td class="py-1">{{ $p['name'] }}</td><td class="text-right">{{ $p['count'] }}</td><td class="text-right">@rupiah($p['gross'])</td><td class="text-right">{{ $p['cost'] ? '−' : '' }}@rupiah($p['cost'])</td><td class="text-right">{{ $pct($p['percent']) }}%</td><td class="text-right">@rupiah($p['share'])</td></tr>
                                                         @endforeach
                                                     </tbody>
                                                 </table>
                                             @endif
+                                            @if ($row['lab'] > 0)
+                                                <p class="mt-3 text-[13px]">Potongan order lab: biaya lab @rupiah($row['lab']) × fee dokter = <b class="text-rose-ink">−@rupiah($row['lab_deduction'])</b> dari fee.</p>
+                                            @endif
                                         </div>
-                                        @include('livewire.modules.partials.payroll-adjustments', ['adjustments' => $row['adjustments']])
+                                        <div class="space-y-4">
+                                            @include('livewire.modules.partials.payroll-hours', ['showWork' => true, 'showOvertime' => false, 'hourlyRate' => $rates['doctor_hourly'], 'overtimeRate' => 0])
+                                            @include('livewire.modules.partials.payroll-adjustments', ['adjustments' => $row['adjustments']])
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
                         @endif
                     @empty
-                        <tr><td colspan="{{ 8 + $branches->count() }}" class="py-12 text-center text-muted">Belum ada dokter.</td></tr>
+                        <tr><td colspan="{{ 9 + $branches->count() }}" class="py-12 text-center text-muted">Belum ada dokter.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </section>
-        <p class="mt-3 text-xs text-muted">Bagi hasil dihitung dari tindakan kotor (sebelum diskon) pada tagihan lunas, lintas cabang. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global. Klik baris untuk rincian, bonus, dan potongan.</p>
+        <p class="mt-3 text-xs text-muted">Fee dihitung dari tindakan (sebelum diskon) pada tagihan lunas lintas cabang, setelah dipotong biaya modal tindakan dan biaya order lab. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global. UD = jam hadir × tarif per jam (Pengaturan → Gaji & bagi hasil). Klik baris untuk rincian, jam kerja, bonus/THR, dan potongan.</p>
     @else
         <div class="mt-5 flex flex-wrap items-end justify-between gap-3">
-            <div class="grid flex-1 grid-cols-3 gap-3 sm:max-w-xl">
-                @foreach (['base' => 'Gaji pokok', 'bonus' => 'Bonus − potongan', 'total' => 'Total dibayar'] as $key => $label)
+            <div class="grid flex-1 grid-cols-2 gap-3 sm:max-w-3xl sm:grid-cols-4">
+                @foreach (['base' => 'Gaji pokok + UD', 'extra' => 'Fee + lembur', 'bonus' => 'Bonus/THR − potongan', 'total' => 'Total dibayar'] as $key => $label)
                     <div @class(['card p-4', 'bg-brand-600 text-white' => $key === 'total'])>
                         <p @class(['text-[12px]', 'text-white/85' => $key === 'total', 'text-muted' => $key !== 'total'])>{{ $label }}</p>
                         <p class="mt-2 text-[17px] font-semibold tracking-tight lg:text-[20px]">{{ $employeeTotals[$key] < 0 ? '−' : '' }}@rupiah(abs($employeeTotals[$key]))</p>
@@ -122,12 +138,14 @@
         </div>
 
         <section class="card mt-6 overflow-x-auto">
-            <table class="w-full min-w-[720px] text-left text-sm">
+            <table class="w-full min-w-[880px] text-left text-sm">
                 <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
                     <tr>
                         <th class="py-3.5 pl-5">Karyawan</th>
                         <th class="py-3.5">Cabang</th>
-                        <th class="py-3.5 text-right">Gaji pokok</th>
+                        <th class="py-3.5 text-right">Pokok + UD</th>
+                        <th class="py-3.5 text-right">Fee asisten</th>
+                        <th class="py-3.5 text-right">Lembur</th>
                         <th class="py-3.5 text-right">Bonus/potongan</th>
                         <th class="py-3.5 text-right">Total</th>
                         <th class="py-3.5 pr-5 text-right">Aksi</th>
@@ -139,10 +157,16 @@
                         <tr wire:key="g-{{ $key }}" class="cursor-pointer border-b border-line hover:bg-mist" wire:click="toggle('{{ $key }}')">
                             <td class="py-3.5 pl-5">
                                 <p class="font-semibold">{{ $e->name }} @unless ($e->is_active)<span class="pill ml-1 bg-mist text-muted">Nonaktif</span>@endunless</p>
-                                <p class="text-[11px] text-muted">{{ $e->position }}</p>
+                                <p class="text-[11px] text-muted">{{ $e->position }} · aturan {{ $row['role'] }}</p>
                             </td>
                             <td class="text-[13px]">{{ $e->primaryBranch?->shortName() ?? '—' }}</td>
-                            <td class="text-right">@rupiah($row['base'])</td>
+                            <td class="text-right">@rupiah($row['base'] + $row['ud'])
+                                @if ($row['hours'] > 0)<span class="block text-[11px] text-muted">{{ $pct($row['hours']) }} jam</span>@endif
+                            </td>
+                            <td @class(['text-right', 'text-muted' => $row['assistant_share'] === 0])>@if ($row['role'] === 'asisten') @rupiah($row['assistant_share']) @else — @endif</td>
+                            <td @class(['text-right', 'text-muted' => $row['overtime'] === 0])>@rupiah($row['overtime'])
+                                @if ($row['overtime_hours'] > 0)<span class="block text-[11px] text-muted">{{ $pct($row['overtime_hours']) }} jam</span>@endif
+                            </td>
                             <td @class(['text-right', 'text-rose-ink' => $adjNet < 0, 'text-muted' => $adjNet === 0])>{{ $adjNet < 0 ? '−' : ($adjNet > 0 ? '+' : '') }}@rupiah(abs($adjNet))</td>
                             <td class="text-right font-semibold">@rupiah($row['total'])</td>
                             <td class="pr-5 text-right whitespace-nowrap" wire:click.stop>
@@ -152,20 +176,31 @@
                         </tr>
                         @if ($expanded === $key)
                             <tr class="border-b border-line bg-mist/60">
-                                <td colspan="6" class="px-5 py-4">
-                                    <div class="max-w-md">
+                                <td colspan="8" class="px-5 py-4">
+                                    <div class="grid gap-6 lg:grid-cols-2">
+                                        <div class="space-y-3">
+                                            @if ($row['role'] === 'asisten')
+                                                <p class="text-[13px]">Tindakan lunas yang didampingi: <b>@rupiah($row['assisted'])</b> × {{ $pct($row['assistant_percent']) }}% = <b class="text-brand-600">@rupiah($row['assistant_share'])</b>
+                                                    <span class="block text-[11px] text-muted">Asisten pendamping dipilih di Kasir pada tagihan kunjungan.</span></p>
+                                            @endif
+                                            @include('livewire.modules.partials.payroll-hours', [
+                                                'showWork' => $row['role'] === 'asisten', 'showOvertime' => true,
+                                                'hourlyRate' => $rates['assistant_hourly'],
+                                                'overtimeRate' => $row['role'] === 'asisten' ? $rates['assistant_overtime'] : $rates['admin_overtime'],
+                                            ])
+                                        </div>
                                         @include('livewire.modules.partials.payroll-adjustments', ['adjustments' => $row['adjustments']])
                                     </div>
                                 </td>
                             </tr>
                         @endif
                     @empty
-                        <tr><td colspan="6" class="py-12 text-center text-muted">Belum ada karyawan. Tambahkan admin, perawat, atau staf lain.</td></tr>
+                        <tr><td colspan="8" class="py-12 text-center text-muted">Belum ada karyawan. Tambahkan admin, perawat, atau staf lain.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </section>
-        <p class="mt-3 text-xs text-muted">Gaji karyawan dibebankan ke cabang utamanya saat dicatat ke pengeluaran.</p>
+        <p class="mt-3 text-xs text-muted">Jabatan "Asisten dokter" memakai aturan asisten (UD per jam, fee dari tindakan yang didampingi, lembur); jabatan lain memakai aturan admin (gaji pokok + lembur). Fee asisten dibebankan ke cabang tindakan, sisanya ke cabang utama saat dicatat ke pengeluaran.</p>
     @endif
 
     {{-- Form karyawan --}}

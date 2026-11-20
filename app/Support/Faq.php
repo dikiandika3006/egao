@@ -9,20 +9,72 @@ namespace App\Support;
 class Faq
 {
     public const ITEMS = [
+        // ── Google Calendar ───────────────────────────────────────────
+        [
+            'group' => 'Google Calendar',
+            'q' => 'Menyambungkan Google Calendar',
+            'a' => 'Langkah sekali saja: (1) Buka console.cloud.google.com, buat project, lalu di "APIs & Services › Library" aktifkan Google Calendar API (gratis). (2) Di "IAM & Admin › Service Accounts" buat service account, buka tab Keys › Add key › Create new key › JSON, lalu unduh filenya. (3) Serahkan file JSON itu ke pengelola server untuk dipasang di storage/app/google/calendar.json; jangan dikirim lewat grup chat. (4) Isi email Google tiap dokter di Data Dokter. (5) Di Pengaturan › tab "Google Calendar", isi email Owner, centang Aktifkan, lalu Simpan. Aplikasi otomatis membuat kalender "Egao – nama dokter" untuk tiap dokter dan "Egao – Semua janji temu" untuk Owner, lalu Google mengirim email undangan. (6) Google sering tidak mengirim email undangan dari Service Account. Karena itu, di Pengaturan › Google Calendar tekan "Salin link kalender" pada tiap orang, lalu kirim link itu ke orangnya (misalnya lewat WA). Ia cukup membukanya sekali saat login dengan Gmail yang terdaftar, lalu menekan Tambahkan; kalender langsung muncul di Google Calendar-nya. Link hanya berfungsi untuk email yang terdaftar.',
+            'where' => 'Pengaturan › Google Calendar',
+            'roles' => 'Owner',
+            'tags' => 'google calendar kalender gmail service account sinkron jadwal janji temu integrasi',
+        ],
+        [
+            'group' => 'Google Calendar',
+            'q' => 'Janji temu masuk ke kalender siapa saja?',
+            'a' => 'Ke kalender "Egao – nama dokter" milik dokter yang dipilih di janji temu. Bila dokter dikosongkan ("Dokter yang bertugas"), janji masuk ke kalender semua dokter yang terjadwal di cabang dan tanggal itu. Semua janji juga masuk ke kalender "Egao – Semua janji temu" yang dibagikan ke Owner. Dokter yang dinonaktifkan atau emailnya dihapus otomatis kehilangan akses, tetapi kalendernya tidak dihapus. Janji tanpa jam dipasang pada jam buka cabang hari itu + 1 jam (mis. 11.00), selama 1 jam. Isi acara hanya nama pasien, keperluan, cabang, dan dokter, tanpa nomor HP/NIK. Janji kontrol dari rekam medis juga ikut dikirim.',
+            'where' => 'Janji temu',
+            'roles' => 'Owner, Admin',
+            'tags' => 'google calendar kalender dokter owner penerima jam default janji kontrol',
+        ],
+        [
+            'group' => 'Google Calendar',
+            'q' => 'Janji diubah atau dibatalkan, apakah kalendernya ikut berubah?',
+            'a' => 'Ya. Mengubah tanggal, jam, dokter, atau keperluan akan memperbarui acara dalam ±1 menit. Bila dokter diganti, acara di kalender dokter lama dihapus. Janji yang Batal atau Tidak datang dihapus dari kalender. Ubah dan batalkan janji selalu dari aplikasi, bukan langsung di Google Calendar. Bila jadwal dokter berubah, tekan "Sinkron ulang janji mendatang" di Pengaturan › Google Calendar. Status pengiriman terlihat di bawah nama pasien di Janji temu.',
+            'where' => 'Janji temu · Pengaturan › Google Calendar',
+            'roles' => 'Owner, Admin',
+            'tags' => 'google calendar ubah batal hapus sinkron ulang gagal kirim ulang',
+        ],
+
+        // ── SATUSEHAT ─────────────────────────────────────────────────
+        [
+            'group' => 'SATUSEHAT',
+            'q' => 'Bagaimana menghubungkan aplikasi ke SATUSEHAT?',
+            'a' => 'Ambil Organization ID, Client ID, dan Client Secret dari satusehat.kemkes.go.id/platform (menu Kode Akses API). Buka Pengaturan › tab "SATUSEHAT", pilih Sandbox untuk uji coba atau Production untuk data asli, isi kredensial di kartu cabang, centang "Aktifkan pengiriman", lalu Simpan. Tekan "Tes koneksi": bila muncul "Terhubung ke …" berarti sudah benar. Pastikan NIK pasien dan NIK dokter terisi.',
+            'where' => 'Pengaturan › SATUSEHAT',
+            'roles' => 'Owner',
+            'tags' => 'satusehat satu sehat kemenkes kemkes integrasi client id secret organization sandbox production fhir',
+        ],
+        [
+            'group' => 'SATUSEHAT',
+            'q' => 'Kapan kunjungan dikirim ke SATUSEHAT?',
+            'a' => 'Otomatis setelah dokter (atau Admin/Owner) menekan Kirim ke kasir di Rekam medis. Kunjungan masuk antrean lalu dikirim dalam ±5 menit oleh jadwal server. Yang dikirim: data kunjungan (pasien, dokter, waktu, cabang) dan diagnosis ICD-10. Statusnya terlihat di Pengaturan › SATUSEHAT › Pengiriman kunjungan.',
+            'where' => 'Pengaturan › SATUSEHAT',
+            'roles' => 'Owner',
+            'tags' => 'satusehat kirim otomatis encounter diagnosis icd jadwal antrean status',
+        ],
+        [
+            'group' => 'SATUSEHAT',
+            'q' => 'Kenapa kunjungan gagal terkirim ke SATUSEHAT?',
+            'a' => 'Lihat kolom Keterangan di Pengaturan › SATUSEHAT. Penyebab umum: NIK pasien atau NIK dokter belum diisi atau salah (perbaiki di Data pasien / Data dokter), kunjungan tanpa diagnosis ICD-10, kredensial salah, atau internet server terputus. Setelah diperbaiki tekan "Kirim ulang" atau "Kirim semua yang tertunda". Gagal kirim tidak memengaruhi tagihan dan kasir.',
+            'where' => 'Pengaturan › SATUSEHAT',
+            'roles' => 'Owner',
+            'tags' => 'satusehat gagal error kirim ulang nik tidak ditemukan diagnosis',
+        ],
+
         // ── Gaji & bagi hasil ─────────────────────────────────────────
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Di mana mengatur gaji pokok dokter?',
-            'a' => 'Buka Pengaturan, pilih tab "Bagi hasil". Di tabel dokter, isi kolom Gaji pokok untuk masing-masing dokter lalu tekan Simpan. Nilai ini dipakai saat menghitung gaji bulanan di menu Gaji & bagi hasil.',
-            'where' => 'Pengaturan › Bagi hasil',
+            'a' => 'Buka Pengaturan, pilih tab "Gaji & bagi hasil". Di tabel dokter, isi kolom Gaji pokok untuk masing-masing dokter lalu tekan Simpan. Nilai ini dipakai saat menghitung gaji bulanan di menu Gaji & bagi hasil.',
+            'where' => 'Pengaturan › Gaji & bagi hasil',
             'roles' => 'Owner',
             'tags' => 'gaji pokok dokter salary setting upah',
         ],
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Di mana mengatur persentase bagi hasil dokter?',
-            'a' => 'Pengaturan › tab "Bagi hasil". Ada tiga tingkat: (1) Tarif global untuk semua dokter, (2) persentase khusus per dokter, (3) persentase per tindakan, serta (4) aturan khusus dokter + tindakan tertentu. Yang paling spesifik yang dipakai. Kosongkan kolom per dokter/tindakan agar kembali memakai tarif global.',
-            'where' => 'Pengaturan › Bagi hasil',
+            'a' => 'Pengaturan › tab "Gaji & bagi hasil". Ada tiga tingkat: (1) Tarif global untuk semua dokter, (2) persentase khusus per dokter, (3) persentase per tindakan, serta (4) aturan khusus dokter + tindakan tertentu. Yang paling spesifik yang dipakai. Kosongkan kolom per dokter/tindakan agar kembali memakai tarif global.',
+            'where' => 'Pengaturan › Gaji & bagi hasil',
             'roles' => 'Owner',
             'tags' => 'persen persentase komisi bagi hasil share fee dokter tindakan global',
         ],
@@ -37,15 +89,39 @@ class Faq
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana menambah bonus atau potongan gaji?',
-            'a' => 'Buka Gaji & bagi hasil, pilih bulan, lalu klik baris dokter atau karyawan. Pilih Bonus atau Potongan, isi nominal dan keterangan, lalu simpan. Bonus/potongan hanya berlaku untuk bulan yang dipilih.',
+            'a' => 'Buka Gaji & bagi hasil, pilih bulan, lalu klik baris dokter atau karyawan. Pilih jenisnya (Bonus, THR, Bonus akhir tahun, atau Potongan), isi nominal dan keterangan, lalu simpan. Semua jenis selain Potongan menambah gaji, dan hanya berlaku untuk bulan yang dipilih. Bila target omzet tahunan diisi di Pengaturan, menu Gaji menampilkan apakah target sudah tercapai sebagai dasar memberi bonus akhir tahun.',
             'where' => 'Gaji & bagi hasil',
             'roles' => 'Owner',
             'tags' => 'bonus potongan tunjangan denda kasbon thr',
         ],
         [
             'group' => 'Gaji & bagi hasil',
+            'q' => 'Bagaimana aturan gaji dokter, asisten, dan admin?',
+            'a' => 'Atur di Pengaturan › tab "Gaji & bagi hasil" (tiga kartu: Dokter, Asisten, Admin & staf lain). Dokter: gaji pokok + uang duduk (UD) per jam + fee tindakan (tarif global, mis. 35%). Fee dihitung setelah harga tindakan dipotong "Biaya modal" (isi di tabel Per tindakan, mis. alat behel atau x-ray) dan biaya order lab dokter itu di bulan tersebut. Asisten (jabatan "Asisten dokter"): gaji pokok + UD per jam + fee % dari tindakan lunas yang ia dampingi + lembur per jam. Admin & jabatan lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang di menu Gaji. Nominal yang dibiarkan 0 tidak dipakai.',
+            'where' => 'Pengaturan › Gaji & bagi hasil',
+            'roles' => 'Owner',
+            'tags' => 'ud uang duduk per jam fee asisten lembur admin biaya modal lab behel xray 35% 2% thr bonus akhir tahun target omzet',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
+            'q' => 'Di mana mengisi jam hadir dan jam lembur?',
+            'a' => 'Buka Gaji & bagi hasil, pilih bulan, lalu klik baris dokter atau karyawan. Isi total jam hadir (untuk UD per jam; khusus dokter dan asisten) dan jam lembur (asisten dan admin) bulan itu, lalu tekan "Simpan jam". Boleh desimal, mis. 40,5.',
+            'where' => 'Gaji & bagi hasil',
+            'roles' => 'Owner',
+            'tags' => 'jam hadir kehadiran absensi lembur overtime ud uang duduk',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
+            'q' => 'Bagaimana memilih asisten pendamping supaya fee asisten terhitung?',
+            'a' => 'Di Kasir, buka tagihan kunjungan pasien. Di bawah nama dokter ada pilihan "Asisten"; pilih asisten yang mendampingi. Pilihan ini bisa diubah sebelum atau sesudah lunas dan tercatat di jejak audit. Fee asisten dihitung dari tindakan pada tagihan yang sudah lunas. Hanya karyawan berjabatan "Asisten dokter" yang muncul di pilihan.',
+            'where' => 'Kasir',
+            'roles' => 'Admin, Owner',
+            'tags' => 'asisten pendamping fee asisten kasir dampingi',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana gaji masuk ke pengeluaran dan laporan?',
-            'a' => 'Di Gaji & bagi hasil, pilih bulan lalu tekan tombol "Catat ke pengeluaran". Total gaji dan bagi hasil otomatis dicatat sebagai pengeluaran kategori "Gaji dan bagi hasil" per cabang. Pengeluaran otomatis ini tidak bisa diubah dari menu Pengeluaran; bila ada perubahan, tekan "Perbarui di pengeluaran" di menu Gaji.',
+            'a' => 'Di Gaji & bagi hasil, pilih bulan lalu tekan tombol "Catat ke pengeluaran". Total gaji dan bagi hasil otomatis dicatat sebagai pengeluaran kategori "Gaji dan bagi hasil" per cabang. Bila setting gaji atau biaya modal diubah lalu bulan lama dicatat ulang, nilainya ikut berubah. Pengeluaran otomatis ini tidak bisa diubah dari menu Pengeluaran; bila ada perubahan, tekan "Perbarui di pengeluaran" di menu Gaji.',
             'where' => 'Gaji & bagi hasil',
             'roles' => 'Owner',
             'tags' => 'posting gaji pengeluaran laporan otomatis',
@@ -104,16 +180,40 @@ class Faq
         // ── Pasien, antrean & janji ──────────────────────────────────
         [
             'group' => 'Pasien, antrean & janji',
+            'q' => 'Di mana mengatur jam kerja cabang?',
+            'a' => 'Pengaturan › Klinik & cabang › Ubah pada cabang. Jam kerja diatur per hari dan per cabang: Sesi 1, Sesi 2 (opsional, untuk jam setelah istirahat), atau centang Tutup. Bawaannya Senin–Jumat 10.00–13.00 & 15.00–20.00, Sabtu–Minggu 10.00–17.00. Bila janji temu dibuat di luar jam kerja, di jam istirahat, atau di hari tutup, muncul peringatan kuning; janji tetap bisa disimpan. Janji tanpa jam masuk Google Calendar pada jam buka cabang hari itu + 1 jam.',
+            'where' => 'Pengaturan › Klinik & cabang',
+            'roles' => 'Owner',
+            'tags' => 'jam kerja jam buka operasional praktik istirahat tutup libur cabang janji peringatan',
+        ],
+        [
+            'group' => 'Pasien, antrean & janji',
             'q' => 'Bagaimana mendaftarkan pasien baru?',
-            'a' => 'Buka Data pasien › tambah pasien, atau tombol "+ Daftarkan pasien" di Dashboard. Nomor RM dibuat otomatis. Data pasien berlaku di semua cabang, jadi tidak perlu daftar ulang di cabang lain.',
+            'a' => 'Buka Data pasien › tambah pasien, atau tombol "+ Daftarkan pasien" di Dashboard. Hanya nama dan jenis kelamin yang wajib; tanggal lahir, tempat lahir, telepon, dan NIK boleh dilengkapi belakangan. Data pasien berlaku di semua cabang, jadi tidak perlu daftar ulang di cabang lain.',
             'where' => 'Data pasien',
             'roles' => 'Semua peran',
             'tags' => 'pasien baru daftar registrasi nomor rm nik',
         ],
         [
             'group' => 'Pasien, antrean & janji',
+            'q' => 'Bagaimana aturan nomor rekam medis (No. RM)?',
+            'a' => 'No. RM = huruf awal nama + nomor urut per huruf, mis. "Budi" → B-043 (gelar dr./drg. diabaikan). Kosongkan kolom No. RM saat mendaftar agar dibuat otomatis, atau ketik sendiri bila pasien sudah punya nomor; nomor yang sudah dipakai ditolak. Pencarian bisa memakai "b43", "B-043", atau nama. Pasien contoh lama tetap tampil "RM-00128".',
+            'where' => 'Data pasien',
+            'roles' => 'Admin, Owner',
+            'tags' => 'nomor rm rekam medis format huruf ubah nomor pasien',
+        ],
+        [
+            'group' => 'Pasien, antrean & janji',
+            'q' => 'Data pasien dari Assist.id sudah dipindahkan?',
+            'a' => 'Ya, 1.347 pasien Assist.id sudah diimpor dengan No. RM aslinya. Tanggal lahir "31-12-1999" di Assist.id dianggap tidak diketahui, jadi umur tampil "umur –"; lengkapi tanggal lahir saat pasien datang. NIK yang tidak 16 digit atau dobel dikosongkan. Dua No. RM ganda diberi nomor baru: Makna Alam Pratama → M-138 dan Zaky Taffana Gemilang → Z-017.',
+            'where' => 'Data pasien',
+            'roles' => 'Semua peran',
+            'tags' => 'assist.id import impor migrasi data lama umur kosong tanggal lahir',
+        ],
+        [
+            'group' => 'Pasien, antrean & janji',
             'q' => 'Bagaimana memasukkan pasien ke antrean hari ini?',
-            'a' => 'Buka Antrean › "Daftarkan kunjungan", cari pasien, pilih dokter dan keperluan. Setelah itu pakai tombol Panggil, Mulai periksa, dan seterusnya. Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',
+            'a' => 'Buka Antrean › "Daftarkan kunjungan", cari pasien, pilih dokter dan keperluan. Antrean hanya punya 3 tab: Menunggu, Selesai tindakan (sudah diperiksa dokter, lanjut/sudah bayar), dan Tidak hadir. Admin cukup mendaftarkan dan menandai Tidak hadir; dokter menekan Periksa, dan setelah pemeriksaan disimpan pasien otomatis pindah ke Selesai tindakan. Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',
             'where' => 'Antrean',
             'roles' => 'Semua peran',
             'tags' => 'antrean kunjungan panggil nomor antri',
@@ -147,9 +247,9 @@ class Faq
         [
             'group' => 'Rekam medis',
             'q' => 'Bagaimana dokter mengisi pemeriksaan?',
-            'a' => 'Dari Antrean tekan "Mulai periksa", atau buka Rekam medis. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
+            'a' => 'Dari Antrean tekan "Periksa", atau buka Rekam medis. Yang bisa mengisi: dokter kunjungan, Admin (cabangnya sendiri, mis. bila dokter mendikte), dan Owner; penginput tercatat. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
             'where' => 'Rekam medis',
-            'roles' => 'Dokter, Owner',
+            'roles' => 'Dokter, Admin, Owner',
             'tags' => 'periksa pemeriksaan odontogram diagnosis icd tindakan resep',
         ],
         [
@@ -159,6 +259,14 @@ class Faq
             'where' => 'Rekam medis',
             'roles' => 'Dokter',
             'tags' => 'koreksi salah edit revisi versi',
+        ],
+        [
+            'group' => 'Rekam medis',
+            'q' => 'Bisakah harga tindakan diubah saat pemeriksaan?',
+            'a' => 'Bisa, khusus Dokter dan Owner. Di bagian Tindakan & tagihan tekan "Ubah harga" pada tindakan, lalu isi harga baru. Harga hanya boleh sama atau lebih tinggi dari harga standar cabang; lebih rendah ditolak (potongan harga dilakukan lewat diskon di Kasir). Kosongkan isian untuk kembali ke harga standar. Tindakan yang dinaikkan diberi label "standar Rp …", tercatat di jejak audit, dan bagi hasil dokter dihitung dari harga yang sudah dinaikkan. Admin tidak bisa mengubah harga, tetapi kenaikan dari dokter tetap terjaga saat Admin menyimpan.',
+            'where' => 'Rekam medis › Tindakan & tagihan',
+            'roles' => 'Dokter, Owner',
+            'tags' => 'harga tindakan ubah naik edit tarif standar bagi hasil',
         ],
 
         // ── Kasir ────────────────────────────────────────────────────
@@ -189,10 +297,18 @@ class Faq
         [
             'group' => 'Kasir & pembayaran',
             'q' => 'Bagaimana menjual barang tanpa pemeriksaan (pasien rujukan / pembeli umum)?',
-            'a' => 'Di Kasir tekan "+ Penjualan langsung". Pilih pasien terdaftar atau ketik nama pembeli (mis. "drg. Rina (rujukan)"), lalu "Buat tagihan". Tambahkan barang lewat "+ Tambah obat / barang" (mis. dental floss, behel per satuan), lalu terima pembayaran seperti biasa — stok berkurang saat lunas dan kwitansi bisa dicetak. Tagihan ini tampil berlabel "Penjualan langsung" dan masuk ke Laporan › Pembayaran atas nama pembeli. Penjualan langsung yang belum berisi barang bisa dihapus. Owner di "Semua cabang" memilih cabang di form.',
+            'a' => 'Di Kasir tekan "+ Penjualan langsung". Pilih pasien terdaftar atau ketik nama pembeli (mis. "drg. Rina (rujukan)"), lalu "Buat tagihan". Tambahkan barang lewat "+ Tambah obat / barang" (mis. dental floss, behel per satuan), lalu terima pembayaran seperti biasa — stok berkurang saat lunas dan kwitansi bisa dicetak. Tagihan ini tampil berlabel "Penjualan langsung" dan masuk ke Laporan › Pembayaran atas nama pembeli. Penjualan langsung yang belum berisi barang bisa dihapus. Owner di "Semua cabang" memilih cabang di form. Tidak ada komisi untuk perujuk; kwitansi dicetak hanya bila pembeli memintanya.',
             'where' => 'Kasir',
             'roles' => 'Owner, Admin',
             'tags' => 'penjualan langsung rujukan walk-in umum floss behel tanpa periksa',
+        ],
+        [
+            'group' => 'Kasir & pembayaran',
+            'q' => 'Bagaimana mencatat pasien rujukan dokter gigi luar?',
+            'a' => 'Di Data pasien, saat menambah atau mengubah pasien, isi kolom "Dirujuk oleh" (mis. drg. Budi – Klinik Sehat). Pasien ini tampil dengan tanda "Rujukan", bisa disaring lewat pilihan "Rujukan drg luar" di Data pasien, dan namanya tampil berlabel rujukan di Kasir saat membeli behel lewat Penjualan langsung.',
+            'where' => 'Data pasien · Kasir',
+            'roles' => 'Admin, Owner',
+            'tags' => 'rujukan perujuk drg luar behel pasien rujukan catatan',
         ],
         [
             'group' => 'Kasir & pembayaran',
@@ -327,6 +443,22 @@ class Faq
             'where' => 'Pengaturan › Aplikasi › Pemeliharaan',
             'roles' => 'Owner',
             'tags' => 'update database migrasi cache pemeliharaan versi baru',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana backup database dan mengunduh file backup?',
+            'a' => 'Buka Bantuan & aturan › tab "Tentang & aturan", gulir ke bagian "Backup & restore database", masukkan PIN, lalu tekan "Buat backup & unduh". Backup otomatis juga berjalan setiap hari (default jam 02.00) dan tampil di riwayat. Simpan salinan file backup di tempat lain (flashdisk/Google Drive). PIN diatur oleh pengelola server (BACKUP_PIN di .env).',
+            'where' => 'Bantuan & aturan › Tentang & aturan',
+            'roles' => 'Owner',
+            'tags' => 'backup cadangan database unduh download pin simpan data',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana mengembalikan (restore) data dari backup?',
+            'a' => 'Di panel Backup & restore (setelah memasukkan PIN), pilih "Pilih untuk restore" pada file di riwayat atau upload file .sql/.sql.gz, ketik RESTORE, lalu tekan "Restore database". Seluruh data diganti dengan isi backup — data setelah tanggal backup hilang. Sistem otomatis membuat backup "sebelum restore" dulu, dan semua pengguna harus login ulang setelahnya.',
+            'where' => 'Bantuan & aturan › Tentang & aturan',
+            'roles' => 'Owner',
+            'tags' => 'restore pulihkan kembalikan data backup hilang rusak',
         ],
     ];
 

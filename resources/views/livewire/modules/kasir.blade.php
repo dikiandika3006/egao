@@ -45,8 +45,22 @@
                     <div>
                         <p class="text-[11px] text-muted">{{ $invoice->payerPatient()?->rmCode() ?? 'Tanpa RM' }} · {{ $invoice->branch->shortName() }}</p>
                         <h2 class="mt-1 text-xl font-semibold">{{ $invoice->payerName() }}</h2>
+                        @if ($invoice->payerPatient()?->referred_by)
+                            <p class="mt-1"><span class="pill bg-sky-soft text-sky-ink">Rujukan {{ $invoice->payerPatient()->referred_by }}</span></p>
+                        @endif
                         @if ($invoice->visit)
                             <p class="mt-1 text-sm text-muted">{{ $invoice->visit->doctor->name }} · {{ $invoice->visit->visit_date->translatedFormat('j M Y') }}</p>
+                            @if ($assistants->isNotEmpty())
+                                <label class="mt-2 flex items-center gap-2 text-xs text-muted">
+                                    Asisten
+                                    <select wire:change="assignAssistant($event.target.value)" class="input min-h-8 py-1 text-[13px]">
+                                        <option value="">— tanpa asisten —</option>
+                                        @foreach ($assistants as $a)
+                                            <option value="{{ $a->id }}" @selected($invoice->visit->assistant_id === $a->id)>{{ $a->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                            @endif
                         @else
                             <p class="mt-1 text-sm text-muted">Penjualan langsung · {{ $invoice->created_at->translatedFormat('j M Y') }}</p>
                             @if ($invoice->items->isEmpty() && $invoice->paid === 0)

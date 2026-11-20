@@ -10,6 +10,7 @@ use App\Models\ToothFinding;
 use App\Models\Visit;
 use App\Services\ExamService;
 use App\Support\BranchContext;
+use App\Support\Format;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
@@ -126,6 +127,8 @@ class Exam extends Component
 
         $this->procedures = $visit->invoice?->items->map(fn ($i) => [
             'procedure_id' => $i->procedure_id, 'tooth' => $i->tooth, 'quantity' => $i->quantity,
+            // Harga dinaikkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
+            'unit_price' => $i->isRaised() ? (int) $i->unit_price : null,
         ])->all() ?? [];
 
         $this->prescriptions = $visit->prescriptions->map->only(['item_id', 'drug_name', 'dose', 'quantity', 'item_quantity'])->all();
@@ -217,11 +220,7 @@ class Exam extends Component
     #[Computed]
     public function total(): int
     {
-        $procedures = (int) collect($this->procedures)->sum(function ($p) {
-            $price = $this->procedureOptions->get($p['procedure_id'])?->prices->first()?->price ?? 0;
-
-            return $price * max(1, (int) $p['quantity']);
-        });
+        $procedures = (int) collect($this->procedures)->sum(fn ($p) => $this->priceOf($p) * max(1, (int) $p['quantity']));
 
         return $procedures + $this->drugTotal;
     }
@@ -244,6 +243,54 @@ class Exam extends Component
 
             return $item ? $item->sell_price * max(1, (int) ($p['item_quantity'] ?? 1)) : 0;
         });
+    }
+
+    /** Harga standar tindakan di cabang kunjungan. */
+    public function standardPrice(?int $procedureId): int
+    {
+        return (int) ($this->procedureOptions->get($procedureId)?->prices->first()?->price ?? 0);
+    }
+
+    /** Harga yang dipakai: harga dinaikkan (bila ada) atau harga standar. */
+    public function priceOf(array $p): int
+    {
+        $standard = $this->standardPrice($p['procedure_id'] ?? null);
+
+        return filled($p['unit_price'] ?? null) ? max($standard, (int) $p['unit_price']) : $standard;
+    }
+
+    /** Hanya Dokter & Owner yang boleh menaikkan harga tindakan (≥ harga standar). */
+    #[Computed]
+    public function canEditPrice(): bool
+    {
+        return $this->canEditBilling && app(ExamService::class)->canRaisePrice();
+    }
+
+    /** Ubah harga tindakan: kosong/sama dengan standar = harga standar; di bawah standar ditolak. */
+    public function updatedProcedures($value, string $key): void
+    {
+        [$index, $field] = array_pad(explode('.', $key), 2, null);
+        if ($field !== 'unit_price' || ! isset($this->procedures[$index])) {
+            return;
+        }
+
+        if (! $this->canEditPrice) {
+            $this->procedures[$index]['unit_price'] = null;
+            abort(403, 'Hanya Dokter dan Owner yang boleh mengubah harga tindakan.');
+        }
+
+        $price = (int) preg_replace('/\D/', '', (string) $value);
+        $standard = $this->standardPrice($this->procedures[$index]['procedure_id']);
+        $this->resetErrorBag("procedures.{$index}.unit_price");
+
+        if ($value === null || $value === '' || $price === $standard) {
+            $this->procedures[$index]['unit_price'] = null;
+        } elseif ($price < $standard) {
+            $this->procedures[$index]['unit_price'] = null;
+            $this->addError("procedures.{$index}.unit_price", 'Tidak boleh di bawah harga standar '.Format::rupiah($standard).'.');
+        } else {
+            $this->procedures[$index]['unit_price'] = $price;
+        }
     }
 
     /** Memilih obat dari stok mengisi nama obat otomatis. */
@@ -390,7 +437,7 @@ class Exam extends Component
             return;
         }
 
-        $this->procedures[] = ['procedure_id' => $this->newProcedureId, 'tooth' => trim($this->newTooth) ?: null, 'quantity' => $this->newQuantity];
+        $this->procedures[] = ['procedure_id' => $this->newProcedureId, 'tooth' => trim($this->newTooth) ?: null, 'quantity' => $this->newQuantity, 'unit_price' => null];
         $this->reset('newProcedureId', 'newQuantity', 'newTooth', 'addingProcedure');
         $this->resetErrorBag('procedures');
     }

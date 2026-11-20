@@ -7,11 +7,13 @@ use App\Enums\VisitStatus;
 use App\Models\AuditLog;
 use App\Models\Appointment;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Item;
 use App\Models\MedicalRecord;
 use App\Models\Procedure;
 use App\Models\User;
 use App\Models\Visit;
+use App\Services\SatuSehat\SatuSehatService;
 use App\Support\BranchContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -41,10 +43,20 @@ class ExamService
             && $visit->doctor->user_id === $user->id;
     }
 
-    /** Catatan klinis boleh diubah: dokter pemilik, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
+    /**
+     * Admin/Owner boleh mengisi pemeriksaan atas nama dokter kunjungan (mis. dokter mendikte, admin mengetik),
+     * hanya untuk cabang yang boleh diakses. Penginput tercatat di created_by / audit.
+     */
+    public function isStaffEditor(Visit $visit): bool
+    {
+        return $this->context->is(Role::Admin, Role::Owner)
+            && $this->context->options()->contains('id', $visit->branch_id);
+    }
+
+    /** Catatan klinis boleh diubah: dokter pemilik atau Admin/Owner, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
     public function canEditClinical(Visit $visit): bool
     {
-        return $this->isOwningDoctor($visit) && $visit->status !== VisitStatus::Batal;
+        return ($this->isOwningDoctor($visit) || $this->isStaffEditor($visit)) && $visit->status !== VisitStatus::Batal;
     }
 
     /**
@@ -55,7 +67,7 @@ class ExamService
     {
         return $this->canEditClinical($visit)
             && $visit->isOpenForExam()
-            && $this->context->id() === $visit->branch_id;
+            && ($this->context->id() === $visit->branch_id || ($this->context->isAll() && $this->isStaffEditor($visit)));
     }
 
     /** FR-ANT-06: dokter membuka rekam medis → status Sedang diperiksa. */
@@ -90,7 +102,7 @@ class ExamService
 
         $this->validateForSend($visit, $data);
 
-        return DB::transaction(function () use ($visit, $data) {
+        $record = DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
             $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? []);
 
@@ -104,6 +116,21 @@ class ExamService
 
             return $record;
         });
+
+        // SATUSEHAT: masuk antrean kirim setelah transaksi berhasil (tanpa HTTP di sini).
+        $this->queueSatuSehat($visit);
+
+        return $record;
+    }
+
+    /** Gagal mengantrekan SATUSEHAT tidak boleh mengganggu alur kasir. */
+    private function queueSatuSehat(Visit $visit): void
+    {
+        try {
+            app(SatuSehatService::class)->queue($visit->fresh());
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /** FR-RM-22: koreksi setelah final = versi baru; tindakan/tagihan tidak berubah. */
@@ -235,18 +262,54 @@ class ExamService
         return $record;
     }
 
-    /** Harga diambil dari harga cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items. */
+    /** Dokter & Owner boleh menaikkan harga tindakan (tidak boleh di bawah harga standar). */
+    public function canRaisePrice(): bool
+    {
+        return $this->context->is(Role::Dokter, Role::Owner);
+    }
+
+    /**
+     * Harga standar = harga cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items.
+     * Dokter/Owner boleh mengisi unit_price ≥ standar (bagi hasil ikut harga ini). Peran lain tidak bisa mengubah harga,
+     * tetapi kenaikan yang sudah tersimpan untuk tindakan yang sama dipertahankan.
+     */
     private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = []): Invoice
     {
         $ids = collect($procedures)->pluck('procedure_id')->unique();
         $master = Procedure::with('prices')->whereIn('id', $ids)->get()->keyBy('id');
+        $canRaise = $this->canRaisePrice();
 
-        $items = collect($procedures)->map(function (array $p) use ($master, $visit) {
+        // Harga yang sudah tersimpan per tindakan (antrian sesuai urutan) untuk dipertahankan saat Admin menyimpan.
+        $saved = InvoiceItem::whereHas('invoice', fn ($q) => $q->where('visit_id', $visit->id))
+            ->whereNotNull('procedure_id')->orderBy('id')->get(['procedure_id', 'unit_price'])
+            ->groupBy('procedure_id')->map(fn ($g) => $g->pluck('unit_price')->map(fn ($v) => (int) $v)->all())->all();
+
+        $raised = [];
+
+        $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, &$saved, &$raised) {
             $procedure = $master->get((int) $p['procedure_id']);
-            $price = $procedure?->priceFor($visit->branch_id);
+            $standard = $procedure?->priceFor($visit->branch_id);
 
-            if (! $procedure || $price === null) {
+            if (! $procedure || $standard === null) {
                 throw ValidationException::withMessages(['procedures' => 'Tindakan tidak tersedia di cabang ini.']);
+            }
+
+            $requested = filled($p['unit_price'] ?? null) ? (int) $p['unit_price'] : null;
+            $previous = ! empty($saved[$procedure->id]) ? array_shift($saved[$procedure->id]) : null;
+
+            if ($canRaise && $requested !== null) {
+                if ($requested < $standard) {
+                    throw ValidationException::withMessages([
+                        'procedures' => "Harga {$procedure->name} tidak boleh di bawah harga standar Rp ".number_format($standard, 0, ',', '.').'.',
+                    ]);
+                }
+                $price = $requested;
+            } else {
+                $price = ($previous !== null && $previous >= $standard) ? $previous : $standard;
+            }
+
+            if ($price > $standard) {
+                $raised[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'harga' => $price];
             }
 
             $qty = max(1, min(99, (int) ($p['quantity'] ?? 1)));
@@ -258,6 +321,7 @@ class ExamService
                 'tooth' => $this->clean($p['tooth'] ?? null, 10),
                 'quantity' => $qty,
                 'unit_price' => $price,
+                'standard_price' => $standard,
                 'amount' => $price * $qty,
             ];
         });
@@ -292,6 +356,10 @@ class ExamService
 
         $invoice->items()->delete();
         $invoice->items()->createMany($items->all());
+
+        if ($raised && $status !== Invoice::STATUS_DRAFT) {
+            AuditLog::record('tindakan.harga_dinaikkan', $invoice, ['tindakan' => $raised]);
+        }
 
         return $invoice;
     }

@@ -12,7 +12,7 @@
             <p class="mt-2 text-sm text-muted lg:text-[15px]">
                 {{ now()->translatedFormat('l, j F Y') }}
                 @if ($branch)
-                    <span class="mx-1.5">•</span> Jam praktik {{ Format::jam($branch->opens_at) }}–{{ Format::jam($branch->closes_at) }}
+                    <span class="mx-1.5">•</span> Jam praktik hari ini {{ $branch->hoursLabel(now()) }}
                 @else
                     <span class="mx-1.5">•</span> Semua cabang
                 @endif
@@ -32,7 +32,7 @@
         <div class="card p-4 lg:p-5">
             <p class="text-[13px] text-muted">Menunggu</p>
             <p class="mt-3 text-[26px] font-semibold lg:text-[28px]">{{ $kpi['waiting'] }}</p>
-            <p class="mt-3 text-xs text-muted">Siap dipanggil</p>
+            <p class="mt-3 text-xs text-muted">Belum diperiksa</p>
         </div>
         <div class="card p-4 lg:p-5">
             <p class="text-[13px] text-muted">Sedang diperiksa</p>

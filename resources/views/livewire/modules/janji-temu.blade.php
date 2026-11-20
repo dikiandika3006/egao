@@ -137,7 +137,16 @@
                             {{ $a->patient->rmCode() }} · {{ $a->purpose ?: 'Pemeriksaan' }} · {{ $a->doctor?->name ?? 'Dokter bertugas' }}
                             @if ($context->isAll()) · {{ $a->branch->shortName() }} @endif
                         </p>
+                        @if ($gcalEnabled && $canWrite && ($gcal = $a->calendarState()))
+                            <p @class(['mt-1 text-[11px]', 'text-brand-600' => $gcal === 'synced', 'text-muted' => $gcal === 'pending', 'text-rose-ink' => $gcal === 'failed'])
+                                @if ($gcal === 'failed') title="{{ $a->calendar_error }}" @endif>
+                                {{ ['synced' => '✓ Masuk Google Calendar', 'pending' => '⟳ Menunggu dikirim ke Google Calendar', 'failed' => '⚠ Gagal masuk Google Calendar (cek Pengaturan → Google Calendar)'][$gcal] }}
+                            </p>
+                        @endif
                         @if ($a->note)<p class="mt-1 text-[12px] text-muted italic">{{ $a->note }}</p>@endif
+                        @if (in_array($a->id, $outsideHours, true))
+                            <p class="mt-1.5 inline-flex rounded bg-amber-soft px-2 py-0.5 text-[11px] font-semibold text-amber-ink">Di luar jam kerja {{ $a->branch->shortName() }} ({{ $a->branch->hoursLabel($a->date) }})</p>
+                        @endif
                         @if (in_array($a->id, $doctorAway, true))
                             <p class="mt-1.5 inline-flex rounded bg-rose-soft px-2 py-0.5 text-[11px] font-semibold text-rose-ink">{{ $a->doctor->name }} tidak bertugas di cabang ini hari itu — kabari pasien / ganti dokter</p>
                         @endif
@@ -217,7 +226,7 @@
                         </div>
                         <div>
                             <label class="label">Jam (opsional)</label>
-                            <input type="time" wire:model="form.time" class="input">
+                            <input type="time" wire:model.live.debounce.500ms="form.time" class="input">
                             <x-error for="form.time" />
                         </div>
                     </div>
@@ -235,9 +244,16 @@
                         @endif
                     </div>
 
+                    @if ($hoursWarning)
+                        <p class="rounded-xl bg-amber-soft px-3 py-2 text-[13px] text-amber-ink">⚠ {{ $hoursWarning }}</p>
+                    @endif
+
                     {{-- Ketersediaan dokter di tanggal & cabang terpilih: bantu admin menjawab pasien via WA --}}
                     <div class="rounded-xl bg-canvas p-3">
                         <p class="text-xs font-semibold text-muted uppercase">Dokter bertugas · {{ \Carbon\Carbon::parse($form['date'] ?: today())->translatedFormat('D, j M') }}</p>
+                        @if ($formBranch)
+                            <p class="mt-1 text-xs text-muted">Jam kerja {{ $formBranch->shortName() }}: <span class="font-medium text-brand-700">{{ $formBranch->hoursLabel(\Carbon\Carbon::parse($form['date'] ?: today())) }}</span></p>
+                        @endif
                         @if ($context->isAll() && ! $editingId && ! $branchPick)
                             <p class="mt-2 text-xs text-muted">Pilih cabang dulu untuk melihat jadwal dokter.</p>
                         @else

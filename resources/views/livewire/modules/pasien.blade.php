@@ -8,8 +8,12 @@
 
     <div @class(['mt-7 grid gap-6', 'lg:grid-cols-[minmax(0,1fr)_380px]' => $detail])>
         <section class="card overflow-hidden">
-            <div class="border-b border-line p-4 lg:px-5">
+            <div class="flex flex-col gap-2 border-b border-line p-4 sm:flex-row lg:px-5">
                 <input type="search" wire:model.live.debounce.300ms="search" class="input" placeholder="Cari nama, no. RM, atau nomor telepon…">
+                <select wire:model.live="filter" class="input sm:w-[200px]" aria-label="Filter pasien">
+                    <option value="">Semua pasien</option>
+                    <option value="rujukan">Rujukan drg luar</option>
+                </select>
             </div>
 
             <div class="hidden md:block">
@@ -31,9 +35,10 @@
                                     <p class="mt-0.5 text-[11px] text-muted">
                                         {{ $p->rmCode() }}
                                         @if ($p->hasAllergy())<span class="ml-1 text-rose-ink">• Alergi {{ $p->allergies }}</span>@endif
+                                        @if ($p->referred_by)<span class="ml-1 text-sky-ink">• Rujukan {{ $p->referred_by }}</span>@endif
                                     </p>
                                 </td>
-                                <td class="text-[13px]">{{ $p->age() }} th · {{ $p->gender }}</td>
+                                <td class="text-[13px]">{{ $p->ageLabel(true) }} · {{ $p->gender }}</td>
                                 <td class="text-[13px]">{{ $p->maskedPhone() }}</td>
                                 <td class="text-[13px]">
                                     @if ($p->latestVisit)
@@ -42,8 +47,25 @@
                                         <span class="text-muted">—</span>
                                     @endif
                                 </td>
-                                <td class="pr-5 text-right">
-                                    <button type="button" wire:click="open({{ $p->id }})" class="link-arrow">Lihat <span aria-hidden="true">→</span></button>
+                                <td class="pr-5">
+                                    <div class="flex items-center justify-end gap-1">
+                                        <button type="button" wire:click="open({{ $p->id }})" title="Lihat detail" aria-label="Lihat detail {{ $p->name }}"
+                                            class="grid size-9 place-items-center rounded-lg text-muted transition hover:bg-mist hover:text-brand-600">
+                                            <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M2.1 12.3a1 1 0 0 1 0-.6C3.6 7.6 7.5 5 12 5s8.4 2.6 9.9 6.7a1 1 0 0 1 0 .6C20.4 16.4 16.5 19 12 19s-8.4-2.6-9.9-6.7Z"/>
+                                                <circle cx="12" cy="12" r="3"/>
+                                            </svg>
+                                        </button>
+                                        @if ($canRegister)
+                                            <button type="button" wire:click="edit({{ $p->id }})" title="Ubah data" aria-label="Ubah data {{ $p->name }}"
+                                                class="grid size-9 place-items-center rounded-lg text-muted transition hover:bg-mist hover:text-brand-600">
+                                                <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M12 20h9"/>
+                                                    <path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                                </svg>
+                                            </button>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -59,7 +81,7 @@
                         <button type="button" wire:click="open({{ $p->id }})" class="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left">
                             <span class="min-w-0">
                                 <span class="block truncate font-semibold">{{ $p->name }}</span>
-                                <span class="mt-0.5 block text-[11px] text-muted">{{ $p->rmCode() }} · {{ $p->age() }} th @if ($p->hasAllergy())<span class="text-rose-ink">• Alergi</span>@endif</span>
+                                <span class="mt-0.5 block text-[11px] text-muted">{{ $p->rmCode() }} · {{ $p->ageLabel(true) }} @if ($p->hasAllergy())<span class="text-rose-ink">• Alergi</span>@endif</span>
                             </span>
                             <span class="text-muted" aria-hidden="true">→</span>
                         </button>
@@ -80,7 +102,7 @@
                     <div>
                         <p class="text-[11px] text-muted">{{ $detail->rmCode() }}</p>
                         <h2 class="mt-1 text-xl font-semibold">{{ $detail->name }}</h2>
-                        <p class="mt-1 text-sm text-muted">{{ $detail->genderLabel() }} · {{ $detail->age() }} tahun · {{ $detail->birth_date->translatedFormat('j M Y') }}</p>
+                        <p class="mt-1 text-sm text-muted">{{ $detail->genderLabel() }} · {{ $detail->ageLabel() }}</p>
                     </div>
                     <button type="button" wire:click="close" class="btn-ghost min-h-9 px-3" aria-label="Tutup">✕</button>
                 </div>
@@ -89,9 +111,15 @@
                     <p class="mt-4 rounded-lg bg-rose-soft px-3 py-2 text-sm font-medium text-rose-ink">Alergi: {{ $detail->allergies }}</p>
                 @endif
 
+                @if ($detail->referred_by)
+                    <p class="mt-3 rounded-lg bg-sky-soft px-3 py-2 text-sm font-medium text-sky-ink">Pasien rujukan: {{ $detail->referred_by }}</p>
+                @endif
+
                 <dl class="mt-4 grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+                    <dt class="text-muted">Tempat, tgl lahir</dt>
+                    <dd>{{ $detail->birthLabel() }}</dd>
                     <dt class="text-muted">Telepon</dt>
-                    <dd>{{ $reveal ? $detail->phone : $detail->maskedPhone() }}</dd>
+                    <dd>{{ $reveal ? ($detail->phone ?: '—') : $detail->maskedPhone() }}</dd>
                     <dt class="text-muted">NIK</dt>
                     <dd>{{ $detail->nik ? ($reveal ? $detail->nik : $detail->maskedNik()) : '—' }}</dd>
                     <dt class="text-muted">Alamat</dt>
@@ -145,6 +173,11 @@
                     <input type="text" wire:model="patient.name" class="input" autofocus>
                     <x-error for="patient.name" />
                 </div>
+                <div class="sm:col-span-2">
+                    <label class="label">No. rekam medis <span class="font-normal text-muted">(kosongkan = otomatis huruf awal nama + nomor, mis. B-043)</span></label>
+                    <input type="text" wire:model="patient.medical_record_number" class="input uppercase" maxlength="20" placeholder="Otomatis">
+                    <x-error for="patient.medical_record_number" />
+                </div>
                 <div>
                     <label class="label">Jenis kelamin</label>
                     <select wire:model="patient.gender" class="input">
@@ -153,12 +186,17 @@
                     </select>
                 </div>
                 <div>
-                    <label class="label">Tanggal lahir</label>
+                    <label class="label">Tempat lahir <span class="font-normal text-muted">(opsional)</span></label>
+                    <input type="text" wire:model="patient.birth_place" class="input" maxlength="100">
+                    <x-error for="patient.birth_place" />
+                </div>
+                <div>
+                    <label class="label">Tanggal lahir <span class="font-normal text-muted">(opsional)</span></label>
                     <input type="date" wire:model="patient.birth_date" class="input" max="{{ today()->toDateString() }}">
                     <x-error for="patient.birth_date" />
                 </div>
                 <div>
-                    <label class="label">Nomor telepon / WA</label>
+                    <label class="label">Nomor telepon / WA <span class="font-normal text-muted">(opsional)</span></label>
                     <input type="tel" wire:model="patient.phone" class="input" inputmode="tel">
                     <x-error for="patient.phone" />
                 </div>
@@ -171,6 +209,11 @@
                     <label class="label">Alergi obat / bahan</label>
                     <input type="text" wire:model="patient.allergies" class="input" placeholder="Tidak ada">
                     <x-error for="patient.allergies" />
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="label">Dirujuk oleh <span class="font-normal text-muted">(opsional, mis. drg. Budi – Klinik Sehat)</span></label>
+                    <input type="text" wire:model="patient.referred_by" class="input" maxlength="255" placeholder="Kosongkan bila bukan pasien rujukan">
+                    <x-error for="patient.referred_by" />
                 </div>
                 <div class="sm:col-span-2">
                     <label class="label">Alamat</label>

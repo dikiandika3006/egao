@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\User;
+use App\Services\GoogleCalendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -39,7 +40,13 @@ class Dokter extends Component
 
     public string $sip_number = '';
 
+    /** NIK dokter: wajib untuk SATUSEHAT (pencocokan data tenaga kesehatan). */
+    public string $nik = '';
+
     public ?string $primary_branch_id = null;
+
+    /** Email Google: janji temu dokter ini masuk ke Google Calendar-nya (Pengaturan → Google Calendar). */
+    public string $calendar_email = '';
 
     public ?string $joined_at = null;
 
@@ -71,6 +78,8 @@ class Dokter extends Component
         $this->name = $doctor->name;
         $this->str_number = (string) $doctor->str_number;
         $this->sip_number = (string) $doctor->sip_number;
+        $this->nik = (string) $doctor->nik;
+        $this->calendar_email = (string) $doctor->calendar_email;
         $this->primary_branch_id = $doctor->primary_branch_id ? (string) $doctor->primary_branch_id : null;
         $this->joined_at = $doctor->joined_at?->toDateString();
         $this->is_active = $doctor->is_active;
@@ -84,11 +93,13 @@ class Dokter extends Component
             'name' => ['required', 'string', 'max:255'],
             'str_number' => ['nullable', 'string', 'max:50'],
             'sip_number' => ['nullable', 'string', 'max:50'],
+            'nik' => ['nullable', 'digits:16', Rule::unique('doctors', 'nik')->where('clinic_id', $this->clinicId())->ignore($this->editingId)],
             'primary_branch_id' => ['nullable', Rule::exists('branches', 'id')->where('clinic_id', $this->clinicId())],
+            'calendar_email' => ['nullable', 'email', 'max:255'],
             'joined_at' => ['required', 'date', 'before_or_equal:today'],
             'is_active' => ['boolean'],
         ], [], [
-            'name' => 'nama', 'str_number' => 'nomor STR', 'sip_number' => 'nomor SIP',
+            'name' => 'nama', 'str_number' => 'nomor STR', 'sip_number' => 'nomor SIP', 'nik' => 'NIK', 'calendar_email' => 'email Google Calendar',
             'primary_branch_id' => 'cabang utama', 'joined_at' => 'tanggal bergabung',
         ]);
 
@@ -99,13 +110,16 @@ class Dokter extends Component
             ? $this->resolveAccount($data['name'])
             : ($this->editingId ? $this->doctorQuery()->whereKey($this->editingId)->value('user_id') : null);
 
-        DB::transaction(function () use ($data, $userId) {
+        $calendarChanged = false;
+
+        DB::transaction(function () use ($data, $userId, &$calendarChanged) {
             $doctor = $this->editingId
                 ? $this->doctorQuery()->findOrFail($this->editingId)
                 : new Doctor(['clinic_id' => $this->clinicId()]);
 
             $previousUserId = $doctor->user_id;
             $doctor->fill($data + ['user_id' => $userId])->save();
+            $calendarChanged = $doctor->wasChanged(['calendar_email', 'is_active']) || ($doctor->wasRecentlyCreated && $doctor->calendar_email);
 
             // Akun yang dilepas dari dokter kehilangan peran dokter (bila masih punya peran lain).
             if ($previousUserId && $previousUserId !== $userId) {
@@ -116,10 +130,29 @@ class Dokter extends Component
                 }
             }
 
-            AuditLog::record($this->editingId ? 'doctor.updated' : 'doctor.created', $doctor, ['user_id' => $userId]);
+            AuditLog::record($this->editingId ? 'doctor.updated' : 'doctor.created', $doctor, ['user_id' => $userId, 'nik_diubah' => $doctor->wasChanged('nik')]);
         });
 
-        $this->toast($this->editingId ? 'Data dokter diperbarui.' : 'Dokter baru ditambahkan.');
+        $message = $this->editingId ? 'Data dokter diperbarui.' : 'Dokter baru ditambahkan.';
+
+        // Email Google berubah → langsung kirim undangan ke email baru & cabut akses lama (tanpa menunggu putaran 1 menit).
+        if ($calendarChanged) {
+            $sync = app(GoogleCalendarSync::class);
+            if ($sync->enabled()) {
+                try {
+                    $message .= $sync->syncCalendars($this->clinicId())
+                        ? ' Undangan Google Calendar gagal dikirim — cek Pengaturan › Google Calendar.'
+                        : (filled($this->calendar_email) && $this->is_active
+                            ? ' Undangan Google Calendar sudah dikirim ke '.mb_strtolower(trim($this->calendar_email)).'.'
+                            : ' Akses Google Calendar dokter ini dicabut.');
+                } catch (\Throwable $e) {
+                    report($e);
+                    $message .= ' Undangan Google Calendar akan dicoba lagi otomatis.';
+                }
+            }
+        }
+
+        $this->toast($message);
         $this->closeForm();
     }
 
@@ -178,7 +211,7 @@ class Dokter extends Component
     private function resetForm(): void
     {
         $this->resetValidation();
-        $this->reset('editingId', 'name', 'str_number', 'sip_number', 'primary_branch_id', 'joined_at', 'is_active', 'account', 'new_username', 'new_password');
+        $this->reset('editingId', 'name', 'str_number', 'sip_number', 'nik', 'calendar_email', 'primary_branch_id', 'joined_at', 'is_active', 'account', 'new_username', 'new_password');
     }
 
     private function doctorQuery()

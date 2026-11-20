@@ -45,7 +45,7 @@
     <div class="mt-6 grid gap-4 rounded-xl bg-leaf-100 px-5 py-4 sm:grid-cols-[1fr_1.3fr_auto] sm:items-center">
         <div>
             <p class="font-semibold">{{ $patient->rmCode() }}</p>
-            <p class="mt-1 text-xs text-muted">{{ $patient->genderLabel() }} • {{ $patient->age() }} tahun</p>
+            <p class="mt-1 text-xs text-muted">{{ $patient->genderLabel() }} • {{ $patient->ageLabel() }}</p>
         </div>
         <div>
             @if ($patient->hasAllergy())
@@ -301,12 +301,29 @@
 
                 <ul class="mt-5 space-y-3.5 text-[15px]">
                     @forelse ($procedures as $i => $p)
-                        @php $opt = $this->procedureOptions->get($p['procedure_id']); $price = $opt?->prices->first()?->price ?? 0; @endphp
-                        <li wire:key="p{{ $i }}" class="flex items-start justify-between gap-3">
+                        @php
+                            $opt = $this->procedureOptions->get($p['procedure_id']);
+                            $standard = $this->standardPrice($p['procedure_id']);
+                            $price = $this->priceOf($p);
+                        @endphp
+                        <li wire:key="p{{ $i }}" class="flex items-start justify-between gap-3" x-data="{ editPrice: false }">
                             <div class="min-w-0">
                                 <p>{{ $opt?->name ?? 'Tindakan' }}</p>
-                                @if ($p['quantity'] > 1 || $p['tooth'])
-                                    <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}</p>
+                                @if ($p['quantity'] > 1 || $p['tooth'] || $price > $standard)
+                                    <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
+                                        @if ($price > $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
+                                    </p>
+                                @endif
+                                @if ($billing && $this->canEditPrice)
+                                    <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
+                                    <div x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2">
+                                        <input type="number" min="{{ $standard }}" step="1000" inputmode="numeric"
+                                            wire:model.blur="procedures.{{ $i }}.unit_price" placeholder="{{ $standard }}"
+                                            class="input h-9 w-36 text-sm" aria-label="Harga {{ $opt?->name }}">
+                                        <button type="button" x-on:click="editPrice = false" class="text-xs text-muted hover:underline">Selesai</button>
+                                    </div>
+                                    <p x-show="editPrice" x-cloak class="mt-1 text-[11px] text-muted">Minimal harga standar {{ Format::rupiah($standard) }}. Kosongkan untuk kembali ke standar.</p>
+                                    <x-error for="procedures.{{ $i }}.unit_price" />
                                 @endif
                             </div>
                             <div class="flex shrink-0 items-center gap-3">
@@ -324,7 +341,7 @@
 
                 @if ($billing)
                     @if ($addingProcedure)
-                        <div class="mt-4 space-y-2 rounded-xl border border-line p-3">
+                        <form wire:submit="addProcedure" wire:key="add-procedure" class="mt-4 space-y-2 rounded-xl border border-line p-3">
                             <select wire:model="newProcedureId" class="input">
                                 <option value="">Pilih tindakan…</option>
                                 @foreach ($this->procedureOptions as $opt)
@@ -337,10 +354,14 @@
                                 <input type="text" wire:model="newTooth" maxlength="10" placeholder="Gigi (opsional)" class="input" @if ($selectedTooth) value="{{ $selectedTooth }}" @endif>
                             </div>
                             <div class="flex gap-2">
-                                <button type="button" wire:click="addProcedure" class="btn-primary flex-1">Tambah</button>
-                                <button type="button" wire:click="$set('addingProcedure', false)" class="btn-ghost">Batal</button>
+                                {{-- mousedown.prevent: fokus input tidak lepas, keyboard ponsel tidak menutup & menggeser tombol sebelum klik. --}}
+                                <button type="submit" x-on:mousedown.prevent wire:loading.attr="disabled" wire:target="addProcedure" class="btn-primary flex-1">
+                                    <span wire:loading.remove wire:target="addProcedure">Tambah</span>
+                                    <span wire:loading wire:target="addProcedure">Menambahkan…</span>
+                                </button>
+                                <button type="button" x-on:mousedown.prevent wire:click="$set('addingProcedure', false)" class="btn-ghost">Batal</button>
                             </div>
-                        </div>
+                        </form>
                     @else
                         <button type="button" wire:click="$set('addingProcedure', true)" class="mt-5 text-sm font-semibold text-brand-600 hover:underline">+ Tambah tindakan</button>
                     @endif
@@ -424,7 +445,11 @@
                 @if ($editable) Periksa catatan sebelum disimpan ke rekam medis. @else Dicetak dengan kop klinik & tanda tangan dokter. @endif
             </p>
             <div class="flex w-full gap-3 sm:w-auto">
-                <a href="{{ route('rekam-medis.cetak', $visit) }}" target="_blank" class="btn-ghost">Cetak</a>
+                @if ($visit->medicalRecord()->exists())
+                    <a href="{{ route('rekam-medis.cetak', $visit) }}" target="_blank" class="btn-ghost">Cetak</a>
+                @else
+                    <button type="button" disabled title="Simpan draf rekam medis dulu agar bisa dicetak." class="btn-ghost cursor-not-allowed opacity-50">Cetak</button>
+                @endif
                 @if ($billing)
                     <button type="button" wire:click="saveDraft" wire:loading.attr="disabled" class="btn-soft min-w-[154px] flex-1 sm:flex-none">Simpan draf</button>
                     <button type="button" wire:click="confirmSend" wire:loading.attr="disabled" class="btn-primary min-w-[300px] flex-1 sm:flex-none">Simpan & kirim ke kasir</button>

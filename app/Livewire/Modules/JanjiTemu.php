@@ -8,10 +8,12 @@ use App\Livewire\Concerns\ModulePage;
 use App\Livewire\Concerns\PicksBranch;
 use App\Models\Appointment;
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Visit;
 use App\Support\BranchContext;
+use App\Support\Settings;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -152,7 +154,8 @@ class JanjiTemu extends Component
 
         $this->date = $appointment->date->toDateString();
         $this->showForm = false;
-        $this->toast('Janji temu tersimpan.');
+        $warning = $this->hoursWarning($appointment->loadMissing('branch')->branch, $appointment->date, $appointment->time);
+        $this->toast('Janji temu tersimpan.'.($warning ? ' Perhatian: '.str_replace(' Janji tetap bisa disimpan.', '', $warning) : ''));
     }
 
     /** Pasien datang → buat kunjungan & nomor antrean hari ini. */
@@ -235,6 +238,23 @@ class JanjiTemu extends Component
         }
     }
 
+    /** Peringatan jam kerja cabang (null = aman). Janji tetap boleh disimpan. */
+    private function hoursWarning(Branch $branch, Carbon $date, ?string $time): ?string
+    {
+        $day = $date->translatedFormat('l');
+
+        if (! $branch->hoursOn($date)) {
+            return "{$branch->shortName()} tutup di hari {$day}. Janji tetap bisa disimpan.";
+        }
+
+        if (filled($time) && preg_match('/^\d{2}:\d{2}/', $time) && ! $branch->isOpenAt($date, $time)) {
+            return sprintf('Jam %s di luar jam kerja %s (%s: %s). Janji tetap bisa disimpan.',
+                str_replace(':', '.', substr($time, 0, 5)), $branch->shortName(), $day, $branch->hoursLabel($date));
+        }
+
+        return null;
+    }
+
     private function doctorOnDuty(int $branchId, Carbon $date): ?Doctor
     {
         return $this->doctorsOn($branchId, $date)->first();
@@ -311,12 +331,22 @@ class JanjiTemu extends Component
             ]);
         }
 
+        // Jam kerja cabang di tanggal form + peringatan bila jam janji di luar jam kerja (tidak memblokir simpan).
+        $formBranch = $this->showForm && $branchId ? Branch::where('clinic_id', $this->clinicId())->find($branchId) : null;
+        $hoursWarning = $formBranch ? $this->hoursWarning($formBranch, $formDate, $this->form['time'] ?? '') : null;
+
         // Janji pada hari terpilih yang dokternya tidak bertugas di cabang itu (izin/libur/pindah) → perlu dikabari.
         $dutyByBranch = $appointments->pluck('branch_id')->unique()
             ->mapWithKeys(fn ($bid) => [$bid => $this->doctorsOn($bid, $day)->pluck('id')->all()]);
         $doctorAway = $appointments
             ->filter(fn (Appointment $a) => $a->status === Appointment::SCHEDULED && $a->doctor_id
                 && ! in_array($a->doctor_id, $dutyByBranch[$a->branch_id] ?? [], true))
+            ->pluck('id')->all();
+
+        // Janji terjadwal pada hari terpilih yang jatuh di luar jam kerja cabang (hanya penanda).
+        $outsideHours = $appointments
+            ->filter(fn (Appointment $a) => $a->status === Appointment::SCHEDULED
+                && $this->hoursWarning($a->branch, $a->date, $a->time) !== null)
             ->pluck('id')->all();
 
         return $this->page('janji', 'livewire.modules.janji-temu', [
@@ -328,10 +358,14 @@ class JanjiTemu extends Component
             'upcoming' => $this->query()->where('status', Appointment::SCHEDULED)
                 ->whereBetween('date', [today()->addDay()->toDateString(), today()->addDays(7)->toDateString()])->count(),
             'canWrite' => $this->canWrite(),
+            'gcalEnabled' => Settings::bool('gcal_enabled'),
             'doctors' => Doctor::where('clinic_id', $this->clinicId())->where('is_active', true)->orderBy('name')->get(),
             'onDutyIds' => $branchId ? $this->doctorsOn($branchId, $formDate)->pluck('id')->all() : [],
             'dayPlan' => $dayPlan,
+            'formBranch' => $formBranch,
+            'hoursWarning' => $hoursWarning,
             'doctorAway' => $doctorAway,
+            'outsideHours' => $outsideHours,
             'selectedPatient' => ($this->form['patient_id'] ?? null) ? Patient::find($this->form['patient_id']) : null,
             'patientResults' => mb_strlen(trim($this->patientSearch)) >= 2
                 ? Patient::where('clinic_id', $this->clinicId())->search($this->patientSearch)->limit(6)->get()

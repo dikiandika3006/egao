@@ -161,21 +161,30 @@ it('dokter lain hanya bisa membaca (FR-RM-23)', function () {
         ->assertForbidden();
 });
 
-it('owner bisa membaca rekam medis tetapi tidak mengubah', function () {
+it('owner bisa mengisi pemeriksaan atas nama dokter kunjungan', function () {
     $visit = todayVisit('Ahmad Fauzi');
     loginAs('owner', 'owner', 'all');
 
     Livewire::test(Exam::class, ['visit' => $visit])
-        ->assertSee('Mode baca saja')
+        ->assertDontSee('Mode baca saja')
         ->call('addDiagnosis', 'K05.1')
-        ->assertForbidden();
+        ->assertHasNoErrors();
 });
 
-it('admin tidak bisa membuka rekam medis', function () {
+it('admin bisa mengisi pemeriksaan di cabangnya, tidak di cabang lain', function () {
     $visit = todayVisit('Ahmad Fauzi');
     loginAs('admin', 'admin', $this->batu->id);
 
-    $this->get(route('rekam-medis.periksa', $visit))->assertForbidden();
+    $this->get(route('rekam-medis.periksa', $visit))->assertOk();
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->assertDontSee('Mode baca saja')
+        ->call('addDiagnosis', 'K05.1')
+        ->assertHasNoErrors();
+
+    loginAs('admin.malang', 'admin', $this->malang->id);
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->call('addDiagnosis', 'K05.1')
+        ->assertForbidden();
 });
 
 it('koreksi setelah final membuat versi baru dan tagihan tidak berubah (FR-RM-22)', function () {

@@ -106,5 +106,10 @@
             @endforeach
         </div>
     </section>
+
+    {{-- Backup & restore database: khusus Owner, dibuka dengan PIN (App\Livewire\BackupPanel) --}}
+    @if (app(\App\Support\BranchContext::class)->is(\App\Enums\Role::Owner))
+        <livewire:backup-panel />
+    @endif
     @endif
 </div>

@@ -19,7 +19,36 @@ class Settings
         'receipt_show_logo' => '1',
         'payment_methods' => 'tunai,transfer,debit,kredit,qris',
         'admin_max_discount_percent' => '20',
+        // Komponen gaji per peran (Pengaturan → Gaji & bagi hasil). Nominal 0 = tidak dipakai.
+        'doctor_hourly_rate' => '0',
+        'assistant_hourly_rate' => '0',
+        'assistant_share_percent' => '2',
+        'assistant_overtime_rate' => '0',
+        'admin_overtime_rate' => '0',
+        'annual_revenue_target' => '0',
+        // SATUSEHAT (Pengaturan → SATUSEHAT). Kredensial per cabang ada di tabel branches.
+        'satusehat_enabled' => '0',
+        'satusehat_env' => 'sandbox',
+        // Google Calendar (Pengaturan → Google Calendar). Email dokter ada di tabel doctors.
+        'gcal_enabled' => '0',
+        'gcal_default_time' => '11:00',
+        'gcal_extra_emails' => '',
     ];
+
+    /** Key setting gaji yang berupa nominal rupiah. */
+    public const PAYROLL_AMOUNT_KEYS = [
+        'doctor_hourly_rate', 'assistant_hourly_rate', 'assistant_overtime_rate', 'admin_overtime_rate', 'annual_revenue_target',
+    ];
+
+    public static function int(string $key): int
+    {
+        return max(0, (int) static::get($key));
+    }
+
+    public static function float(string $key): float
+    {
+        return max(0.0, (float) static::get($key));
+    }
 
     public static function get(string $key, ?string $default = null): ?string
     {

@@ -15,7 +15,8 @@ class About
             'title' => 'Pasien & cabang',
             'rules' => [
                 'Satu data pasien berlaku untuk semua cabang. Pasien tidak perlu mendaftar ulang saat pindah dari Batu ke Malang atau sebaliknya.',
-                'Nomor RM dibuat otomatis berurutan. NIK tidak boleh dobel; bila sudah terdaftar, cari pasien tersebut.',
+                'No. RM = huruf awal nama + nomor urut per huruf (mis. B-043), dibuat otomatis atau diisi manual; tidak boleh dobel. NIK tidak boleh dobel; bila sudah terdaftar, cari pasien tersebut.',
+                'Tanggal lahir, tempat lahir, dan telepon pasien boleh kosong (data lama); umur tampil "umur –".',
                 'Telepon dan NIK selalu disamarkan. Membuka data lengkap tercatat di jejak audit.',
                 'Pengguna hanya melihat data cabang yang menjadi aksesnya. Pilihan "Semua cabang" hanya untuk Owner.',
             ],
@@ -25,13 +26,13 @@ class About
             'rules' => [
                 'Nomor antrean berurutan per dokter, per cabang, per hari.',
                 'Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',
-                'Alur status: Menunggu → Dipanggil → Diperiksa → Bayar → Selesai. Menunggu/Dipanggil bisa ditandai Tidak hadir.',
+                'Antrean: Menunggu → Selesai tindakan (otomatis setelah dokter menyimpan pemeriksaan; keterangan Belum bayar/Lunas) atau Tidak hadir. Tanpa langkah Panggil.',
             ],
         ],
         [
             'title' => 'Rekam medis',
             'rules' => [
-                'Dokter hanya membuka pasien miliknya sendiri; Owner bisa membuka semua pasien di cabang aksesnya.',
+                'Pemeriksaan diisi dokter kunjungan, atau Admin/Owner atas nama dokter tersebut di cabang aksesnya (penginput tercatat). Dokter lain hanya membaca.',
                 'Tindakan yang dicatat dokter otomatis menjadi rincian tagihan di kasir, dengan harga sesuai tarif cabang saat itu.',
                 'Pasien beralergi wajib dikonfirmasi alerginya sebelum dikirim ke kasir.',
                 'Rekam medis tidak dihapus. Koreksi menjadi versi baru, versi lama tetap tersimpan.',
@@ -58,8 +59,9 @@ class About
             'title' => 'Keuangan',
             'rules' => [
                 'Pemasukan dihitung dari pembayaran yang diterima; pengeluaran dari catatan pengeluaran per cabang.',
-                'Bagi hasil dihitung dari tindakan kotor (sebelum diskon) pada tagihan lunas. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global.',
-                'Bagi hasil dibebankan ke cabang tempat tindakan; gaji pokok ke cabang utama dokter.',
+                'Fee dokter dihitung dari tindakan (sebelum diskon) pada tagihan lunas, setelah dikurangi biaya modal tindakan (mis. alat behel, x-ray). Biaya order lab dokter di bulan itu ikut dipotong dari fee. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global.',
+                'Dokter: gaji pokok + uang duduk per jam + fee. Asisten: gaji pokok + uang duduk per jam + fee % dari tindakan lunas yang didampingi (dipilih di Kasir) + lembur per jam. Admin & staf lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang tiap bulan.',
+                'Fee dibebankan ke cabang tempat tindakan; komponen lain ke cabang utama.',
                 'Mencatat gaji ke pengeluaran bisa diulang; catatan bulan yang sama diganti, tidak dobel.',
                 'Pengeluaran kategori "Gaji dan bagi hasil" hanya diisi otomatis dari menu Gaji.',
             ],
@@ -72,9 +74,57 @@ class About
                 'Perubahan penting (data pasien, tagihan, jadwal, pengaturan) tercatat di jejak audit.',
             ],
         ],
+        [
+            'title' => 'SATUSEHAT',
+            'rules' => [
+                'Bila diaktifkan Owner, setiap kunjungan yang dikirim dokter ke kasir otomatis dilaporkan ke SATUSEHAT (kunjungan + diagnosis ICD-10) dalam ±5 menit.',
+                'Pasien dan dokter dicocokkan lewat NIK. Kunjungan tanpa NIK atau tanpa diagnosis ICD-10 ditandai Gagal beserta alasannya, lalu bisa dikirim ulang setelah dilengkapi.',
+                'Kredensial diisi per cabang. Client Secret disimpan terenkripsi dan tidak pernah ditampilkan lagi.',
+                'Gagal kirim tidak mengganggu kasir; dicoba otomatis hingga 5 kali, selanjutnya lewat tombol Kirim ulang.',
+                'Koreksi rekam medis setelah terkirim belum ikut dikirim ulang ke SATUSEHAT.',
+            ],
+        ],
+        [
+            'title' => 'Google Calendar',
+            'rules' => [
+                'Aplikasi membuat kalender "Egao – nama dokter" per dokter dan "Egao – Semua janji temu" untuk Owner, lalu mengirim undangan ke email masing-masing (hak lihat). Cukup diterima sekali.',
+                'Bila diaktifkan Owner, setiap janji temu baru/berubah masuk ke kalender dokter yang dituju (atau dokter bertugas bila dokter kosong) dan kalender Owner dalam ±1 menit.',
+                'Email diganti → undangan baru dikirim dan akses email lama dicabut. Dokter nonaktif → akses dicabut, kalender tidak dihapus.',
+                'Janji tanpa jam dipasang pada jam buka cabang hari itu + 1 jam, selama 1 jam. Isi acara tanpa nomor HP/NIK.',
+                'Janji Batal / Tidak datang dihapus dari kalender. Ubah janji dari aplikasi, bukan dari Google Calendar.',
+                'Gagal kirim tidak mengganggu penyimpanan janji; dicoba otomatis hingga 5 kali, selanjutnya lewat tombol Kirim ulang.',
+                'Perubahan jadwal dokter tidak otomatis memindahkan acara; tekan "Sinkron ulang janji mendatang".',
+            ],
+        ],
+        [
+            'title' => 'Harga tindakan & jam kerja',
+            'rules' => [
+                'Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan, dan tidak boleh di bawah harga standar cabang. Potongan harga hanya lewat diskon Kasir.',
+                'Bagi hasil dokter dihitung dari harga tindakan yang tercatat di tagihan (termasuk bila dinaikkan). Kenaikan harga tercatat di jejak audit.',
+                'Jam kerja diatur per cabang per hari (bisa dua sesi dengan istirahat). Janji di luar jam kerja hanya diberi peringatan, tidak ditolak.',
+            ],
+        ],
     ];
 
     public const CHANGELOG = [
+        [
+            'date' => '20 November 2026',
+            'changes' => [
+                'Integrasi Google Calendar: aplikasi membuat kalender Egao per dokter + kalender Owner dan mengirim undangan otomatis; janji temu masuk ke sana, ikut berubah/terhapus saat janji diubah/dibatalkan (Pengaturan › Google Calendar).',
+                'Data dokter: kolom Email Google Calendar.',
+                'Rekam medis: Dokter & Owner bisa menaikkan harga tindakan (minimal harga standar); bagi hasil ikut harga baru.',
+                'Jam kerja per cabang (Pengaturan › Klinik & cabang) dengan peringatan di Janji Temu bila janji di luar jam kerja.',
+                'Data pasien: No. RM berformat huruf awal nama + nomor (A-021), kolom tempat lahir, tanggal lahir & telepon boleh kosong.',
+                'Impor 1.347 pasien dari Assist.id (perintah egao:import-pasien, aman dijalankan ulang).',
+            ],
+        ],
+        [
+            'date' => '16 November 2026',
+            'changes' => [
+                'Integrasi SATUSEHAT tahap 1: Pengaturan › SATUSEHAT (kredensial per cabang, Sandbox/Production, tes koneksi), pengiriman otomatis kunjungan + diagnosis ICD-10, daftar status & kirim ulang.',
+                'Data dokter: kolom NIK (untuk SATUSEHAT).',
+            ],
+        ],
         [
             'date' => '12 November 2026',
             'changes' => [
@@ -82,6 +132,9 @@ class About
                 'Pengaturan Aplikasi untuk Owner: identitas & logo, kwitansi, metode bayar, batas diskon Admin, batas idle sesi, pemeliharaan database.',
                 'Halaman Tentang aplikasi.',
                 'Masuk dengan username; modul Rekam medis dan Data dokter.',
+                'Antrean disederhanakan menjadi 3 tab: Menunggu, Selesai tindakan, Tidak hadir (tanpa langkah Panggil); Admin & Owner bisa mengisi pemeriksaan.',
+                'Gaji per peran (Dokter, Asisten, Admin): uang duduk per jam, fee asisten dari tindakan yang didampingi, lembur per jam, biaya modal tindakan & potongan lab sebelum fee dokter, THR & bonus akhir tahun, info target omzet tahunan.',
+                'Catatan pasien rujukan dokter gigi luar ("Dirujuk oleh") beserta filternya di Data pasien.',
             ],
         ],
     ];

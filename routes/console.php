@@ -14,3 +14,14 @@ Artisan::command('inspire', function () {
 Schedule::command('egao:backup')
     ->dailyAt(config('backup.daily_at'))
     ->withoutOverlapping();
+
+// SATUSEHAT: kirim kunjungan yang tertunda tiap 5 menit (tidak melakukan apa pun bila integrasi nonaktif).
+Schedule::command('egao:satusehat-kirim')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
+// Google Calendar: kirim janji temu baru/berubah ke kalender dokter & Owner tiap menit (diam bila nonaktif).
+Schedule::command('egao:gcal-sync')
+    ->everyMinute()
+    // Kunci kedaluwarsa 10 menit: bila satu putaran mati di tengah jalan, sinkron tidak macet seharian.
+    ->withoutOverlapping(10);

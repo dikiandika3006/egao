@@ -14,11 +14,11 @@
     <section class="card mt-6 overflow-hidden">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-5 pt-4">
             <div class="-mb-px flex gap-6 overflow-x-auto text-sm">
-                @foreach (['aktif' => 'Aktif', 'menunggu' => 'Menunggu', 'diperiksa' => 'Diperiksa', 'bayar' => 'Bayar', 'selesai' => 'Selesai', 'batal' => 'Tidak hadir'] as $key => $label)
+                @foreach (['menunggu' => 'Menunggu', 'selesai' => 'Selesai tindakan', 'batal' => 'Tidak hadir'] as $key => $label)
                     <button type="button" wire:click="$set('filter', '{{ $key }}')" @class([
                         'shrink-0 border-b-2 pb-3 transition',
-                        'border-leaf-500 font-semibold text-brand-600' => $filter === $key,
-                        'border-transparent text-muted hover:text-brand-700' => $filter !== $key,
+                        'border-leaf-500 font-semibold text-brand-600' => $tab === $key,
+                        'border-transparent text-muted hover:text-brand-700' => $tab !== $key,
                     ])>{{ $label }} ({{ $counts[$key] }})</button>
                 @endforeach
             </div>
@@ -48,19 +48,19 @@
                         </p>
                         @if ($v->complaint)<p class="mt-1 text-[12px] italic text-muted">“{{ $v->complaint }}”</p>@endif
                     </div>
-                    <span class="badge {{ $v->status->badgeClass() }}">{{ $v->status->label() }}</span>
-                    <div class="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+                    <div class="text-right">
+                        <span class="badge {{ $v->status->queueBadgeClass() }}">{{ $v->status->queueLabel() }}</span>
+                        @if ($hint = $v->status->queueHint())<p class="mt-1 text-[11px] text-muted">{{ $hint }}</p>@endif
+                    </div>
+                    {{-- key per status: tombol dibuat ulang saat status berubah agar wire:confirm lama tidak menempel --}}
+                    <div wire:key="aksi-{{ $v->id }}-{{ $v->status->value }}" class="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
                         @switch($v->status)
                             @case(VisitStatus::Menunggu)
-                                <button type="button" wire:click="callVisit({{ $v->id }})" class="btn-soft min-h-9 px-4">Panggil</button>
-                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
-                                @break
                             @case(VisitStatus::Dipanggil)
                                 @if ($canExamine)
-                                    <button type="button" wire:click="examine({{ $v->id }})" class="btn-primary min-h-9 px-4">Mulai periksa</button>
+                                    <button type="button" wire:click="examine({{ $v->id }})" class="btn-primary min-h-9 px-4">Periksa</button>
                                 @endif
-                                <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Kembalikan</button>
-                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
+                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
                                 @break
                             @case(VisitStatus::Diperiksa)
                                 @if ($canExamine)
@@ -96,7 +96,7 @@
                         <div class="flex items-center justify-between rounded-lg bg-leaf-50 px-4 py-3">
                             <div>
                                 <p class="font-semibold">{{ $chosen->name }}</p>
-                                <p class="text-xs text-muted">{{ $chosen->rmCode() }} · {{ $chosen->age() }} th @if ($chosen->hasAllergy())<span class="text-rose-ink">• Alergi {{ $chosen->allergies }}</span>@endif</p>
+                                <p class="text-xs text-muted">{{ $chosen->rmCode() }} · {{ $chosen->ageLabel(true) }} @if ($chosen->hasAllergy())<span class="text-rose-ink">• Alergi {{ $chosen->allergies }}</span>@endif</p>
                             </div>
                             <button type="button" wire:click="$set('visit.patient_id', null)" class="text-xs text-brand-600 hover:underline">Ganti</button>
                         </div>
@@ -106,7 +106,7 @@
                             <ul class="mt-2 divide-y divide-line rounded-lg border border-line">
                                 @foreach ($candidates as $c)
                                     <li><button type="button" wire:click="pickPatient({{ $c->id }})" class="w-full px-4 py-2.5 text-left text-sm hover:bg-mist">
-                                        <b>{{ $c->name }}</b> <span class="text-xs text-muted">{{ $c->rmCode() }} · {{ $c->age() }} th · {{ $c->maskedPhone() }}</span>
+                                        <b>{{ $c->name }}</b> <span class="text-xs text-muted">{{ $c->rmCode() }} · {{ $c->ageLabel(true) }} · {{ $c->maskedPhone() }}</span>
                                     </button></li>
                                 @endforeach
                             </ul>

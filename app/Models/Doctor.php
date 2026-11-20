@@ -11,9 +11,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Doctor extends Model
 {
     protected $fillable = [
-        'clinic_id', 'user_id', 'primary_branch_id', 'name', 'str_number', 'sip_number', 'joined_at',
+        'clinic_id', 'user_id', 'primary_branch_id', 'name', 'calendar_email', 'str_number', 'sip_number', 'nik', 'ihs_practitioner_id', 'joined_at',
         'base_salary', 'share_percent', 'is_active',
     ];
+
+    protected $hidden = ['nik'];
+
+    protected static function booted(): void
+    {
+        // NIK berubah → ID Practitioner SATUSEHAT lama tidak berlaku, dicari ulang saat kirim.
+        static::saving(function (self $doctor) {
+            if ($doctor->isDirty('nik') && ! $doctor->isDirty('ihs_practitioner_id')) {
+                $doctor->ihs_practitioner_id = null;
+            }
+        });
+    }
+
+    /** NIK disamarkan, sama seperti pasien. */
+    public function maskedNik(): ?string
+    {
+        return $this->nik ? substr($this->nik, 0, 4).str_repeat('•', 8).substr($this->nik, -4) : null;
+    }
 
     protected function casts(): array
     {

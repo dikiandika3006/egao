@@ -36,8 +36,8 @@
 
 <table style="margin-top:10px">
     <tr>
-        <td style="width:50%"><strong>{{ $patient->name }}</strong><br>{{ $patient->rmCode() }} • {{ $patient->genderLabel() }} • {{ $patient->age() }} tahun</td>
-        <td>Tanggal lahir: {{ $patient->birth_date->translatedFormat('j F Y') }}<br>NIK: {{ $patient->maskedNik() ?? '—' }}</td>
+        <td style="width:50%"><strong>{{ $patient->name }}</strong><br>{{ $patient->rmCode() }} • {{ $patient->genderLabel() }} • {{ $patient->ageLabel() }}</td>
+        <td>Tempat, tanggal lahir: {{ $patient->birthLabel('j F Y') }}<br>NIK: {{ $patient->maskedNik() ?? '—' }}</td>
     </tr>
 </table>
 <div class="allergy">Alergi: {{ $patient->hasAllergy() ? $patient->allergies : 'tidak ada / tidak dilaporkan' }}{{ $record->allergy_confirmed ? ' (dikonfirmasi)' : '' }}</div>

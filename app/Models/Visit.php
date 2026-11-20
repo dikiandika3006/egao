@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Visit extends Model
 {
     protected $fillable = [
-        'patient_id', 'doctor_id', 'branch_id', 'registered_by', 'visit_date', 'queue_number',
+        'patient_id', 'doctor_id', 'assistant_id', 'branch_id', 'registered_by', 'visit_date', 'queue_number',
         'scheduled_at', 'complaint', 'purpose', 'status',
         'called_at', 'examined_at', 'sent_to_cashier_at', 'completed_at',
     ];
@@ -37,6 +37,12 @@ class Visit extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(Doctor::class);
+    }
+
+    /** Asisten pendamping (dasar fee asisten). */
+    public function assistant(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'assistant_id');
     }
 
     public function branch(): BelongsTo

@@ -59,7 +59,7 @@ class Dashboard extends Component
 
                 return $c->filter(fn (Visit $v) => str_contains(mb_strtolower($v->patient->name), $term)
                     || str_contains($v->patient->rmCode(), strtoupper($term))
-                    || str_contains((string) $v->patient->medical_record_number, ltrim($term, '0')));
+                    || (string) $v->patient->medical_record_number === \App\Models\Patient::normalizeRm($term));
             });
 
         $paymentsToday = $this->payments($branchId)->whereDate('payments.paid_at', $today);

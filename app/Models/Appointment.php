@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Janji temu / jadwal kontrol pasien (permintaan klien: "jadwal harian pasien"). */
 class Appointment extends Model
@@ -28,9 +29,45 @@ class Appointment extends Model
         'status', 'source', 'source_visit_id', 'visit_id', 'created_by',
     ];
 
+    /** Kolom yang memengaruhi isi event Google Calendar. */
+    private const CALENDAR_FIELDS = ['patient_id', 'branch_id', 'doctor_id', 'date', 'time', 'purpose', 'status'];
+
     protected function casts(): array
     {
-        return ['date' => 'date'];
+        return ['date' => 'date', 'calendar_dirty' => 'boolean', 'calendar_synced_at' => 'datetime'];
+    }
+
+    /** Setiap janji baru / berubah ditandai perlu sinkron ke Google Calendar (dikirim oleh egao:gcal-sync). */
+    protected static function booted(): void
+    {
+        static::creating(function (Appointment $a) {
+            $a->calendar_dirty = true;
+            $a->calendar_attempts = 0;
+        });
+
+        // Lewat query agar tetap tersimpan walau atribut di instance ini sudah usang (sinkron mengubahnya langsung di DB).
+        static::updated(function (Appointment $a) {
+            if ($a->wasChanged(self::CALENDAR_FIELDS)) {
+                static::whereKey($a->id)->update(['calendar_dirty' => true, 'calendar_attempts' => 0]);
+                $a->forceFill(['calendar_dirty' => true, 'calendar_attempts' => 0])->syncOriginalAttributes(['calendar_dirty', 'calendar_attempts']);
+            }
+        });
+    }
+
+    public function calendarEvents(): HasMany
+    {
+        return $this->hasMany(AppointmentCalendarEvent::class);
+    }
+
+    /** synced | pending | failed | null (belum pernah & tidak perlu). */
+    public function calendarState(): ?string
+    {
+        return match (true) {
+            $this->calendar_dirty && filled($this->calendar_error) => 'failed',
+            (bool) $this->calendar_dirty => 'pending',
+            $this->calendar_synced_at !== null => 'synced',
+            default => null,
+        };
     }
 
     public function patient(): BelongsTo

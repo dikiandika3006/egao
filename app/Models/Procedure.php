@@ -7,13 +7,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Procedure extends Model
 {
-    protected $fillable = ['clinic_id', 'code', 'name', 'category', 'share_percent', 'is_active'];
+    protected $fillable = ['clinic_id', 'code', 'name', 'category', 'share_percent', 'cost_amount', 'is_active'];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
             'share_percent' => 'decimal:2',
+            'cost_amount' => 'integer',
         ];
     }
 

@@ -23,6 +23,8 @@ Tidak ada API/aplikasi mobile terpisah; tampilan ponsel = layout responsif yang 
 | Setting aplikasi (key-value) | `app/Support/Settings.php`, tabel `settings` |
 | Perhitungan laporan & gaji | `app/Support/Report.php`, `app/Support/Payroll.php` |
 | Jejak audit | `AuditLog::record()` untuk setiap aksi tulis penting |
+| Backup & restore | `app/Services/DatabaseBackupService.php` (PDO, tanpa mysqldump), panel `app/Livewire/BackupPanel.php` (Owner + PIN `BACKUP_PIN`), perintah `egao:backup` (terjadwal harian), `config/backup.php` |
+| Instalasi server asli | `ProductionSeeder` (tanpa data contoh) + `php artisan egao:owner`; lihat README |
 
 Bahasa UI, pesan validasi, komentar, dan nama test: **Bahasa Indonesia**. Login memakai **username** (bukan email).
 

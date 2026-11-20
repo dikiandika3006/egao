@@ -28,6 +28,10 @@ class Pasien extends Component
     #[Url(as: 'id', except: null)]
     public ?int $selected = null;
 
+    /** Filter daftar: '' semua, 'rujukan' hanya pasien rujukan drg luar. */
+    #[Url(as: 'filter', except: '')]
+    public string $filter = '';
+
     public bool $showForm = false;
 
     public ?int $editingId = null;
@@ -39,13 +43,19 @@ class Pasien extends Component
 
     public function mount(): void
     {
-        if (request()->boolean('baru')) {
+        if (request()->boolean('baru') && app(BranchContext::class)->is(Role::Admin, Role::Owner)) {
             $this->create();
         }
     }
 
     public function updatedSearch(): void
     {
+        $this->resetPage();
+    }
+
+    public function updatedFilter(): void
+    {
+        $this->filter = $this->filter === 'rujukan' ? 'rujukan' : '';
         $this->resetPage();
     }
 
@@ -60,38 +70,56 @@ class Pasien extends Component
         $this->selected = null;
     }
 
+    /** Mendaftarkan & mengubah data pasien hanya Admin dan Owner. */
+    private function authorizeWrite(): void
+    {
+        abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Owner), 403);
+    }
+
     public function create(): void
     {
+        $this->authorizeWrite();
         $this->resetValidation();
         $this->editingId = null;
         $this->patient = [
-            'name' => '', 'gender' => 'P', 'birth_date' => '', 'phone' => '', 'nik' => '', 'address' => '',
-            'occupation' => '', 'emergency_contact' => '', 'allergies' => 'Tidak ada',
+            'medical_record_number' => '', 'name' => '', 'gender' => 'P', 'birth_place' => '', 'birth_date' => '',
+            'phone' => '', 'nik' => '', 'address' => '',
+            'occupation' => '', 'emergency_contact' => '', 'allergies' => 'Tidak ada', 'referred_by' => '',
         ];
         $this->showForm = true;
     }
 
     public function edit(int $id): void
     {
+        $this->authorizeWrite();
         $p = $this->query()->findOrFail($id);
         $this->resetValidation();
         $this->editingId = $p->id;
         $this->patient = [
-            'name' => $p->name, 'gender' => $p->gender, 'birth_date' => $p->birth_date->toDateString(),
+            'medical_record_number' => (string) $p->medical_record_number, 'name' => $p->name, 'gender' => $p->gender,
+            'birth_place' => (string) $p->birth_place, 'birth_date' => (string) $p->birth_date?->toDateString(),
             'phone' => (string) $p->phone, 'nik' => (string) $p->nik, 'address' => (string) $p->address,
             'occupation' => (string) $p->occupation, 'emergency_contact' => (string) $p->emergency_contact,
-            'allergies' => (string) $p->allergies,
+            'allergies' => (string) $p->allergies, 'referred_by' => (string) $p->referred_by,
         ];
         $this->showForm = true;
     }
 
     public function save(): void
     {
+        $this->authorizeWrite();
+        $this->patient['medical_record_number'] = Patient::normalizeRm((string) ($this->patient['medical_record_number'] ?? ''));
+
         $data = $this->validate([
+            'patient.medical_record_number' => [
+                'nullable', 'string', 'max:20', 'regex:/^[A-Z0-9][A-Z0-9\-\/.]*$/',
+                Rule::unique('patients', 'medical_record_number')->where('clinic_id', $this->clinicId())->ignore($this->editingId),
+            ],
             'patient.name' => ['required', 'string', 'max:120'],
             'patient.gender' => ['required', Rule::in(['L', 'P'])],
-            'patient.birth_date' => ['required', 'date', 'before_or_equal:today', 'after:1900-01-01'],
-            'patient.phone' => ['required', 'regex:/^[0-9+\-\s]{8,20}$/'],
+            'patient.birth_place' => ['nullable', 'string', 'max:100'],
+            'patient.birth_date' => ['nullable', 'date', 'before_or_equal:today', 'after:1900-01-01'],
+            'patient.phone' => ['nullable', 'regex:/^[0-9+\-\s]{8,20}$/'],
             'patient.nik' => [
                 'nullable', 'digits:16',
                 Rule::unique('patients', 'nik')->where('clinic_id', $this->clinicId())->ignore($this->editingId),
@@ -100,33 +128,41 @@ class Pasien extends Component
             'patient.occupation' => ['nullable', 'string', 'max:100'],
             'patient.emergency_contact' => ['nullable', 'string', 'max:150'],
             'patient.allergies' => ['required', 'string', 'max:255'],
+            'patient.referred_by' => ['nullable', 'string', 'max:255'],
         ], [
             'patient.nik.unique' => 'NIK sudah terdaftar. Cari pasien tersebut, jangan mendaftar ulang.',
             'patient.phone.regex' => 'Nomor telepon tidak valid.',
+            'patient.medical_record_number.unique' => 'No. rekam medis sudah dipakai pasien lain.',
+            'patient.medical_record_number.regex' => 'No. rekam medis hanya boleh huruf, angka, dan tanda "-".',
         ], [
-            'patient.name' => 'nama', 'patient.birth_date' => 'tanggal lahir', 'patient.phone' => 'nomor telepon',
-            'patient.nik' => 'NIK', 'patient.allergies' => 'alergi',
+            'patient.medical_record_number' => 'no. rekam medis', 'patient.birth_place' => 'tempat lahir', 'patient.name' => 'nama', 'patient.birth_date' => 'tanggal lahir', 'patient.phone' => 'nomor telepon',
+            'patient.nik' => 'NIK', 'patient.allergies' => 'alergi', 'patient.referred_by' => 'perujuk',
         ])['patient'];
 
-        $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
-        foreach (['nik', 'address', 'occupation', 'emergency_contact'] as $f) {
+        $data['phone'] = filled($data['phone']) ? preg_replace('/[^0-9+]/', '', $data['phone']) : null;
+        foreach (['nik', 'address', 'occupation', 'emergency_contact', 'referred_by', 'birth_place', 'birth_date'] as $f) {
             $data[$f] = filled($data[$f]) ? trim($data[$f]) : null;
         }
+        $rm = $data['medical_record_number'] ?: null;
+        unset($data['medical_record_number']);
 
         if ($this->editingId) {
             $p = $this->query()->findOrFail($this->editingId);
             $p->fill($data);
+            if ($rm) {
+                $p->medical_record_number = $rm; // kosong saat ubah data = nomor lama dipertahankan
+            }
             $changes = array_keys($p->getDirty());
             $p->save();
             AuditLog::record('patient.updated', $p, ['fields' => $changes]);
         } else {
-            $p = DB::transaction(function () use ($data) {
+            $p = DB::transaction(function () use ($data, $rm) {
                 // Kunci baris klinik agar nomor RM tidak dobel saat dua admin mendaftar bersamaan.
                 DB::table('clinics')->where('id', $this->clinicId())->lockForUpdate()->first();
 
                 return Patient::create($data + [
                     'clinic_id' => $this->clinicId(),
-                    'medical_record_number' => Patient::nextMedicalRecordNumber($this->clinicId()),
+                    'medical_record_number' => $rm ?? Patient::nextMedicalRecordNumber($this->clinicId(), $data['name']),
                 ]);
             });
             AuditLog::record('patient.created', $p);
@@ -163,6 +199,7 @@ class Pasien extends Component
     {
         $patients = $this->query()
             ->search($this->search)
+            ->when($this->filter === 'rujukan', fn ($q) => $q->whereNotNull('referred_by'))
             ->with('latestVisit.branch')
             ->orderByDesc('updated_at')
             ->paginate(15);

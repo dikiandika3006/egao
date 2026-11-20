@@ -38,16 +38,47 @@ vendor/bin/pest   # memakai database egao_testing (bukan egao)
 ## Backup database
 
 ```bash
-php artisan egao:backup            # manual; hasil: storage/app/backups/egao-YYYY-MM-DD_HHMMSS.sql.gz
+php artisan egao:backup            # manual; hasil: storage/app/private/backups/backup_YYYYMMDD_HHMMSS.sql.gz
 ```
 
-- Terjadwal harian jam `BACKUP_DAILY_AT` (default 02:00), backup lebih lama dari `BACKUP_KEEP_DAYS` (default 30) dihapus.
+- **Panel Backup & Restore** di aplikasi: *Bantuan & aturan › Tentang & aturan* (khusus Owner, dibuka dengan PIN
+  `BACKUP_PIN` di `.env`; kosong = panel nonaktif). Bisa buat & unduh backup, lihat riwayat, hapus, dan restore dari
+  riwayat atau upload `.sql`/`.sql.gz` (konfirmasi ketik `RESTORE`; otomatis membuat backup `_pre-restore` dulu,
+  aplikasi masuk mode perawatan selama proses, lalu semua pengguna login ulang). PIN salah dibatasi 5×/10 menit.
+- Mesin backup PHP murni (PDO) — tidak butuh `mysqldump`, aman di shared hosting. Upload restore lewat panel maks ±12 MB
+  (batas upload Livewire); file lebih besar: taruh di folder backup lalu pilih dari riwayat.
+- Terjadwal harian jam `BACKUP_DAILY_AT` (default 02:00), backup lebih lama dari `BACKUP_KEEP_DAYS` (default 30) dihapus
+  (kecuali backup `_pre-restore`).
 - Set `BACKUP_PATH` ke disk lain / folder yang disinkron ke cloud agar backup selamat bila disk server rusak.
 - Jadwal hanya jalan bila scheduler aktif:
   - **Linux:** cron `* * * * * cd /path/egao && php artisan schedule:run >> /dev/null 2>&1`
-  - **Windows:** `schtasks /Create /SC MINUTE /MO 1 /TN "Egao Scheduler" /TR "C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe C:\laragon\www\egao\artisan schedule:run"`
-- **Memulihkan** (menimpa isi DB, lakukan dengan hati-hati):
-  `gzip -dc egao-....sql.gz | mysql -u root egao`
+  - **Windows** (tanpa jendela konsol, lewat `scripts/egao-scheduler.vbs`):
+    `schtasks /Create /SC MINUTE /MO 1 /TN "Egao Scheduler" /TR "wscript.exe C:\laragon\www\egao\scripts\egao-scheduler.vbs C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe"`
+- **Memulihkan** tanpa aplikasi (menimpa isi DB, lakukan dengan hati-hati):
+  `gzip -dc backup_....sql.gz | mysql -u root egao`
+
+## SATUSEHAT (Kemenkes)
+
+- Atur di aplikasi: *Pengaturan › SATUSEHAT* (khusus Owner) — saklar aktif, Sandbox/Production, kredensial per cabang
+  (Organization ID, Client ID, Client Secret dari satusehat.kemkes.go.id/platform), tes koneksi.
+- Kunjungan yang dikirim ke kasir masuk tabel `satusehat_submissions`, lalu dikirim (Encounter + Condition ICD-10, satu
+  Bundle) oleh `php artisan egao:satusehat-kirim` tiap 5 menit — **butuh scheduler aktif** (lihat bagian Backup).
+- Pasien & dokter dicocokkan lewat NIK (ID IHS disimpan setelah ditemukan). Location ruang praktik dibuat otomatis per cabang.
+- Client Secret dienkripsi dengan `APP_KEY`; bila `APP_KEY` diganti, isi ulang secret di Pengaturan.
+- URL API bisa diganti lewat `.env` (`SATUSEHAT_SANDBOX_*`, `SATUSEHAT_PRODUCTION_*`); lihat `config/satusehat.php`.
+
+## Google Calendar (janji temu)
+
+- Google Cloud Console → buat project → aktifkan **Google Calendar API** → *IAM & Admin › Service Accounts* → buat
+  service account → *Keys › Add key › JSON*.
+- Simpan file JSON di server: `storage/app/google/calendar.json` (atau path lain lewat `GOOGLE_CALENDAR_CREDENTIALS`).
+  Folder ini di-ignore git — **jangan di-commit**.
+- Service account membuat kalender sendiri (`google_calendars`: "Egao – nama dokter" per dokter + "Egao – Semua janji temu"
+  untuk Owner) dan membagikannya lewat ACL `reader` + email undangan (`google_calendar_shares`). Penerima tidak perlu
+  mengatur apa pun selain membuka undangan. Email dokter diisi di *Data Dokter*, email Owner & saklar aktif di
+  *Pengaturan › Google Calendar*.
+- Janji ditandai `calendar_dirty`, lalu dikirim oleh `php artisan egao:gcal-sync` tiap menit — **butuh scheduler aktif**.
+  Tanpa paket tambahan (JWT service account ditandatangani `openssl`). Konfigurasi: `config/google_calendar.php`.
 
 ## Pemasangan di server asli (production)
 

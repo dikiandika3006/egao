@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -61,7 +62,7 @@ class Pengaturan extends Component
         $tabs = ['tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran'];
 
         if ($context->is(Role::Owner)) {
-            $tabs = ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Bagi hasil'] + $tabs + ['pengguna' => 'Pengguna & peran', 'audit' => 'Jejak audit'];
+            $tabs = ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Gaji & bagi hasil'] + $tabs + ['satusehat' => 'SATUSEHAT', 'google-calendar' => 'Google Calendar', 'pengguna' => 'Pengguna & peran', 'audit' => 'Jejak audit'];
         }
 
         return $tabs;
@@ -113,6 +114,12 @@ class Pengaturan extends Component
                 ->mapWithKeys(fn (Doctor $d) => [$d->id => ['base_salary' => (int) $d->base_salary, 'share_percent' => static::pct($d->share_percent)]])->all(),
             'procedures' => Procedure::where('clinic_id', $this->clinicId())->orderBy('name')->get()
                 ->mapWithKeys(fn (Procedure $p) => [$p->id => static::pct($p->share_percent)])->all(),
+            // Biaya modal per tindakan (alat behel, x-ray) dipotong sebelum fee dokter.
+            'costs' => Procedure::where('clinic_id', $this->clinicId())->get()
+                ->mapWithKeys(fn (Procedure $p) => [$p->id => (int) $p->cost_amount ?: null])->all(),
+            // Komponen gaji per peran: dokter, asisten, admin.
+            'roles' => collect(Settings::PAYROLL_AMOUNT_KEYS)->mapWithKeys(fn ($k) => [$k => Settings::int($k) ?: null])->all()
+                + ['assistant_share_percent' => static::pct(Settings::float('assistant_share_percent'))],
         ];
     }
 
@@ -127,19 +134,33 @@ class Pengaturan extends Component
         foreach ($this->shares['procedures'] ?? [] as $id => $value) {
             $this->shares['procedures'][$id] = static::normalizePct($value);
         }
+        $this->shares['roles']['assistant_share_percent'] = static::normalizePct($this->shares['roles']['assistant_share_percent'] ?? null);
 
         $this->validate([
             'shares.global' => ['required', 'numeric', 'between:0,100'],
+            'shares.roles.assistant_share_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'shares.roles.*' => ['nullable', 'numeric', 'min:0', 'max:100000000000'],
+            'shares.costs.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
             'shares.doctors.*.base_salary' => ['nullable', 'integer', 'min:0'],
             'shares.doctors.*.share_percent' => ['nullable', 'numeric', 'between:0,100'],
             'shares.procedures.*' => ['nullable', 'numeric', 'between:0,100'],
         ], attributes: [
             'shares.global' => 'tarif global', 'shares.doctors.*.share_percent' => 'bagi hasil dokter',
             'shares.doctors.*.base_salary' => 'gaji pokok', 'shares.procedures.*' => 'bagi hasil tindakan',
+            'shares.roles.assistant_share_percent' => 'fee asisten', 'shares.roles.*' => 'nominal gaji', 'shares.costs.*' => 'biaya modal',
         ]);
 
         DB::transaction(function () {
             Settings::set('share_percent_global', static::pct($this->shares['global']));
+            foreach (Settings::PAYROLL_AMOUNT_KEYS as $key) {
+                Settings::set($key, (string) (int) ($this->shares['roles'][$key] ?? 0));
+            }
+            Settings::set('assistant_share_percent', static::pct((float) ($this->shares['roles']['assistant_share_percent'] ?: 0)));
+
+            $costs = Procedure::where('clinic_id', $this->clinicId())->get()->keyBy('id');
+            foreach ($this->shares['costs'] ?? [] as $id => $value) {
+                $costs->get((int) $id)?->update(['cost_amount' => (int) ($value ?? 0)]);
+            }
 
             $doctors = Doctor::where('clinic_id', $this->clinicId())->get()->keyBy('id');
             foreach ($this->shares['doctors'] ?? [] as $id => $row) {
@@ -157,7 +178,7 @@ class Pengaturan extends Component
 
         AuditLog::record('settings.shares', null, $this->shares);
         $this->loadShares();
-        $this->toast('Bagi hasil disimpan.');
+        $this->toast('Pengaturan gaji & bagi hasil disimpan.');
     }
 
     public function addSpecial(): void
@@ -335,7 +356,13 @@ class Pengaturan extends Component
         $b = Branch::where('clinic_id', $this->clinicId())->findOrFail($id);
         $this->editingId = $b->id;
         $this->data = $b->only(['name', 'address', 'phone', 'receipt_start_number', 'receipt_footer']) + [
-            'opens_at' => substr($b->opens_at, 0, 5), 'closes_at' => substr($b->closes_at, 0, 5), 'is_active' => $b->is_active,
+            'is_active' => $b->is_active,
+            // Jam kerja per hari: tutup + sesi 1 (wajib bila buka) + sesi 2 (opsional, mis. setelah istirahat).
+            'hours' => collect($b->weeklyHours())->map(fn (array $s) => [
+                'closed' => $s === [],
+                's1_start' => $s[0][0] ?? '', 's1_end' => $s[0][1] ?? '',
+                's2_start' => $s[1][0] ?? '', 's2_end' => $s[1][1] ?? '',
+            ])->all(),
         ];
         $this->form = 'branch';
     }
@@ -347,18 +374,76 @@ class Pengaturan extends Component
             'data.name' => ['required', 'string', 'max:120'],
             'data.address' => ['nullable', 'string', 'max:500'],
             'data.phone' => ['nullable', 'string', 'max:30'],
-            'data.opens_at' => ['required', 'date_format:H:i'],
-            'data.closes_at' => ['required', 'date_format:H:i', 'after:data.opens_at'],
             'data.receipt_start_number' => ['required', 'integer', 'min:1'],
             'data.receipt_footer' => ['nullable', 'string', 'max:255'],
             'data.is_active' => ['boolean'],
-        ], attributes: ['data.closes_at' => 'jam tutup', 'data.receipt_start_number' => 'nomor awal kwitansi'])['data'];
+            'data.hours' => ['required', 'array'],
+            'data.hours.*.closed' => ['boolean'],
+            'data.hours.*.s1_start' => ['nullable', 'date_format:H:i'],
+            'data.hours.*.s1_end' => ['nullable', 'date_format:H:i'],
+            'data.hours.*.s2_start' => ['nullable', 'date_format:H:i'],
+            'data.hours.*.s2_end' => ['nullable', 'date_format:H:i'],
+        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi'])['data'];
+
+        $hours = $this->parseHours($v['hours']);
+        unset($v['hours']);
+
+        // opens_at/closes_at (tampilan lama) = jam buka paling awal & tutup paling akhir dalam seminggu.
+        $sessions = collect($hours)->flatten(1);
+        $v['opens_at'] = $sessions->min(0) ?? '10:00';
+        $v['closes_at'] = $sessions->max(1) ?? '17:00';
+        $v['operating_hours'] = $hours;
 
         $b = Branch::where('clinic_id', $this->clinicId())->findOrFail($this->editingId);
         $b->update($v);
         AuditLog::record('settings.branch', $b, $v);
         $this->closeForm();
         $this->toast('Cabang disimpan.');
+    }
+
+    /**
+     * Ubah isian form jam kerja menjadi [hari => [[mulai, selesai], …]] dan validasi urutan sesi.
+     *
+     * @throws ValidationException
+     */
+    private function parseHours(array $input): array
+    {
+        $hours = [];
+        $errors = [];
+
+        foreach (range(1, 7) as $day) {
+            $row = $input[$day] ?? $input[(string) $day] ?? [];
+            $name = Branch::DAY_NAMES[$day];
+            $hours[$day] = [];
+
+            if (! empty($row['closed'])) {
+                continue;
+            }
+
+            [$s1, $e1, $s2, $e2] = [$row['s1_start'] ?? '', $row['s1_end'] ?? '', $row['s2_start'] ?? '', $row['s2_end'] ?? ''];
+
+            if ($s1 === '' || $e1 === '' || $e1 <= $s1) {
+                $errors["data.hours.{$day}.s1_end"] = "{$name}: isi jam mulai & selesai sesi 1 (selesai setelah mulai), atau centang Tutup.";
+
+                continue;
+            }
+            $hours[$day][] = [$s1, $e1];
+
+            if ($s2 !== '' || $e2 !== '') {
+                if ($s2 === '' || $e2 === '' || $e2 <= $s2 || $s2 < $e1) {
+                    $errors["data.hours.{$day}.s2_end"] = "{$name}: sesi 2 harus lengkap dan dimulai setelah sesi 1 selesai.";
+
+                    continue;
+                }
+                $hours[$day][] = [$s2, $e2];
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return $hours;
     }
 
     // ---- Tindakan & tarif per cabang (FR-SET-03) -----------------------------------

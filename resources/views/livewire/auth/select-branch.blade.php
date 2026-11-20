@@ -43,7 +43,7 @@
                     ])>
                         <input type="radio" wire:model.live="branch" value="{{ $b->id }}" class="sr-only">
                         {{ $b->name }}
-                        <span class="text-xs font-normal text-muted">{{ \App\Support\Format::jam($b->opens_at) }}–{{ \App\Support\Format::jam($b->closes_at) }}</span>
+                        <span class="text-xs font-normal text-muted">Hari ini {{ $b->hoursLabel(now()) }}</span>
                     </label>
                 @endforeach
             </div>

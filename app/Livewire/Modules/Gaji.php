@@ -10,6 +10,7 @@ use App\Models\Employee;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\PayrollAdjustment;
+use App\Models\PayrollHour;
 use App\Support\BranchContext;
 use App\Support\Payroll;
 use App\Support\Settings;
@@ -39,6 +40,9 @@ class Gaji extends Component
 
     /** Form bonus/potongan untuk baris yang dibuka. */
     public array $adjustment = ['type' => 'bonus', 'amount' => '', 'note' => ''];
+
+    /** Form jam hadir & lembur untuk baris yang dibuka. */
+    public array $hours = ['work_hours' => '', 'overtime_hours' => ''];
 
     /** Form karyawan. */
     public bool $showEmployeeForm = false;
@@ -75,7 +79,48 @@ class Gaji extends Component
     {
         $this->expanded = $this->expanded === $key ? null : $key;
         $this->adjustment = ['type' => 'bonus', 'amount' => '', 'note' => ''];
+        $this->hours = ['work_hours' => '', 'overtime_hours' => ''];
         $this->resetErrorBag();
+
+        if ($this->expanded && str_contains($this->expanded, '-')) {
+            [$payeeType, $payeeId] = explode('-', $this->expanded, 2);
+            $h = $this->hourRow($payeeType, (int) $payeeId)->first(); // dibatasi clinic_id; validasi penuh saat simpan
+            $fmt = fn ($v) => $v === null || (float) $v == 0 ? '' : rtrim(rtrim((string) $v, '0'), '.');
+            $this->hours = ['work_hours' => $fmt($h?->work_hours), 'overtime_hours' => $fmt($h?->overtime_hours)];
+        }
+    }
+
+    // ── Jam hadir & lembur per bulan (UD per jam, lembur per jam) ───
+
+    private function hourRow(string $payeeType, int $payeeId)
+    {
+        return PayrollHour::where('clinic_id', $this->clinicId())
+            ->where('payee_type', $payeeType)
+            ->where('payee_id', $payeeId)
+            ->whereDate('period', $this->period()->toDateString());
+    }
+
+    public function saveHours(): void
+    {
+        [$payeeType, $payeeId] = $this->expandedPayee();
+        $this->hours = array_map(fn ($v) => str_replace(',', '.', trim((string) $v)), $this->hours);
+
+        $data = $this->validate([
+            'hours.work_hours' => ['nullable', 'numeric', 'between:0,744'],
+            'hours.overtime_hours' => ['nullable', 'numeric', 'between:0,744'],
+        ], attributes: ['hours.work_hours' => 'jam hadir', 'hours.overtime_hours' => 'jam lembur'])['hours'];
+
+        $values = ['work_hours' => (float) ($data['work_hours'] ?: 0), 'overtime_hours' => (float) ($data['overtime_hours'] ?: 0)];
+        $row = $this->hourRow($payeeType, $payeeId)->first();
+        $before = $row?->only(['work_hours', 'overtime_hours']);
+
+        $row = $row
+            ? tap($row)->update($values)
+            : PayrollHour::create(['clinic_id' => $this->clinicId(), 'period' => $this->period()->toDateString(),
+                'payee_type' => $payeeType, 'payee_id' => $payeeId] + $values);
+
+        AuditLog::record('payroll.hours.saved', $row, ['payee_type' => $payeeType, 'payee_id' => $payeeId, 'before' => $before, 'after' => $values]);
+        $this->toast('Jam kerja tersimpan.');
     }
 
     // ── Bonus / potongan (FR-GJI-04) ────────────────────────────────
@@ -85,7 +130,7 @@ class Gaji extends Component
         [$payeeType, $payeeId] = $this->expandedPayee();
 
         $data = $this->validate([
-            'adjustment.type' => ['required', Rule::in([PayrollAdjustment::TYPE_BONUS, PayrollAdjustment::TYPE_DEDUCTION])],
+            'adjustment.type' => ['required', Rule::in(array_keys(PayrollAdjustment::TYPES))],
             'adjustment.amount' => ['required', 'integer', 'min:1', 'max:1000000000'],
             'adjustment.note' => ['nullable', 'string', 'max:255'],
         ], attributes: ['adjustment.amount' => 'nominal', 'adjustment.note' => 'keterangan'])['adjustment'];
@@ -103,7 +148,7 @@ class Gaji extends Component
 
         AuditLog::record('payroll.adjustment.created', $adj, $adj->only(['payee_type', 'payee_id', 'type', 'amount']));
         $this->adjustment = ['type' => 'bonus', 'amount' => '', 'note' => ''];
-        $this->toast(($data['type'] === 'bonus' ? 'Bonus' : 'Potongan').' ditambahkan.');
+        $this->toast(PayrollAdjustment::TYPES[$data['type']].' ditambahkan.');
     }
 
     public function removeAdjustment(int $id): void
@@ -228,15 +273,30 @@ class Gaji extends Component
                 }
             };
 
+            // Sisa (gaji pokok, UD, lembur, bonus − potongan, dan selisih negatif per cabang) dibebankan ke cabang utama,
+            // sehingga jumlah yang dicatat selalu sama dengan total gaji.
+            $split = function (array $perBranch, int $primary, int $total): array {
+                $perBranch = array_map(fn ($v) => max(0, (int) $v), $perBranch);
+                unset($perBranch[$primary]);
+                $others = array_sum($perBranch);
+                if ($others > $total) {
+                    $perBranch = [];
+                    $others = 0;
+                }
+                $perBranch[$primary] = $total - $others;
+
+                return $perBranch;
+            };
+
             foreach ($doctors as $row) {
-                $perBranch = collect($row['branches'])->map(fn ($b) => $b['share'])->all();
                 $primary = $row['doctor']->primary_branch_id ?? $fallbackBranch;
-                $perBranch[$primary] = ($perBranch[$primary] ?? 0) + $row['base'] + $row['bonus'] - $row['deduction'];
-                $write($perBranch, $row['doctor']->name);
+                $shares = collect($row['branches'])->map(fn ($b) => $b['share'])->all();
+                $write($split($shares, $primary, $row['total']), $row['doctor']->name);
             }
 
             foreach ($employees as $row) {
-                $write([$row['employee']->primary_branch_id ?? $fallbackBranch => $row['total']], $row['employee']->name.' ('.$row['employee']->position.')');
+                $primary = $row['employee']->primary_branch_id ?? $fallbackBranch;
+                $write($split($row['assistant_branches'], $primary, $row['total']), $row['employee']->name.' ('.$row['employee']->position.')');
             }
         });
 
@@ -266,15 +326,24 @@ class Gaji extends Component
             'totals' => [
                 'gross' => $rows->sum('gross'),
                 'share' => $rows->sum('share'),
-                'base' => $rows->sum('base'),
+                'base' => $rows->sum('base') + $rows->sum('ud'),
                 'bonus' => $rows->sum('bonus') - $rows->sum('deduction'),
                 'total' => $rows->sum('total'),
             ],
             'employeeTotals' => [
-                'base' => $employees->sum('base'),
+                'base' => $employees->sum('base') + $employees->sum('ud'),
+                'extra' => $employees->sum('assistant_share') + $employees->sum('overtime'),
                 'bonus' => $employees->sum('bonus') - $employees->sum('deduction'),
                 'total' => $employees->sum('total'),
             ],
+            'ytd' => Payroll::yearToDate($this->clinicId(), $start),
+            'rates' => [
+                'doctor_hourly' => Settings::int('doctor_hourly_rate'),
+                'assistant_hourly' => Settings::int('assistant_hourly_rate'),
+                'assistant_overtime' => Settings::int('assistant_overtime_rate'),
+                'admin_overtime' => Settings::int('admin_overtime_rate'),
+            ],
+            'adjustmentTypes' => PayrollAdjustment::TYPES,
             'grandTotal' => $rows->sum('total') + $employees->sum('total'),
             'posted' => (int) $posted,
             'global' => Settings::globalShare(),

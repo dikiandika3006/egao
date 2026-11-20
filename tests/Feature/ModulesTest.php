@@ -39,7 +39,7 @@ it('membuka semua halaman modul tanpa error', function (string $route) {
 
 it('mendaftarkan pasien baru dengan nomor RM berikutnya', function () {
     moduleLogin('admin', 'admin', $this->batu->id);
-    $next = Patient::nextMedicalRecordNumber(auth()->user()->clinic_id);
+    $next = Patient::nextMedicalRecordNumber(auth()->user()->clinic_id, 'Lina Marlina');
 
     Livewire::test(Pasien::class)
         ->call('create')

@@ -42,7 +42,7 @@ class Navigation
             ],
             'rekam-medis' => [
                 'group' => 'klinik', 'number' => '04', 'label' => 'Rekam medis', 'route' => 'rekam-medis', 'path' => '/rekam-medis',
-                'roles' => [Role::Dokter, Role::Owner], 'title' => 'Pemeriksaan',
+                'roles' => [Role::Dokter, Role::Admin, Role::Owner], 'title' => 'Pemeriksaan',
                 'subtitle' => 'Odontogram, diagnosis ICD-10, tindakan, dan resep dalam satu layar.',
                 'breadcrumb' => ['Operasional', 'Rekam medis', 'Kunjungan'], 'requirements' => 'FR-RM-01 – 25',
             ],

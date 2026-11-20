@@ -93,6 +93,20 @@ php artisan egao:backup            # manual; hasil: storage/app/private/backups/
 6. `php artisan config:cache && php artisan route:cache && php artisan view:cache`
 7. Aktifkan scheduler (lihat bagian Backup) dan uji `php artisan egao:backup`.
 
+### Hostinger shared hosting (deploy otomatis dari GitHub, tanpa SSH)
+
+- hPanel → **Advanced → Git**: repo `git@github.com:dikiandika3006/egao.git`, branch `main`, folder kosong (= `public_html`
+  yang harus kosong). Kunci SSH dari hPanel dipasang di GitHub → Settings → Deploy keys. Aktifkan **Auto Deployment** dan
+  pasang Webhook URL-nya di GitHub → Settings → Webhooks.
+- Seluruh repo berada di `public_html`; `.htaccess` di root repo mengarahkan semua request ke `public/`
+  (`.env`, `.git`, `vendor`, `storage` tidak bisa dibuka dari browser — cek `/.env` harus 404).
+- File yang tidak ada di git dipasang sekali: `.env`, `vendor/` (`composer install --no-dev`), `storage/app/google/calendar.json`.
+- `public/build` **ikut di-commit** (shared hosting tanpa Node): jalankan `npm run build` sebelum commit.
+- Cron hPanel tiap menit: `/usr/bin/php /home/<user>/domains/<domain>/public_html/artisan schedule:run`.
+  Scheduler menjalankan `egao:after-deploy`: bila commit berubah → backup (bila ada migrasi) → `migrate --force` →
+  bersihkan cache → `config:cache`. `route:cache` sengaja tidak dipakai di server.
+- Paket Composer baru tetap perlu `composer install --no-dev` manual.
+
 ## Status modul
 
 | Modul | Status |

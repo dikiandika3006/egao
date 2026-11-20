@@ -460,6 +460,14 @@ class Faq
             'roles' => 'Owner',
             'tags' => 'restore pulihkan kembalikan data backup hilang rusak',
         ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana aplikasi di server diperbarui?',
+            'a' => 'Otomatis. Setiap perubahan program yang dikirim ke GitHub langsung diambil server Hostinger. Paling lambat 1–2 menit kemudian sistem membuat backup (bila ada perubahan struktur data), memperbarui database, dan menyegarkan tampilan sendiri — tidak perlu login ke server. Bila halaman terasa belum berubah, tekan Ctrl+F5.',
+            'where' => '—',
+            'roles' => 'Owner',
+            'tags' => 'update perbarui deploy server hostinger github versi baru',
+        ],
     ];
 
     /** Cari di pertanyaan, jawaban, lokasi menu, dan kata kunci; semua kata harus cocok. */

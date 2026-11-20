@@ -1,0 +1,12 @@
+# Hanya untuk hosting yang document root-nya = folder project (Hostinger Git deploy ke public_html).
+# Semua request diarahkan ke public/, jadi .env, .git, vendor, storage, dan kode tidak bisa dibuka dari browser.
+Options -Indexes
+
+<IfModule mod_alias.c>
+    RedirectMatch 404 /\.(git|env)
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

@@ -20,6 +20,11 @@ Schedule::command('egao:satusehat-kirim')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Deploy otomatis Hostinger (git pull lewat webhook): commit baru → backup, migrasi, segarkan cache.
+Schedule::command('egao:after-deploy')
+    ->everyMinute()
+    ->withoutOverlapping(10);
+
 // Google Calendar: kirim janji temu baru/berubah ke kalender dokter & Owner tiap menit (diam bila nonaktif).
 Schedule::command('egao:gcal-sync')
     ->everyMinute()

@@ -116,6 +116,7 @@ class About
                 'Jam kerja per cabang (Pengaturan › Klinik & cabang) dengan peringatan di Janji Temu bila janji di luar jam kerja.',
                 'Data pasien: No. RM berformat huruf awal nama + nomor (A-021), kolom tempat lahir, tanggal lahir & telepon boleh kosong.',
                 'Impor 1.347 pasien dari Assist.id (perintah egao:import-pasien, aman dijalankan ulang).',
+                'Deploy otomatis Hostinger: push ke GitHub → server menarik kode, lalu backup, migrasi, dan cache diperbarui sendiri (egao:after-deploy).',
             ],
         ],
         [

@@ -21,23 +21,38 @@
         </a>
 
         <nav class="mt-6 flex-1">
-            @foreach (['klinik' => 'Ruang klinik', 'manajemen' => 'Manajemen'] as $group => $heading)
+            @foreach (Navigation::GROUPS as $group => $heading)
                 @if ($items = Navigation::visible($role, $group))
-                    <p @class(['eyebrow px-3 text-[10px]', 'mt-4' => ! $loop->first])>{{ $heading }}</p>
-                    <ul class="mt-1.5 space-y-0.5">
-                        @foreach ($items as $key => $item)
-                            <li>
-                                <a href="{{ route($item['route']) }}" wire:navigate @class([
-                                    'flex h-[38px] items-center gap-3 rounded-xl px-2 text-[14px] transition',
-                                    'bg-leaf-100 font-semibold text-brand-600' => $active === $key,
-                                    'font-medium text-brand-700 hover:bg-mist' => $active !== $key,
-                                ])>
-                                    <x-nav-icon :name="$key" :active="$active === $key" compact />
-                                    {{ $item['label'] }}
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
+                    @php
+                        $collapsible = $group === 'master';
+                        $groupActive = collect($items)->contains(fn ($item, $key) => Navigation::isActive($key, $item, $active));
+                    @endphp
+                    {{-- Grup "Master data" bisa dilipat; status buka/tutup diingat di browser, dan selalu terbuka bila isinya sedang aktif. --}}
+                    <div @if ($collapsible) x-data="{ open: $persist(true).as('nav-master-open') }" @if ($groupActive) x-init="open = true" @endif @endif>
+                        @if ($collapsible)
+                            <button type="button" @click="open = ! open" :aria-expanded="open" @class(['eyebrow flex w-full items-center justify-between px-3 text-[10px]', 'mt-4' => ! $loop->first])>
+                                {{ $heading }}
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 transition-transform" :class="open ? '' : '-rotate-90'" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                            </button>
+                        @else
+                            <p @class(['eyebrow px-3 text-[10px]', 'mt-4' => ! $loop->first])>{{ $heading }}</p>
+                        @endif
+                        <ul class="mt-1.5 space-y-0.5" @if ($collapsible) x-show="open" @endif>
+                            @foreach ($items as $key => $item)
+                                @php $on = Navigation::isActive($key, $item, $active); @endphp
+                                <li>
+                                    <a href="{{ Navigation::url($item) }}" wire:navigate @class([
+                                        'flex h-[38px] items-center gap-3 rounded-xl px-2 text-[14px] transition',
+                                        'bg-leaf-100 font-semibold text-brand-600' => $on,
+                                        'font-medium text-brand-700 hover:bg-mist' => ! $on,
+                                    ])>
+                                        <x-nav-icon :name="$key" :active="$on" compact />
+                                        {{ $item['label'] }}
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
                 @endif
             @endforeach
         </nav>

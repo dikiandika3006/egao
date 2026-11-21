@@ -12,6 +12,7 @@ use App\Models\DoctorProcedureShare;
 use App\Models\ExpenseCategory;
 use App\Models\Procedure;
 use App\Models\User;
+use App\Services\ProcedureImportService;
 use App\Support\BranchContext;
 use App\Support\Settings;
 use App\Models\Payment;
@@ -55,6 +56,13 @@ class Pengaturan extends Component
     public ?int $editingId = null;
 
     public array $data = [];
+
+    /** Impor tindakan dari Excel: file, cabang tujuan ('all' atau id cabang), dan hasil. */
+    public $procedureFile = null;
+
+    public string $importBranch = 'all';
+
+    public array $importResult = [];
 
     /** Tab yang tersedia per peran. Admin hanya master operasional. */
     private function tabs(BranchContext $context): array
@@ -501,6 +509,60 @@ class Pengaturan extends Component
         AuditLog::record($this->editingId ? 'procedure.updated' : 'procedure.created', $p, $v);
         $this->closeForm();
         $this->toast('Tindakan & tarif disimpan.');
+    }
+
+    private function authorizeProcedureImport(): void
+    {
+        abort_unless(app(BranchContext::class)->is(Role::Owner, Role::Admin), 403);
+    }
+
+    public function openProcedureImport(): void
+    {
+        $this->authorizeProcedureImport();
+        $this->reset('procedureFile', 'importResult', 'importBranch');
+        $this->resetValidation();
+        $this->form = 'procedure-import';
+    }
+
+    public function importProcedures(ProcedureImportService $service): void
+    {
+        $this->authorizeProcedureImport();
+        $branchIds = $this->branches()->pluck('id');
+        $this->validate([
+            'procedureFile' => ['required', 'file', 'max:5120'],
+            'importBranch' => ['required', Rule::in(['all', ...$branchIds->map(fn ($id) => (string) $id)])],
+        ], attributes: ['procedureFile' => 'file Excel', 'importBranch' => 'cabang']);
+
+        // Ekstensi dicek manual: xlsx sering terbaca sebagai application/zip oleh aturan mimes.
+        $ext = strtolower($this->procedureFile->getClientOriginalExtension());
+        if (! in_array($ext, ['xlsx', 'xls', 'csv'], true)) {
+            $this->addError('procedureFile', 'File harus Excel (.xlsx, .xls) atau CSV.');
+
+            return;
+        }
+
+        $targets = $this->importBranch === 'all' ? $branchIds->all() : [(int) $this->importBranch];
+
+        // File unggahan bernama acak tanpa ekstensi; salin ke path berekstensi agar pembaca Excel mengenalinya.
+        $local = tempnam(sys_get_temp_dir(), 'import-tindakan').'.'.$ext;
+        copy($this->procedureFile->getRealPath(), $local);
+        try {
+            $result = $service->import($local, $this->clinicId(), $targets);
+        } finally {
+            @unlink($local);
+        }
+
+        if ($result['error']) {
+            $this->addError('procedureFile', $result['error']);
+
+            return;
+        }
+
+        AuditLog::record('procedure.imported', null, [
+            'file' => $this->procedureFile->getClientOriginalName(), 'branch_ids' => $targets, 'stats' => $result['stats'],
+        ]);
+        $this->procedureFile = null;
+        $this->importResult = $result;
     }
 
     // ---- Pengguna & peran (FR-SET-07/08) -------------------------------------------

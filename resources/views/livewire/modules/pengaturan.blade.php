@@ -316,7 +316,10 @@
                 @break
 
             @case('tindakan')
-                <div class="mb-4 flex justify-end"><button type="button" wire:click="editProcedure" class="btn-primary">+ &nbsp;Tindakan</button></div>
+                <div class="mb-4 flex flex-wrap justify-end gap-2">
+                    <button type="button" wire:click="openProcedureImport" class="btn-soft">Impor Excel</button>
+                    <button type="button" wire:click="editProcedure" class="btn-primary">+ &nbsp;Tindakan</button>
+                </div>
                 <section class="card overflow-x-auto">
                     <table class="w-full min-w-[720px] text-left text-sm">
                         <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
@@ -484,6 +487,53 @@
                 <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" wire:model="data.is_active" class="accent-brand-600"> Aktif</label>
                 <div class="flex justify-end gap-2 sm:col-span-2"><button type="button" wire:click="closeForm" class="btn-ghost">Batal</button><button class="btn-primary">Simpan</button></div>
             </form>
+        </x-modal>
+    @endif
+
+    @if ($form === 'procedure-import')
+        <x-modal title="Impor tindakan dari Excel">
+            @if ($importResult)
+                @php $s = $importResult['stats']; @endphp
+                <div class="rounded-xl bg-leaf-50 p-4 text-sm text-brand-800">
+                    <p class="font-semibold">Impor selesai.</p>
+                    <ul class="mt-2 space-y-1">
+                        <li>Tindakan baru: <b>{{ $s['baru'] }}</b></li>
+                        <li>Tarif diperbarui (tindakan sudah ada): {{ $s['diperbarui'] }}</li>
+                        <li>Dilewati: {{ $s['dilewati'] }}</li>
+                    </ul>
+                </div>
+                @if ($importResult['skipped'])
+                    <ul class="mt-3 max-h-40 space-y-1 overflow-y-auto text-xs text-muted">
+                        @foreach ($importResult['skipped'] as $line)<li>{{ $line }}</li>@endforeach
+                    </ul>
+                @endif
+                <div class="mt-5 flex justify-end"><button type="button" wire:click="closeForm" class="btn-primary">Selesai</button></div>
+            @else
+                <form wire:submit="importProcedures" class="grid gap-4">
+                    <p class="text-sm text-muted">Kolom wajib: <b>Nama Prosedur</b> (atau Nama/Tindakan) dan <b>Total Harga</b> (atau Harga/Tarif). Kolom Kode & Kategori opsional. Tindakan dengan nama yang sudah ada hanya diperbarui tarifnya; yang belum ada dibuat baru dengan kode otomatis.</p>
+                    <div>
+                        <label class="label">File Excel (.xlsx, .xls, .csv)</label>
+                        <input type="file" wire:model="procedureFile" accept=".xlsx,.xls,.csv" class="input py-2.5">
+                        <x-error for="procedureFile" />
+                        <p wire:loading wire:target="procedureFile" class="mt-1.5 text-sm text-muted">Mengunggah…</p>
+                    </div>
+                    <div>
+                        <label class="label">Terapkan tarif ke</label>
+                        <select wire:model="importBranch" class="input">
+                            <option value="all">Semua cabang</option>
+                            @foreach ($branches as $b)<option value="{{ $b->id }}">{{ $b->name }}</option>@endforeach
+                        </select>
+                        <x-error for="importBranch" />
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" wire:click="closeForm" class="btn-ghost">Batal</button>
+                        <button class="btn-primary" wire:loading.attr="disabled" wire:target="procedureFile,importProcedures">
+                            <span wire:loading.remove wire:target="importProcedures">Impor</span>
+                            <span wire:loading wire:target="importProcedures">Mengimpor…</span>
+                        </button>
+                    </div>
+                </form>
+            @endif
         </x-modal>
     @endif
 

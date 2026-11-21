@@ -14,7 +14,7 @@ class ModulePlaceholder extends Component
 
     public function mount(string $module): void
     {
-        abort_unless(array_key_exists($module, Navigation::items()), 404);
+        abort_unless(array_key_exists($module, Navigation::modules()), 404);
         $this->module = $module;
     }
 

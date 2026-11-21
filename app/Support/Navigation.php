@@ -9,6 +9,9 @@ use App\Enums\Role;
  */
 class Navigation
 {
+    /** Urutan & judul grup menu (sidebar dan menu Lainnya). Grup "bantuan" sengaja tidak ditampilkan. */
+    public const GROUPS = ['klinik' => 'Ruang klinik', 'master' => 'Master data', 'manajemen' => 'Manajemen'];
+
     /**
      * @return array<string, array{group:string, number:?string, label:string, route:string, path:string, roles:list<Role>, title:string, subtitle:string, breadcrumb:list<string>, requirements:string}>
      */
@@ -35,10 +38,10 @@ class Navigation
                 'breadcrumb' => ['Operasional', 'Janji temu'], 'requirements' => 'Permintaan klien: jadwal harian pasien',
             ],
             'pasien' => [
-                'group' => 'klinik', 'number' => '03', 'label' => 'Data pasien', 'route' => 'pasien', 'path' => '/pasien',
+                'group' => 'master', 'number' => '03', 'label' => 'Data pasien', 'route' => 'pasien', 'path' => '/pasien',
                 'roles' => $all, 'title' => 'Pasien dikenal, perawatan tersambung.',
                 'subtitle' => 'Satu rekam pasien untuk Batu dan Malang. Tidak perlu mendaftar ulang saat berpindah cabang.',
-                'breadcrumb' => ['Operasional', 'Data pasien'], 'requirements' => 'FR-PAS-01 – 20',
+                'breadcrumb' => ['Master data', 'Data pasien'], 'requirements' => 'FR-PAS-01 – 20',
             ],
             'rekam-medis' => [
                 'group' => 'klinik', 'number' => '04', 'label' => 'Rekam medis', 'route' => 'rekam-medis', 'path' => '/rekam-medis',
@@ -59,10 +62,29 @@ class Navigation
                 'breadcrumb' => ['Operasional', 'Jadwal dokter'], 'requirements' => 'FR-JDW-01 – 11',
             ],
             'dokter' => [
-                'group' => 'klinik', 'number' => '07', 'label' => 'Data dokter', 'route' => 'dokter', 'path' => '/dokter',
+                'group' => 'master', 'number' => '07', 'label' => 'Data dokter', 'route' => 'dokter', 'path' => '/dokter',
                 'roles' => [Role::Owner, Role::Admin], 'title' => 'Data dokter',
                 'subtitle' => 'Identitas, STR/SIP, cabang utama, dan sejak kapan dokter bergabung di klinik.',
-                'breadcrumb' => ['Operasional', 'Data dokter'], 'requirements' => 'FR-SET (master dokter)',
+                'breadcrumb' => ['Master data', 'Data dokter'], 'requirements' => 'FR-SET (master dokter)',
+            ],
+            // Pintasan grup "Master data" ke tab modul lain: tanpa route sendiri (lihat modules()).
+            'master-barang' => [
+                'group' => 'master', 'number' => null, 'label' => 'Master barang', 'route' => 'stok', 'path' => '/stok',
+                'query' => ['tab' => 'barang'], 'shortcut' => true,
+                'roles' => [Role::Owner, Role::Admin], 'title' => 'Master barang', 'subtitle' => '',
+                'breadcrumb' => ['Master data', 'Master barang'], 'requirements' => '-',
+            ],
+            'tindakan' => [
+                'group' => 'master', 'number' => null, 'label' => 'Tindakan & tarif', 'route' => 'pengaturan', 'path' => '/pengaturan',
+                'query' => ['tab' => 'tindakan'], 'shortcut' => true,
+                'roles' => [Role::Owner, Role::Admin], 'title' => 'Tindakan & tarif', 'subtitle' => '',
+                'breadcrumb' => ['Master data', 'Tindakan & tarif'], 'requirements' => '-',
+            ],
+            'kategori-pengeluaran' => [
+                'group' => 'master', 'number' => null, 'label' => 'Kategori pengeluaran', 'route' => 'pengaturan', 'path' => '/pengaturan',
+                'query' => ['tab' => 'kategori'], 'shortcut' => true,
+                'roles' => [Role::Owner, Role::Admin], 'title' => 'Kategori pengeluaran', 'subtitle' => '',
+                'breadcrumb' => ['Master data', 'Kategori pengeluaran'], 'requirements' => '-',
             ],
             'laporan' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Laporan', 'route' => 'laporan', 'path' => '/laporan',
@@ -114,6 +136,38 @@ class Navigation
     {
         return static::items()[$key];
     }
+
+    /** Hanya modul asli (punya halaman & route); pintasan tab tidak termasuk. */
+    public static function modules(): array
+    {
+        return array_filter(static::items(), fn (array $i) => empty($i['shortcut']));
+    }
+
+    /** URL menu; pintasan membawa query tab-nya. */
+    public static function url(array $item): string
+    {
+        return route($item['route'], $item['query'] ?? []);
+    }
+
+    /**
+     * Menu tersorot? Pintasan aktif bila halaman induknya terbuka di tab yang sama;
+     * modul induk tidak ikut tersorot selama tab itu milik pintasan.
+     * Tanpa ?tab=, tab bawaan modul induk dipakai (Stok → barang, Pengaturan → tindakan).
+     */
+    public static function isActive(string $key, array $item, ?string $active, ?string $tab = null): bool
+    {
+        $tab ??= request()->query('tab') ?? (static::DEFAULT_TABS[$active] ?? null);
+        $owner = fn (array $i) => ! empty($i['shortcut']) && $i['route'] === $active && $tab === ($i['query']['tab'] ?? null);
+
+        if (! empty($item['shortcut'])) {
+            return $owner($item);
+        }
+
+        return $key === $active && ! array_filter(static::items(), $owner);
+    }
+
+    /** Tab bawaan modul yang punya pintasan (sama dengan default properti $tab di komponennya). */
+    private const DEFAULT_TABS = ['stok' => 'barang', 'pengaturan' => 'tindakan'];
 
     /** "role:owner,admin" untuk route modul. */
     public static function roleMiddleware(string $key): string

@@ -219,6 +219,22 @@ class Faq
             'tags' => 'impor import excel xlsx assist.id upload unggah pasien massal',
         ],
         [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana mengimpor daftar tindakan & tarif dari Excel?',
+            'a' => 'Buka Pengaturan › tab "Tindakan & tarif" › tombol "Impor Excel". Pilih file (.xlsx/.xls/.csv) dengan kolom Nama Prosedur dan Total Harga (seperti Data Prosedur.xlsx dari Assist.id; kolom Kode & Kategori opsional), lalu pilih "Terapkan tarif ke": Semua cabang atau satu cabang. Tindakan dengan nama yang sudah ada hanya diperbarui tarifnya di cabang terpilih; yang belum ada dibuat baru dengan kode otomatis. Baris tanpa harga dilewati. Tagihan yang sudah dibuat tidak berubah.',
+            'where' => 'Pengaturan',
+            'roles' => 'Owner, Admin',
+            'tags' => 'impor import excel xlsx upload unggah tindakan prosedur tarif harga massal assist.id',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Di mana menu Data pasien, Data dokter, barang, dan tarif tindakan?',
+            'a' => 'Semuanya dikumpulkan di grup menu "Master data" di sidebar: Data pasien, Data dokter, Master barang (daftar barang di menu Stok), Tindakan & tarif, dan Kategori pengeluaran (keduanya tab di Pengaturan). Klik judul "Master data" untuk membuka atau menutup grup; pilihan ini diingat di browser. Di ponsel, menu ini ada di Lainnya. Dokter hanya melihat Data pasien.',
+            'where' => 'Sidebar › Master data',
+            'roles' => 'Semua peran',
+            'tags' => 'master data menu sidebar grup pasien dokter barang tindakan tarif kategori pengeluaran letak',
+        ],
+        [
             'group' => 'Pasien, antrean & janji',
             'q' => 'Bagaimana memasukkan pasien ke antrean hari ini?',
             'a' => 'Buka Antrean › "Daftarkan kunjungan", cari pasien, pilih dokter dan keperluan. Antrean hanya punya 3 tab: Menunggu, Selesai tindakan (sudah diperiksa dokter, lanjut/sudah bayar), dan Tidak hadir. Admin cukup mendaftarkan dan menandai Tidak hadir; dokter menekan Periksa, dan setelah pemeriksaan disimpan pasien otomatis pindah ke Selesai tindakan. Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',

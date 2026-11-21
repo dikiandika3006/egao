@@ -110,6 +110,8 @@ class About
         [
             'date' => '21 November 2026',
             'changes' => [
+                'Menu baru "Master data" di sidebar (bisa dibuka/tutup): Data pasien, Data dokter, Master barang, Tindakan & tarif, dan Kategori pengeluaran dikumpulkan dalam satu grup.',
+                'Pengaturan › Tindakan & tarif: tombol "Impor Excel" (Owner & Admin) untuk memasukkan daftar tindakan dari Excel (mis. Data Prosedur.xlsx Assist.id) ke semua cabang atau satu cabang. Nama yang sudah ada hanya diperbarui tarifnya; yang baru dibuat dengan kode otomatis.',
                 'Reset darurat kata sandi di halaman login (khusus admin): tekan Alt+F7 untuk menyingkap kolom PIN; PIN benar mereset kata sandi akun (sesuai username yang diketik) menjadi "password". Fitur mati bila LOGIN_RESET_PIN di .env kosong; setiap percobaan dicatat di jejak audit.',
             ],
         ],

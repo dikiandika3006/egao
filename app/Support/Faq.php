@@ -212,6 +212,14 @@ class Faq
         ],
         [
             'group' => 'Pasien, antrean & janji',
+            'q' => 'Bagaimana mengimpor pasien dari Excel Assist.id?',
+            'a' => 'Khusus Owner: buka Data pasien › tombol "Impor dari Excel", pilih file Data Pasien.xlsx hasil ekspor Assist.id, lalu tekan Impor. No. RM yang sudah ada otomatis dilewati sehingga aman diulang; No. RM ganda diberi nomor baru, dan NIK yang tidak 16 digit atau dobel dikosongkan. Setelah selesai muncul ringkasan dan tombol "Unduh laporan detail (CSV)" berisi tindakan per baris. Impor juga bisa lewat perintah server egao:import-pasien.',
+            'where' => 'Data pasien',
+            'roles' => 'Owner',
+            'tags' => 'impor import excel xlsx assist.id upload unggah pasien massal',
+        ],
+        [
+            'group' => 'Pasien, antrean & janji',
             'q' => 'Bagaimana memasukkan pasien ke antrean hari ini?',
             'a' => 'Buka Antrean › "Daftarkan kunjungan", cari pasien, pilih dokter dan keperluan. Antrean hanya punya 3 tab: Menunggu, Selesai tindakan (sudah diperiksa dokter, lanjut/sudah bayar), dan Tidak hadir. Admin cukup mendaftarkan dan menandai Tidak hadir; dokter menekan Periksa, dan setelah pemeriksaan disimpan pasien otomatis pindah ke Selesai tindakan. Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',
             'where' => 'Antrean',

@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Patient;
 use App\Models\User;
 use App\Support\BranchContext;
+use Illuminate\Http\UploadedFile;
 use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -161,4 +162,41 @@ it('mengimpor pasien Assist.id dengan normalisasi dan aman dijalankan ulang', fu
     expect(Patient::count())->toBe($total);
 
     @unlink($file);
+});
+
+it('owner mengimpor pasien lewat tombol unggah Excel', function () {
+    importLogin('owner', 'owner', $this->batu->id);
+    $file = assistXlsx([
+        ['Lestari Dewi', 'L-010', '', 'Batu, 10-10-2000', 'Perempuan', 'Jl. Mawar', '081200001111'],
+    ]);
+    $upload = UploadedFile::fake()->createWithContent('Data Pasien.xlsx', file_get_contents($file));
+
+    Livewire::test(Pasien::class)
+        ->call('openImport')
+        ->set('importFile', $upload)
+        ->call('importPatients')
+        ->assertHasNoErrors()
+        ->assertSet('importResult.stats.baru', 1);
+
+    expect(Patient::where('name', 'Lestari Dewi')->where('medical_record_number', 'L-010')->exists())->toBeTrue();
+
+    @unlink($file);
+});
+
+it('menolak file non-Excel saat impor', function () {
+    importLogin('owner', 'owner', $this->batu->id);
+
+    Livewire::test(Pasien::class)
+        ->call('openImport')
+        ->set('importFile', UploadedFile::fake()->create('data.pdf', 10))
+        ->call('importPatients')
+        ->assertHasErrors('importFile');
+});
+
+it('selain owner tidak bisa mengimpor pasien', function () {
+    importLogin('admin', 'admin', $this->batu->id);
+
+    Livewire::test(Pasien::class)->call('openImport')->assertForbidden();
+    Livewire::test(Pasien::class)->call('importPatients')->assertForbidden();
+    $this->get(route('pasien'))->assertOk()->assertDontSee('Impor dari Excel');
 });

@@ -1,6 +1,9 @@
 @php use App\Support\Format; @endphp
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
+        @if ($canImport)
+            <button type="button" wire:click="openImport" class="btn-soft">Impor dari Excel</button>
+        @endif
         @if ($canRegister)
             <button type="button" wire:click="create" class="btn-primary">+ &nbsp;Pasien baru</button>
         @endif
@@ -232,6 +235,45 @@
                     <button class="btn-primary">Simpan</button>
                 </div>
             </form>
+        </x-modal>
+    @endif
+
+    @if ($showImport)
+        <x-modal title="Impor pasien dari Excel" close="closeImport">
+            @if ($importResult)
+                @php $s = $importResult['stats']; @endphp
+                <div class="rounded-xl bg-leaf-50 p-4 text-sm text-brand-800">
+                    <p class="font-semibold">Impor selesai.</p>
+                    <ul class="mt-2 space-y-1">
+                        <li>Pasien baru diimpor: <b>{{ $s['baru'] }}</b></li>
+                        <li>Dilewati (No. RM sudah ada): {{ $s['dilewati'] }}</li>
+                        <li>No. RM ganda → nomor baru: {{ $s['rm_baru'] }}</li>
+                        <li>NIK tidak valid/ganda → dikosongkan: {{ $s['nik_kosong'] }}</li>
+                        <li>Tanggal lahir tidak diketahui: {{ $s['tgl_lahir_kosong'] }}</li>
+                    </ul>
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" wire:click="downloadImportReport" class="btn-soft">Unduh laporan detail (CSV)</button>
+                    <button type="button" wire:click="closeImport" class="btn-primary">Selesai</button>
+                </div>
+            @else
+                <form wire:submit="importPatients" class="grid gap-4">
+                    <p class="text-sm text-muted">Pilih file <b>Data Pasien.xlsx</b> hasil ekspor dari Assist.id. No. RM yang sudah ada otomatis dilewati, jadi aman diulang.</p>
+                    <div>
+                        <label class="label">File Excel (.xlsx)</label>
+                        <input type="file" wire:model="importFile" accept=".xlsx,.xls" class="input py-2.5">
+                        <x-error for="importFile" />
+                        <p wire:loading wire:target="importFile" class="mt-1.5 text-sm text-muted">Mengunggah…</p>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" wire:click="closeImport" class="btn-ghost">Batal</button>
+                        <button class="btn-primary" wire:loading.attr="disabled" wire:target="importFile,importPatients">
+                            <span wire:loading.remove wire:target="importPatients">Impor</span>
+                            <span wire:loading wire:target="importPatients">Memproses…</span>
+                        </button>
+                    </div>
+                </form>
+            @endif
         </x-modal>
     @endif
 </div>

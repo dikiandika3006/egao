@@ -7,11 +7,14 @@ use App\Livewire\Concerns\ModulePage;
 use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\Visit;
+use App\Services\PatientImportService;
 use App\Support\BranchContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 /**
@@ -19,7 +22,7 @@ use Livewire\WithPagination;
  */
 class Pasien extends Component
 {
-    use ModulePage, WithPagination;
+    use ModulePage, WithFileUploads, WithPagination;
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
@@ -40,6 +43,14 @@ class Pasien extends Component
 
     /** Data sensitif yang sedang dibuka (FR-PAS-14/15), dicatat di jejak audit. */
     public bool $reveal = false;
+
+    /** Impor pasien dari Excel Assist.id (khusus Owner). */
+    public bool $showImport = false;
+
+    public $importFile = null;
+
+    /** Hasil impor terakhir: ['stats' => [...], 'reportPath' => '...']. */
+    public array $importResult = [];
 
     public function mount(): void
     {
@@ -74,6 +85,73 @@ class Pasien extends Component
     private function authorizeWrite(): void
     {
         abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Owner), 403);
+    }
+
+    /** Impor massal pasien hanya Owner. */
+    private function authorizeImport(): void
+    {
+        abort_unless(app(BranchContext::class)->is(Role::Owner), 403);
+    }
+
+    public function openImport(): void
+    {
+        $this->authorizeImport();
+        $this->resetValidation();
+        $this->reset('importFile', 'importResult');
+        $this->showImport = true;
+    }
+
+    public function closeImport(): void
+    {
+        $this->reset('importFile', 'importResult');
+        $this->showImport = false;
+    }
+
+    public function importPatients(PatientImportService $service): void
+    {
+        $this->authorizeImport();
+        $this->validate(
+            ['importFile' => ['required', 'file', 'max:10240']],
+            attributes: ['importFile' => 'file Excel']
+        );
+
+        // Ekstensi dicek manual: xlsx sering terbaca sebagai application/zip oleh aturan mimes.
+        $ext = strtolower($this->importFile->getClientOriginalExtension());
+        if (! in_array($ext, ['xlsx', 'xls'], true)) {
+            $this->addError('importFile', 'File harus Excel (.xlsx atau .xls).');
+
+            return;
+        }
+
+        // File unggahan bernama acak tanpa ekstensi; salin ke path berekstensi agar pembaca Excel mengenalinya.
+        $local = tempnam(sys_get_temp_dir(), 'import-pasien').'.'.$ext;
+        copy($this->importFile->getRealPath(), $local);
+
+        try {
+            $result = $service->import($local, $this->clinicId());
+        } finally {
+            @unlink($local);
+        }
+
+        if ($result['error']) {
+            $this->addError('importFile', $result['error']);
+
+            return;
+        }
+
+        $this->importResult = ['stats' => $result['stats'], 'reportPath' => $result['reportPath']];
+        $this->importFile = null;
+        $this->resetPage();
+        $this->toast($result['stats']['baru'].' pasien diimpor.');
+    }
+
+    public function downloadImportReport()
+    {
+        $this->authorizeImport();
+        $path = $this->importResult['reportPath'] ?? '';
+        abort_unless($path !== '' && Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->download($path, 'laporan-impor-pasien.csv');
     }
 
     public function create(): void
@@ -223,6 +301,7 @@ class Pasien extends Component
             'detail' => $detail,
             'history' => $history,
             'canRegister' => $context->is(Role::Admin, Role::Owner),
+            'canImport' => $context->is(Role::Owner),
         ]);
     }
 }

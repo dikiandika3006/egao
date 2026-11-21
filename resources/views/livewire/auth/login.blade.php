@@ -34,4 +34,22 @@
     </form>
 
     <p class="mt-10 text-xs text-muted">Sesi berakhir otomatis setelah 8 jam tidak aktif.</p>
+
+    {{-- Reset darurat tersembunyi: Alt+F7 menyingkap kolom PIN. Pengecekan PIN sepenuhnya di server. --}}
+    <div x-data="{ open: false }"
+         @keydown.window.prevent.f7.alt="open = true"
+         x-show="open"
+         x-cloak
+         class="mt-6 rounded-lg border border-line bg-white p-4">
+        <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-brand-700">Reset darurat</span>
+            <button type="button" @click="open = false" class="text-xs text-muted hover:text-brand-700">Tutup</button>
+        </div>
+        <p class="mt-1 text-xs text-muted">Masukkan PIN untuk mereset kata sandi akun <b>{{ $username ?: '…' }}</b> menjadi <code>password</code>.</p>
+        <div class="mt-3 flex gap-2">
+            <input wire:model="resetPin" type="password" autocomplete="off" class="input" placeholder="PIN">
+            <button type="button" wire:click="resetPassword" class="btn-soft shrink-0" wire:loading.attr="disabled" wire:target="resetPassword">Reset</button>
+        </div>
+        @error('resetPin') <p class="mt-1.5 text-sm text-rose-ink">{{ $message }}</p> @enderror
+    </div>
 </div>

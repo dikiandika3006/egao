@@ -108,6 +108,12 @@ class About
 
     public const CHANGELOG = [
         [
+            'date' => '21 November 2026',
+            'changes' => [
+                'Reset darurat kata sandi di halaman login (khusus admin): tekan Alt+F7 untuk menyingkap kolom PIN; PIN benar mereset kata sandi akun (sesuai username yang diketik) menjadi "password". Fitur mati bila LOGIN_RESET_PIN di .env kosong; setiap percobaan dicatat di jejak audit.',
+            ],
+        ],
+        [
             'date' => '20 November 2026',
             'changes' => [
                 'Integrasi Google Calendar: aplikasi membuat kalender Egao per dokter + kalender Owner dan mengirim undangan otomatis; janji temu masuk ke sana, ikut berubah/terhapus saat janji diubah/dibatalkan (Pengaturan › Google Calendar).',

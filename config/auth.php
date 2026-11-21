@@ -22,6 +22,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | PIN reset darurat (Alt+F7 di halaman login)
+    |--------------------------------------------------------------------------
+    |
+    | Kosong = fitur reset darurat MATI. Bila diisi, menekan Alt+F7 di halaman
+    | login menyingkap kolom PIN; PIN benar mereset kata sandi akun (sesuai
+    | username yang diketik) menjadi "password". Keamanan fitur ini bergantung
+    | penuh pada kerahasiaan PIN — gunakan PIN panjang & acak, simpan HANYA di
+    | .env server, jangan pernah di-commit.
+    |
+    */
+    'reset_pin' => env('LOGIN_RESET_PIN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication Guards
     |--------------------------------------------------------------------------
     |

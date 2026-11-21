@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Auth;
 
+use App\Models\AuditLog;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -22,6 +24,9 @@ class Login extends Component
     public string $password = '';
 
     public bool $remember = false;
+
+    /** PIN reset darurat (hanya terisi saat panel Alt+F7 dipakai). */
+    public string $resetPin = '';
 
     public function login()
     {
@@ -46,5 +51,53 @@ class Login extends Component
         session()->regenerate();
 
         return $this->redirectRoute('select-branch', navigate: true);
+    }
+
+    /**
+     * Reset darurat: set kata sandi akun (sesuai username yang diketik) menjadi "password".
+     * Disingkap lewat Alt+F7 di halaman login, tapi hanya jalan bila PIN cocok.
+     * Mati total bila LOGIN_RESET_PIN kosong. Keamanan bergantung penuh pada kerahasiaan PIN.
+     */
+    public function resetPassword()
+    {
+        $pin = (string) config('auth.reset_pin');
+
+        if ($pin === '') {
+            throw ValidationException::withMessages(['resetPin' => 'Fitur reset tidak aktif.']);
+        }
+
+        $key = 'login-reset:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            throw ValidationException::withMessages([
+                'resetPin' => 'Terlalu banyak percobaan. Coba lagi dalam '.RateLimiter::availableIn($key).' detik.',
+            ]);
+        }
+
+        $this->validate([
+            'username' => 'required|string|max:50',
+            'resetPin' => 'required|string',
+        ], attributes: ['username' => 'username', 'resetPin' => 'PIN']);
+
+        if (! hash_equals($pin, trim($this->resetPin))) {
+            RateLimiter::hit($key, 600);
+            AuditLog::record('auth.reset_darurat_gagal', null, ['username' => $this->username]);
+
+            throw ValidationException::withMessages(['resetPin' => 'PIN salah.']);
+        }
+
+        RateLimiter::clear($key);
+
+        $user = User::where('username', $this->username)->first();
+
+        if (! $user) {
+            throw ValidationException::withMessages(['username' => 'Akun tidak ditemukan.']);
+        }
+
+        $user->forceFill(['password' => 'password', 'remember_token' => Str::random(60)])->save();
+        AuditLog::record('auth.reset_darurat', $user, ['username' => $user->username]);
+
+        $this->reset('resetPin', 'password');
+        session()->flash('status', 'Kata sandi akun "'.$user->username.'" direset menjadi: password');
     }
 }

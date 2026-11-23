@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Format;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -104,23 +105,44 @@ class Doctor extends Model
             }
 
             $routine = $this->routineOn($date);
+            $starts = $override->starts_at ?? $routine?->starts_at ?? '10:00:00';
+            $ends = $override->ends_at ?? $routine?->ends_at ?? '17:00:00';
 
-            return [
+            return static::withSessions([
                 'branch_id' => $override->branch_id,
-                'starts_at' => $override->starts_at ?? $routine?->starts_at ?? '10:00:00',
-                'ends_at' => $override->ends_at ?? $routine?->ends_at ?? '17:00:00',
                 'moved' => true,
-            ];
+            ], [['starts_at' => $starts, 'ends_at' => $ends]]);
         }
 
         $routine = $this->routineOn($date);
+        if (! $routine) {
+            return null;
+        }
 
-        return $routine ? [
-            'branch_id' => $routine->branch_id,
-            'starts_at' => $routine->starts_at,
-            'ends_at' => $routine->ends_at,
-            'moved' => false,
-        ] : null;
+        // Satu hari bisa lebih dari satu sesi di cabang yang sama (mis. 10.00–13.00 dan 17.00–20.00).
+        $sessions = $this->schedules
+            ->filter(fn (DoctorSchedule $s) => $s->appliesOn($date) && $s->branch_id === $routine->branch_id)
+            ->sortBy('starts_at')
+            ->map(fn (DoctorSchedule $s) => ['starts_at' => $s->starts_at, 'ends_at' => $s->ends_at])
+            ->values()->all();
+
+        return static::withSessions(['branch_id' => $routine->branch_id, 'moved' => false], $sessions);
+    }
+
+    /**
+     * Lengkapi slot dengan daftar sesi, teks jam siap tampil ("10.00–13.00, 17.00–20.00"),
+     * serta starts_at = sesi pertama dan ends_at = sesi terakhir.
+     */
+    private static function withSessions(array $slot, array $sessions): array
+    {
+        return $slot + [
+            'starts_at' => $sessions[0]['starts_at'],
+            'ends_at' => end($sessions)['ends_at'],
+            'sessions' => $sessions,
+            'hours' => collect($sessions)
+                ->map(fn ($s) => Format::jam($s['starts_at']).'–'.Format::jam($s['ends_at']))
+                ->implode(', '),
+        ];
     }
 
     public function routineOn(CarbonInterface $date): ?DoctorSchedule

@@ -124,7 +124,7 @@
                     <label class="label">Dokter</label>
                     <select wire:model="visit.doctor_id" class="input">
                         @foreach ($doctorOptions as $row)
-                            <option value="{{ $row['doctor']->id }}">{{ $row['doctor']->name }}@if ($row['schedule']) ({{ Format::jam($row['schedule']['starts_at']) }}–{{ Format::jam($row['schedule']['ends_at']) }})@endif</option>
+                            <option value="{{ $row['doctor']->id }}">{{ $row['doctor']->name }}@if ($row['schedule']) ({{ $row['schedule']['hours'] }})@endif</option>
                         @endforeach
                     </select>
                     <x-error for="visit.doctor_id" />

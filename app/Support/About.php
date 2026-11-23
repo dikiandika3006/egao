@@ -111,6 +111,7 @@ class About
         [
             'date' => '23 November 2026',
             'changes' => [
+                'Jadwal dokter dengan dua sesi sehari (mis. Jumat 10.00–13.00 dan 17.00–20.00) kini tampil lengkap di Jadwal dokter, Dashboard, Antrean, dan Janji temu; sebelumnya hanya sesi pertama.',
                 'Data dokter: tombol Hapus untuk dokter yang belum pernah punya transaksi (kunjungan, rekam medis, tagihan, janji temu, order lab, gaji); dokter yang sudah punya data tetap hanya bisa dinonaktifkan. Dokter nonaktif ditolak di server saat dijadwalkan atau dipilih sebagai pengganti.',
                 'Jadwal dokter: kisi mingguan dikelompokkan per cabang — Batu di atas, dokter yang praktik di dua cabang di tengah, Malang di bawah. Dokter tanpa jadwal tetap di blok cabang utamanya, di bagian bawah.',
                 'Peran baru Asisten dan Pengaturan › Hak akses peran (Owner): atur per menu untuk Admin, Asisten, dan Dokter apakah boleh Lihat, Edit, dan melihat angka Keuangan (bila tidak, rupiah tampil Rp•••). Bawaan sama dengan sebelumnya; Owner selalu akses penuh. Izin dicek di server dan perubahan tercatat di jejak audit.',

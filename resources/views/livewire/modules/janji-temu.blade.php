@@ -261,7 +261,7 @@
                                 @forelse ($dayPlan as $plan)
                                     <li>
                                         <button type="button" wire:click="$set('form.doctor_id', '{{ $plan['doctor']->id }}')" class="font-semibold text-brand-600 hover:underline">{{ $plan['doctor']->name }}</button>
-                                        <span class="text-muted">· {{ Format::jam($plan['schedule']['starts_at']) }}–{{ Format::jam($plan['schedule']['ends_at']) }}{{ $plan['schedule']['moved'] ? ' (pengganti/pindah)' : '' }}</span>
+                                        <span class="text-muted">· {{ $plan['schedule']['hours'] }}{{ $plan['schedule']['moved'] ? ' (pengganti/pindah)' : '' }}</span>
                                         <div class="mt-1 flex flex-wrap gap-1">
                                             @forelse ($plan['booked'] as $b)
                                                 <span class="rounded bg-white px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line" title="{{ $b->patient->name }}">{{ $b->time ? Format::jam($b->time) : 'tanpa jam' }} terisi</span>

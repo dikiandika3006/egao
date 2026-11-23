@@ -137,7 +137,7 @@
                         <div class="py-4 first:pt-0">
                             <span class="pill bg-leaf-100 text-brand-600">{{ $row['schedule']['moved'] ? 'Pindah sementara' : 'Praktik' }}</span>
                             <p class="mt-4 text-lg font-semibold">{{ $row['doctor']->name }}</p>
-                            <p class="mt-1.5 text-sm text-muted">{{ $row['branch']?->shortName() }} • {{ Format::jam($row['schedule']['starts_at']) }}–{{ Format::jam($row['schedule']['ends_at']) }}</p>
+                            <p class="mt-1.5 text-sm text-muted">{{ $row['branch']?->shortName() }} • {{ $row['schedule']['hours'] }}</p>
                         </div>
                     @empty
                         <p class="pb-4 text-sm text-muted">Tidak ada dokter yang praktik hari ini.</p>

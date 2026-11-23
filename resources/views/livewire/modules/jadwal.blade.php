@@ -73,7 +73,9 @@
                                         <span class="font-semibold">Libur</span>
                                     @elseif ($cell['schedule'])
                                         <span class="font-semibold">{{ $cell['branch']?->shortName() ?? '—' }}</span>
-                                        <span class="mt-0.5 text-[10px]">{{ Format::jam($cell['schedule']['starts_at']) }}–{{ Format::jam($cell['schedule']['ends_at']) }}</span>
+                                        @foreach ($cell['schedule']['sessions'] as $sesi)
+                                            <span class="mt-0.5 text-[10px]">{{ Format::jam($sesi['starts_at']) }}–{{ Format::jam($sesi['ends_at']) }}</span>
+                                        @endforeach
                                     @else
                                         <span>—</span>
                                     @endif

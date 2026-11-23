@@ -9,7 +9,9 @@ use App\Models\Doctor;
 use App\Models\Expense;
 use App\Models\Payment;
 use App\Models\Visit;
+use App\Support\Access;
 use App\Support\BranchContext;
+use App\Support\Format;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
@@ -28,7 +30,7 @@ class Dashboard extends Component
 
     public function callPatient(int $visitId, BranchContext $context): void
     {
-        abort_unless($context->is(Role::Admin, Role::Dokter, Role::Owner), 403);
+        abort_unless($context->is(Role::Admin, Role::Asisten, Role::Dokter, Role::Owner) && Access::can('antrean', 'edit'), 403);
 
         $visit = Visit::forBranch($context->id())->findOrFail($visitId);
 
@@ -39,6 +41,7 @@ class Dashboard extends Component
 
     public function render(BranchContext $context)
     {
+        Format::mask(! Access::can('dashboard', 'keuangan'));
         $branchId = $context->id();
         $today = today();
 

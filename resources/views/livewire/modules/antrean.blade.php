@@ -60,7 +60,9 @@
                                 @if ($canExamine)
                                     <button type="button" wire:click="examine({{ $v->id }})" class="btn-primary min-h-9 px-4">Periksa</button>
                                 @endif
-                                <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
+                                @if ($canEdit)
+                                    <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
+                                @endif
                                 @break
                             @case(VisitStatus::Diperiksa)
                                 @if ($canExamine)
@@ -68,12 +70,14 @@
                                 @endif
                                 @break
                             @case(VisitStatus::MenungguPembayaran)
-                                @if ($canRegister)
+                                @if (\App\Support\Access::can('kasir', 'lihat'))
                                     <a href="{{ route('kasir', ['kunjungan' => $v->id]) }}" wire:navigate class="btn-soft min-h-9 px-4">Ke kasir</a>
                                 @endif
                                 @break
                             @case(VisitStatus::Batal)
-                                <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Masukkan lagi</button>
+                                @if ($canEdit)
+                                    <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Masukkan lagi</button>
+                                @endif
                                 @break
                             @default
                                 <span class="text-xs text-muted">{{ $v->completed_at?->format('H.i') }}</span>

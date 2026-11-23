@@ -21,6 +21,11 @@ class Pengeluaran extends Component
 {
     use ModulePage, WithFileUploads;
 
+    public const MENU = 'pengeluaran';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['shiftMonth', 'closeForm', 'downloadProof'];
+
     #[Url(as: 'bulan', except: '')]
     public string $month = '';
 

@@ -14,6 +14,7 @@ use App\Models\Procedure;
 use App\Models\User;
 use App\Models\Visit;
 use App\Services\SatuSehat\SatuSehatService;
+use App\Support\Access;
 use App\Support\BranchContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -44,19 +45,21 @@ class ExamService
     }
 
     /**
-     * Admin/Owner boleh mengisi pemeriksaan atas nama dokter kunjungan (mis. dokter mendikte, admin mengetik),
+     * Admin/Asisten/Owner boleh mengisi pemeriksaan atas nama dokter kunjungan (mis. dokter mendikte, admin mengetik),
      * hanya untuk cabang yang boleh diakses. Penginput tercatat di created_by / audit.
      */
     public function isStaffEditor(Visit $visit): bool
     {
-        return $this->context->is(Role::Admin, Role::Owner)
+        return $this->context->is(Role::Admin, Role::Asisten, Role::Owner)
             && $this->context->options()->contains('id', $visit->branch_id);
     }
 
     /** Catatan klinis boleh diubah: dokter pemilik atau Admin/Owner, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
     public function canEditClinical(Visit $visit): bool
     {
-        return ($this->isOwningDoctor($visit) || $this->isStaffEditor($visit)) && $visit->status !== VisitStatus::Batal;
+        return ($this->isOwningDoctor($visit) || $this->isStaffEditor($visit))
+            && $visit->status !== VisitStatus::Batal
+            && Access::can('rekam-medis', 'edit');
     }
 
     /**

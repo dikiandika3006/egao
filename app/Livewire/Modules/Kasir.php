@@ -27,6 +27,11 @@ class Kasir extends Component
 {
     use ModulePage, PicksBranch;
 
+    public const MENU = 'kasir';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['open', 'close'];
+
     #[Url(as: 'tagihan', except: null)]
     public ?int $selected = null;
 

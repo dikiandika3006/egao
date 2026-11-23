@@ -3,7 +3,7 @@
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($tab === 'barang')
-            <button type="button" wire:click="newItem" class="btn-primary">+ Barang baru</button>
+            @if ($canEdit)<button type="button" wire:click="newItem" class="btn-primary">+ Barang baru</button>@endif
         @elseif ($tab === 'laporan')
             <button type="button" wire:click="export" class="btn-soft">Ekspor Excel</button>
         @endif
@@ -58,7 +58,7 @@
                             <td class="text-right text-muted">{{ $i->min_stock }}</td>
                             <td class="text-right">@rupiah($i->buy_price)</td>
                             <td class="text-right">{!! $i->sell_price !== null ? e(\App\Support\Format::rupiah($i->sell_price)) : '<span class="text-xs text-muted">tidak dijual</span>' !!}</td>
-                            <td class="pr-5 text-right"><button type="button" wire:click="editItem({{ $i->id }})" class="link-arrow">Ubah</button></td>
+                            <td class="pr-5 text-right">@if ($canEdit)<button type="button" wire:click="editItem({{ $i->id }})" class="link-arrow">Ubah</button>@endif</td>
                         </tr>
                     @empty
                         <tr><td colspan="{{ 6 + $branches->count() }}" class="py-12 text-center text-muted">Belum ada barang. Tambahkan obat, bahan, atau alat.</td></tr>
@@ -84,8 +84,8 @@
                                 {{ $p->items->map(fn ($l) => $l->item->name.' ×'.$l->quantity)->implode(', ') }}
                             </p>
                             <div class="mt-2 flex gap-4 text-xs">
-                                <button type="button" wire:click="editPurchase({{ $p->id }})" class="font-semibold text-brand-600 hover:underline">Ubah</button>
-                                <button type="button" wire:click="askCancelPurchase({{ $p->id }})" class="text-rose-ink hover:underline">Batalkan</button>
+                                @if ($canEdit)<button type="button" wire:click="editPurchase({{ $p->id }})" class="font-semibold text-brand-600 hover:underline">Ubah</button>@endif
+                                @if ($canEdit)<button type="button" wire:click="askCancelPurchase({{ $p->id }})" class="text-rose-ink hover:underline">Batalkan</button>@endif
                             </div>
                         </li>
                     @empty

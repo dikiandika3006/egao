@@ -1,6 +1,6 @@
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
-        <button type="button" wire:click="create" class="btn-primary">+ &nbsp;Catat pengeluaran</button>
+        @if ($canEdit)<button type="button" wire:click="create" class="btn-primary">+ &nbsp;Catat pengeluaran</button>@endif
     </x-page-header>
 
     <div class="mt-7 flex flex-wrap items-center justify-between gap-3">
@@ -33,7 +33,7 @@
                         </div>
                         <p class="font-semibold">@rupiah($e->amount)</p>
                         @unless ($e->category->is_system)
-                            <button type="button" wire:click="edit({{ $e->id }})" class="text-xs text-brand-600 hover:underline">Ubah</button>
+                            @if ($canEdit)<button type="button" wire:click="edit({{ $e->id }})" class="text-xs text-brand-600 hover:underline">Ubah</button>@endif
                         @endunless
                     </li>
                 @empty
@@ -101,7 +101,7 @@
                 </div>
                 <div class="flex flex-wrap justify-between gap-2 sm:col-span-2">
                     @if ($editingId)
-                        <button type="button" wire:click="delete({{ $editingId }})" wire:confirm="Hapus pengeluaran ini?" class="btn-ghost text-rose-ink">Hapus</button>
+                        @if ($canEdit)<button type="button" wire:click="delete({{ $editingId }})" wire:confirm="Hapus pengeluaran ini?" class="btn-ghost text-rose-ink">Hapus</button>@endif
                     @else
                         <span></span>
                     @endif

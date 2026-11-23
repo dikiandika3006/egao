@@ -24,6 +24,11 @@ class Pasien extends Component
 {
     use ModulePage, WithFileUploads, WithPagination;
 
+    public const MENU = 'pasien';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['open', 'close', 'closeForm', 'closeImport', 'toggleReveal', 'downloadImportReport'];
+
     #[Url(as: 'q', except: '')]
     public string $search = '';
 
@@ -54,7 +59,7 @@ class Pasien extends Component
 
     public function mount(): void
     {
-        if (request()->boolean('baru') && app(BranchContext::class)->is(Role::Admin, Role::Owner)) {
+        if (request()->boolean('baru') && app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu()) {
             $this->create();
         }
     }
@@ -81,10 +86,10 @@ class Pasien extends Component
         $this->selected = null;
     }
 
-    /** Mendaftarkan & mengubah data pasien hanya Admin dan Owner. */
+    /** Mendaftarkan & mengubah data pasien: Admin, Asisten, Owner yang punya izin Edit Data pasien. */
     private function authorizeWrite(): void
     {
-        abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Owner), 403);
+        abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(), 403);
     }
 
     /** Impor massal pasien hanya Owner. */
@@ -300,7 +305,7 @@ class Pasien extends Component
             'patients' => $patients,
             'detail' => $detail,
             'history' => $history,
-            'canRegister' => $context->is(Role::Admin, Role::Owner),
+            'canRegister' => $context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(),
             'canImport' => $context->is(Role::Owner),
         ]);
     }

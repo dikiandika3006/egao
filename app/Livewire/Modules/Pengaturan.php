@@ -13,6 +13,7 @@ use App\Models\ExpenseCategory;
 use App\Models\Procedure;
 use App\Models\User;
 use App\Services\ProcedureImportService;
+use App\Support\Access;
 use App\Support\BranchContext;
 use App\Support\Navigation;
 use App\Support\Settings;
@@ -35,6 +36,30 @@ use Livewire\WithPagination;
 class Pengaturan extends Component
 {
     use ModulePage, WithFileUploads, WithPagination;
+
+    public const MENU = 'pengaturan';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['setTab', 'closeForm'];
+
+    /** Aksi per menu pintasan Master data; aksi lain = pengaturan program (khusus Owner). */
+    private const ACTION_MENUS = [
+        'editProcedure' => 'tindakan', 'saveProcedure' => 'tindakan', 'openProcedureImport' => 'tindakan', 'importProcedures' => 'tindakan',
+        'editCategory' => 'kategori-pengeluaran', 'saveCategory' => 'kategori-pengeluaran', 'deleteCategory' => 'kategori-pengeluaran',
+        'saveShares' => 'tarif-gaji', 'addSpecial' => 'tarif-gaji', 'removeSpecial' => 'tarif-gaji',
+    ];
+
+    /** Matriks tab Hak akses peran: [role][menu] => ['lihat' => bool, 'edit' => bool, 'keuangan' => bool]. */
+    public array $access = [];
+
+    protected function menuKey(?string $method = null): string
+    {
+        if ($method !== null) {
+            return self::ACTION_MENUS[$method] ?? 'pengaturan';
+        }
+
+        return self::MASTER_TABS[$this->tab] ?? 'pengaturan';
+    }
 
     /** Formulir tab Aplikasi (khusus Owner). */
     public array $app = [];
@@ -72,16 +97,18 @@ class Pengaturan extends Component
 
     public array $importResult = [];
 
-    /** Tab yang tersedia per peran. Admin hanya master operasional. */
+    /** Pencarian daftar tindakan (kode, nama, kategori). */
+    #[Url(as: 'q', except: '')]
+    public string $procedureSearch = '';
+
+    /** Tab yang tersedia: tab program khusus Owner; tab master sesuai izin Lihat menu pintasannya (Hak akses peran). */
     private function tabs(BranchContext $context): array
     {
-        $tabs = ['tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran'];
+        $tabs = $context->is(Role::Owner)
+            ? ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Gaji & bagi hasil', 'tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran', 'satusehat' => 'SATUSEHAT', 'google-calendar' => 'Google Calendar', 'pengguna' => 'Pengguna & peran', 'hak-akses' => 'Hak akses peran', 'audit' => 'Jejak audit']
+            : ['bagi-hasil' => 'Gaji & bagi hasil', 'tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran'];
 
-        if ($context->is(Role::Owner)) {
-            $tabs = ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Gaji & bagi hasil'] + $tabs + ['satusehat' => 'SATUSEHAT', 'google-calendar' => 'Google Calendar', 'pengguna' => 'Pengguna & peran', 'audit' => 'Jejak audit'];
-        }
-
-        return $tabs;
+        return array_filter($tabs, fn ($k) => ! isset(self::MASTER_TABS[$k]) || Access::can(self::MASTER_TABS[$k], 'lihat'), ARRAY_FILTER_USE_KEY);
     }
 
     private function isOwner(): bool
@@ -94,6 +121,11 @@ class Pengaturan extends Component
         abort_unless(array_key_exists($tab, $this->tabs(app(BranchContext::class))), 403);
         $this->tab = $tab;
         $this->closeForm();
+        $this->resetPage();
+    }
+
+    public function updatedProcedureSearch(): void
+    {
         $this->resetPage();
     }
 
@@ -141,7 +173,7 @@ class Pengaturan extends Component
 
     public function saveShares(): void
     {
-        abort_unless($this->isOwner(), 403);
+        abort_unless(Access::can('tarif-gaji', 'edit'), 403);
         // Terima koma desimal ("12,5").
         $this->shares['global'] = static::normalizePct($this->shares['global'] ?? null);
         foreach ($this->shares['doctors'] ?? [] as $id => $row) {
@@ -199,7 +231,7 @@ class Pengaturan extends Component
 
     public function addSpecial(): void
     {
-        abort_unless($this->isOwner(), 403);
+        abort_unless(Access::can('tarif-gaji', 'edit'), 403);
         $this->special['share_percent'] = static::normalizePct($this->special['share_percent']);
 
         $v = $this->validate([
@@ -220,7 +252,7 @@ class Pengaturan extends Component
 
     public function removeSpecial(int $id): void
     {
-        abort_unless($this->isOwner(), 403);
+        abort_unless(Access::can('tarif-gaji', 'edit'), 403);
         $row = DoctorProcedureShare::whereHas('doctor', fn ($q) => $q->where('clinic_id', $this->clinicId()))->findOrFail($id);
         AuditLog::record('settings.shares.special.deleted', $row, $row->only(['doctor_id', 'procedure_id', 'share_percent']));
         $row->delete();
@@ -533,7 +565,7 @@ class Pengaturan extends Component
 
     private function authorizeProcedureImport(): void
     {
-        abort_unless(app(BranchContext::class)->is(Role::Owner, Role::Admin), 403);
+        abort_unless(Access::can('tindakan', 'edit'), 403);
     }
 
     public function openProcedureImport(): void
@@ -687,13 +719,31 @@ class Pengaturan extends Component
         $this->toast('Kategori dihapus.');
     }
 
+    // ---- Hak akses peran (Owner) ------------------------------------------------------
+
+    public function saveAccess(): void
+    {
+        abort_unless($this->isOwner(), 403);
+        Access::save($this->access);
+        $this->access = Access::matrix();
+        $this->toast('Hak akses peran disimpan.');
+    }
+
+    public function resetAccess(): void
+    {
+        abort_unless($this->isOwner(), 403);
+        Access::reset();
+        $this->access = Access::matrix();
+        $this->toast('Hak akses dikembalikan ke bawaan.');
+    }
+
     public function render(BranchContext $context)
     {
         $tabs = $this->tabs($context);
         $shownTabs = array_diff_key($tabs, self::MASTER_TABS);
         if (! array_key_exists($this->tab, $tabs)) {
             // Admin tidak punya tab program → jatuh ke tab master pertama (Tindakan & tarif).
-            $this->tab = array_key_first($shownTabs) ?? array_key_first($tabs);
+            $this->tab = array_key_first($shownTabs) ?? array_key_first($tabs) ?? '';
         }
         $masterKey = self::MASTER_TABS[$this->tab] ?? null;
 
@@ -702,6 +752,9 @@ class Pengaturan extends Component
         }
         if ($this->tab === 'bagi-hasil' && $this->shares === []) {
             $this->loadShares();
+        }
+        if ($this->tab === 'hak-akses' && $this->access === []) {
+            $this->access = Access::matrix();
         }
 
         $branches = $this->branches();
@@ -716,7 +769,20 @@ class Pengaturan extends Component
                     ->with(['doctor', 'procedure'])->get()->sortBy(fn ($s) => $s->doctor->name.$s->procedure->name)->values(),
             ],
             'aplikasi' => ['clinic' => Clinic::findOrFail($this->clinicId()), 'methods' => Payment::METHODS, 'pendingMigrations' => $this->pendingMigrations()],
-            'tindakan' => ['procedures' => Procedure::where('clinic_id', $this->clinicId())->with('prices')->orderByDesc('is_active')->orderBy('category')->orderBy('name')->get()],
+            'tindakan' => [
+                'procedures' => Procedure::where('clinic_id', $this->clinicId())
+                    ->when(trim($this->procedureSearch) !== '', function ($q) {
+                        $term = '%'.addcslashes(trim($this->procedureSearch), '%_\\').'%';
+                        $q->where(fn ($w) => $w->where('code', 'like', $term)->orWhere('name', 'like', $term)->orWhere('category', 'like', $term));
+                    })
+                    ->with('prices')->orderByDesc('is_active')->orderBy('category')->orderBy('name')
+                    ->paginate(25),
+                // Pilihan "dasar fee ikut tindakan" di formulir butuh semua tindakan, bukan hanya halaman aktif.
+                'procedureOptions' => $this->form === 'procedure'
+                    ? Procedure::where('clinic_id', $this->clinicId())->orderBy('name')->get(['id', 'name'])
+                    : collect(),
+            ],
+            'hak-akses' => ['accessRoles' => Access::roles(), 'accessMenus' => Access::menus()],
             'pengguna' => ['users' => User::where('clinic_id', $this->clinicId())->with('branches')->orderBy('name')->get()],
             'kategori' => ['categories' => ExpenseCategory::where('clinic_id', $this->clinicId())->withCount('expenses')->orderBy('is_system')->orderBy('name')->get()],
             'audit' => ['logs' => AuditLog::query()

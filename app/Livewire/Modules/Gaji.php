@@ -29,6 +29,11 @@ class Gaji extends Component
 {
     use ModulePage;
 
+    public const MENU = 'gaji';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['shiftMonth', 'setTab', 'toggle'];
+
     #[Url(as: 'bulan', except: '')]
     public string $month = '';
 

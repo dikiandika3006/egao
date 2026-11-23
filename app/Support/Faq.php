@@ -163,7 +163,7 @@ class Faq
         [
             'group' => 'Dokter & jadwal',
             'q' => 'Dokter sudah tidak praktik, apakah dihapus?',
-            'a' => 'Jangan dihapus agar riwayat pasien dan gaji tetap utuh. Buka Data dokter › Ubah, lalu hilangkan centang "Dokter masih aktif praktik". Dokter nonaktif bisa dilihat lewat filter Nonaktif.',
+            'a' => 'Dokter yang sudah punya data (kunjungan, rekam medis, tagihan, janji temu, order lab, atau gaji) tidak bisa dihapus agar riwayat pasien dan gaji tetap utuh: buka Data dokter › Ubah, lalu hilangkan centang "Dokter masih aktif praktik". Dokter nonaktif tidak muncul di Jadwal dokter, antrean, dan janji temu, dan tidak bisa dijadwalkan atau dipilih sebagai pengganti; datanya tetap bisa dilihat lewat filter Nonaktif. Tombol Hapus hanya muncul untuk dokter yang belum pernah punya transaksi sama sekali (mis. salah input); jadwal dan tarif khususnya ikut terhapus dan penghapusan dicatat di jejak audit.',
             'where' => 'Data dokter',
             'roles' => 'Owner, Admin',
             'tags' => 'nonaktif keluar resign hapus dokter',
@@ -225,6 +225,30 @@ class Faq
             'where' => 'Data pasien',
             'roles' => 'Owner',
             'tags' => 'impor import excel xlsx assist.id upload unggah pasien massal',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Mengatur menu apa saja yang boleh dibuka tiap peran',
+            'a' => 'Buka Pengaturan › tab "Hak akses peran". Tabel berisi semua menu dengan blok warna untuk tiap peran (Admin, Asisten, Dokter). Lihat = menu tampil dan halaman bisa dibuka. Edit = boleh menambah/mengubah data (bila mati, tombol ubah hilang dan aksi tulis ditolak). Keuangan = angka rupiah tampil (bila mati tertulis Rp•••); Kasir, Laporan, Pengeluaran, dan Tarif gaji seluruhnya angka uang sehingga ikut izin Lihat. Mematikan Lihat otomatis mematikan Edit & Keuangan. Tekan "Simpan hak akses"; "Kembalikan bawaan" memulihkan pengaturan awal. Owner selalu akses penuh dan tidak bisa dibatasi. Setiap perubahan tercatat di Jejak audit.',
+            'where' => 'Pengaturan › Hak akses peran',
+            'roles' => 'Owner',
+            'tags' => 'hak akses peran role izin menu lihat edit keuangan sembunyikan laporan gaji admin asisten dokter permission',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Peran Asisten bisa apa saja?',
+            'a' => 'Bawaan Asisten: Dashboard (tanpa angka pendapatan), Antrean dan Janji temu (boleh mendaftarkan & mengubah), Data pasien, Rekam medis, dan Jadwal dokter (hanya lihat). Kasir, laporan, stok, dan menu keuangan lain tertutup. Semua bisa diubah Owner di Pengaturan › Hak akses peran. Buat akunnya di Pengaturan › Pengguna & peran dengan peran Asisten dan pilih cabangnya.',
+            'where' => 'Pengaturan › Pengguna & peran',
+            'roles' => 'Owner',
+            'tags' => 'asisten perawat peran role akun baru pengguna',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Dokter yang juga Owner: perannya apa?',
+            'a' => 'Cukup satu akun dengan dua peran: Owner dan Dokter. Hubungkan di Data dokter › ubah dokter › Akun login (pilih akun Owner yang sudah ada); peran Dokter otomatis ditambahkan tanpa menghapus Owner. Saat login pilih peran: Owner untuk mengelola semua cabang dan keuangan, Dokter untuk memeriksa pasien sebagai dokter penanggung jawab (filter "pasien saya", diagnosis favorit). Ganti peran kapan saja dari pemilih cabang di atas.',
+            'where' => 'Data dokter › Akun login',
+            'roles' => 'Owner',
+            'tags' => 'dokter owner pemilik dua peran akun login ganti peran',
         ],
         [
             'group' => 'Akun & pengaturan',
@@ -353,7 +377,7 @@ class Faq
         [
             'group' => 'Kasir & pembayaran',
             'q' => 'Di mana mengubah tarif tindakan?',
-            'a' => 'Menu Master data › Tindakan & tarif. Tarif bisa berbeda per cabang. Perubahan tarif hanya berlaku untuk tindakan baru, bukan tagihan yang sudah ada.',
+            'a' => 'Menu Master data › Tindakan & tarif. Tarif bisa berbeda per cabang. Perubahan tarif hanya berlaku untuk tindakan baru, bukan tagihan yang sudah ada. Pakai kolom cari di atas tabel untuk menemukan tindakan berdasarkan kode, nama, atau kategori; daftar ditampilkan 25 per halaman.',
             'where' => 'Master data › Tindakan & tarif',
             'roles' => 'Owner, Admin',
             'tags' => 'tarif harga tindakan biaya layanan',

@@ -39,9 +39,17 @@
                     @endforeach
                 </tr>
             </thead>
-            <tbody>
-                @forelse ($grid as $row)
-                    <tr wire:key="d-{{ $row['doctor']->id }}" class="border-b border-line last:border-0">
+            {{-- Satu <tbody> per blok cabang: Batu di atas, dokter dua cabang di perbatasan, lalu Malang. --}}
+            @forelse ($groups as $g => $group)
+            <tbody wire:key="g-{{ $g }}-{{ $group['branch']?->id ?? $group['label'] }}">
+                <tr class="border-b border-line bg-canvas/50">
+                    <td colspan="8" class="py-2 pl-5">
+                        <span @class(['pill text-[11px] font-semibold', $group['branch']?->badgeClass() ?? 'bg-mist text-brand-600'])>{{ $group['label'] }}</span>
+                        <span class="ml-2 text-[11px] text-muted">{{ $group['rows']->count() }} dokter</span>
+                    </td>
+                </tr>
+                @foreach ($group['rows'] as $row)
+                    <tr wire:key="d-{{ $row['doctor']->id }}" class="border-b border-line">
                         <td class="py-3 pl-5">
                             <p class="font-semibold">{{ $row['doctor']->name }}</p>
                             <p class="mt-0.5 text-[11px] text-muted">Utama: {{ $row['doctor']->primaryBranch?->shortName() ?? '—' }}</p>
@@ -73,10 +81,13 @@
                             </td>
                         @endforeach
                     </tr>
-                @empty
-                    <tr><td colspan="8" class="py-12 text-center text-muted">Belum ada dokter aktif.</td></tr>
-                @endforelse
+                @endforeach
             </tbody>
+            @empty
+            <tbody>
+                <tr><td colspan="8" class="py-12 text-center text-muted">Belum ada dokter aktif.</td></tr>
+            </tbody>
+            @endforelse
             <tfoot class="bg-canvas/70 text-[11px] text-muted">
                 <tr>
                     <td class="py-3 pl-5">Dokter per cabang</td>
@@ -99,7 +110,7 @@
     <section class="card mt-6 p-5 lg:p-6">
         <h2 class="text-lg font-semibold">Jadwal rutin mingguan</h2>
         <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            @foreach ($doctors as $doctor)
+            @foreach (collect($groups)->flatMap(fn ($g) => $g['rows'])->pluck('doctor')->unique('id') as $doctor)
                 <div wire:key="r-{{ $doctor->id }}" class="rounded-xl bg-mist p-4">
                     <div class="flex items-center justify-between">
                         <p class="font-semibold">{{ $doctor->name }}</p>

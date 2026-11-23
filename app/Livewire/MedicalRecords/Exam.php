@@ -22,6 +22,15 @@ use Livewire\Component;
  */
 class Exam extends Component
 {
+    /** Hak akses: menu Rekam medis. Method di luar READ_ACTIONS butuh izin Edit (hook di AppServiceProvider). */
+    public const MENU = 'rekam-medis';
+
+    public const READ_ACTIONS = [
+        'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
+        'drugOptions', 'drugTotal', 'standardPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
+        'editable', 'selectTooth',
+    ];
+
     public const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
 
     public const LOWER_ADULT = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
@@ -567,6 +576,7 @@ class Exam extends Component
 
     public function render(BranchContext $context)
     {
+        Format::mask(! \App\Support\Access::can('rekam-medis', 'keuangan'));
         $visit = $this->visit;
 
         return view('livewire.medical-records.exam', [

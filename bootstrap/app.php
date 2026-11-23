@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'branch' => \App\Http\Middleware\EnsureBranchSelected::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
+            'menu' => \App\Http\Middleware\EnsureMenuAccess::class,
         ]);
         $middleware->web(append: [\App\Http\Middleware\EnforceIdleTimeout::class]);
         $middleware->redirectGuestsTo(fn () => route('login'));

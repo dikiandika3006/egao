@@ -19,6 +19,11 @@ class Laporan extends Component
 {
     use ModulePage;
 
+    public const MENU = 'laporan';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['preset', 'setTab', 'filterCategory', 'export'];
+
     #[Url(as: 'dari', except: '')]
     public string $from = '';
 

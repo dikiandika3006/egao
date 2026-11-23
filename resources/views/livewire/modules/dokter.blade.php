@@ -1,6 +1,6 @@
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
-        <button type="button" wire:click="create" class="btn-primary">+ &nbsp;Tambah dokter</button>
+        @if ($canEdit)<button type="button" wire:click="create" class="btn-primary">+ &nbsp;Tambah dokter</button>@endif
     </x-page-header>
 
     <div class="mt-7 flex flex-wrap items-center gap-3">
@@ -61,7 +61,8 @@
                                 </span>
                             </td>
                             <td class="pr-[22px] text-right">
-                                <button type="button" wire:click="edit({{ $doctor->id }})" class="link-arrow">Ubah</button>
+                                @if ($canEdit)<button type="button" wire:click="edit({{ $doctor->id }})" class="link-arrow">Ubah</button>@endif
+                                @if ($canEdit && in_array($doctor->id, $deletable, true))<button type="button" wire:click="deleteDoctor({{ $doctor->id }})" wire:confirm="Hapus permanen {{ $doctor->name }}? Dokter ini belum punya transaksi; jadwalnya ikut terhapus." class="link-arrow ml-3 text-rose-ink">Hapus</button>@endif
                             </td>
                         </tr>
                     @empty
@@ -87,7 +88,8 @@
                         <span @class(['pill', 'bg-leaf-100 text-brand-600' => $doctor->is_active, 'bg-mist text-muted' => ! $doctor->is_active])>
                             {{ $doctor->is_active ? 'Aktif' : 'Nonaktif' }}
                         </span>
-                        <button type="button" wire:click="edit({{ $doctor->id }})" class="link-arrow">Ubah</button>
+                        @if ($canEdit)<button type="button" wire:click="edit({{ $doctor->id }})" class="link-arrow">Ubah</button>@endif
+                        @if ($canEdit && in_array($doctor->id, $deletable, true))<button type="button" wire:click="deleteDoctor({{ $doctor->id }})" wire:confirm="Hapus permanen {{ $doctor->name }}? Dokter ini belum punya transaksi; jadwalnya ikut terhapus." class="link-arrow text-rose-ink">Hapus</button>@endif
                     </div>
                 </li>
             @empty

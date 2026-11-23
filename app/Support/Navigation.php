@@ -177,10 +177,15 @@ class Navigation
     /** Tab bawaan modul yang punya pintasan (sama dengan default properti $tab di komponennya). */
     private const DEFAULT_TABS = ['stok' => 'barang'];
 
-    /** "role:owner,admin" untuk route modul. */
+    /**
+     * Middleware route modul: "menu:<key>" memeriksa izin Lihat (Access).
+     * 'roles' pada item = peran bawaan sebelum hak akses bisa diatur di Pengaturan › Hak akses peran.
+     */
     public static function roleMiddleware(string $key): string
     {
-        return 'role:'.implode(',', array_map(fn (Role $r) => $r->value, static::item($key)['roles']));
+        static::item($key);
+
+        return 'menu:'.$key;
     }
 
     /** Menu yang terlihat untuk peran aktif. */
@@ -188,7 +193,10 @@ class Navigation
     {
         return array_filter(
             static::items(),
-            fn (array $i) => $role && in_array($role, $i['menu_roles'] ?? $i['roles'], true) && (! $group || $i['group'] === $group),
+            fn (array $i, string $key) => $role
+                && (isset($i['menu_roles']) ? in_array($role, $i['menu_roles'], true) : Access::can($key, 'lihat', $role))
+                && (! $group || $i['group'] === $group),
+            ARRAY_FILTER_USE_BOTH,
         );
     }
 
@@ -212,6 +220,8 @@ class Navigation
             ];
         }
 
-        return [...$base, ['label' => 'Pasien', 'route' => 'pasien', 'active' => ['pasien']]];
+        return Access::can('pasien', 'lihat', $role)
+            ? [...$base, ['label' => 'Pasien', 'route' => 'pasien', 'active' => ['pasien']]]
+            : $base;
     }
 }

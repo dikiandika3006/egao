@@ -19,6 +19,11 @@ class Tentang extends Component
 {
     use ModulePage;
 
+    public const MENU = 'tentang';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['setTab'];
+
     public const TABS = ['aplikasi' => 'Tentang & aturan', 'panduan' => 'Panduan & FAQ'];
 
     #[Url(except: 'aplikasi')]

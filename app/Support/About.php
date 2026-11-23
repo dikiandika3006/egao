@@ -19,6 +19,7 @@ class About
                 'Tanggal lahir, tempat lahir, dan telepon pasien boleh kosong (data lama); umur tampil "umur –".',
                 'Telepon dan NIK selalu disamarkan. Membuka data lengkap tercatat di jejak audit.',
                 'Pengguna hanya melihat data cabang yang menjadi aksesnya. Pilihan "Semua cabang" hanya untuk Owner.',
+                'Peran: Owner, Admin, Asisten, Dokter. Menu yang boleh dibuka, diubah, dan angka keuangannya diatur Owner per peran di Pengaturan › Hak akses peran; Owner selalu akses penuh.',
             ],
         ],
         [
@@ -32,7 +33,7 @@ class About
         [
             'title' => 'Rekam medis',
             'rules' => [
-                'Pemeriksaan diisi dokter kunjungan, atau Admin/Owner atas nama dokter tersebut di cabang aksesnya (penginput tercatat). Dokter lain hanya membaca.',
+                'Pemeriksaan diisi dokter kunjungan, atau Admin/Asisten/Owner (yang punya izin Edit Rekam medis) atas nama dokter tersebut di cabang aksesnya (penginput tercatat). Dokter lain hanya membaca.',
                 'Tindakan yang dicatat dokter otomatis menjadi rincian tagihan di kasir, dengan harga sesuai tarif cabang saat itu.',
                 'Pasien beralergi wajib dikonfirmasi alerginya sebelum dikirim ke kasir.',
                 'Rekam medis tidak dihapus. Koreksi menjadi versi baru, versi lama tetap tersimpan.',
@@ -110,6 +111,10 @@ class About
         [
             'date' => '23 November 2026',
             'changes' => [
+                'Data dokter: tombol Hapus untuk dokter yang belum pernah punya transaksi (kunjungan, rekam medis, tagihan, janji temu, order lab, gaji); dokter yang sudah punya data tetap hanya bisa dinonaktifkan. Dokter nonaktif ditolak di server saat dijadwalkan atau dipilih sebagai pengganti.',
+                'Jadwal dokter: kisi mingguan dikelompokkan per cabang — Batu di atas, dokter yang praktik di dua cabang di tengah, Malang di bawah. Dokter tanpa jadwal tetap di blok cabang utamanya, di bagian bawah.',
+                'Peran baru Asisten dan Pengaturan › Hak akses peran (Owner): atur per menu untuk Admin, Asisten, dan Dokter apakah boleh Lihat, Edit, dan melihat angka Keuangan (bila tidak, rupiah tampil Rp•••). Bawaan sama dengan sebelumnya; Owner selalu akses penuh. Izin dicek di server dan perubahan tercatat di jejak audit.',
+                'Master data › Tindakan & tarif kini punya kolom cari (kode, nama, kategori) dan halaman (25 tindakan per halaman).',
                 'Logo baru Egao Dental Care 2024 dipasang di sidebar, halaman masuk, ikon aplikasi (PWA/favicon), dan logo bawaan kwitansi. Warna aksen hijau & kuning disesuaikan dengan logo.',
                 'Pengaturan kini hanya berisi pengaturan program (Klinik & cabang, Aplikasi, SATUSEHAT, Google Calendar, Pengguna & peran, Jejak audit). Tindakan & tarif, Kategori pengeluaran, dan Tarif gaji & bagi hasil (baru, khusus Owner) dibuka dari menu Master data. Menu Pengaturan tidak lagi tampil untuk Admin.',
                 'Fee bertahap gigi palsu & behel (Owner, di Tindakan & tarif): dasar fee bisa ikut pembayaran tindakan tahap awal pasien (mis. Insersi ← Cetak, Pasang behel ← Cetak behel) dan biaya lab pasien dipotong saat tindakan akhir lunas. Rincian gaji & slip menampilkan "+ tahap awal (cetak/DP)".',

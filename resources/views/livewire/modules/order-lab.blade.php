@@ -2,7 +2,7 @@
 
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
-        <button type="button" wire:click="create" class="btn-primary">+ Order lab</button>
+        @if ($canEdit)<button type="button" wire:click="create" class="btn-primary">+ Order lab</button>@endif
     </x-page-header>
     <x-error for="form.lab_name" />
 
@@ -50,18 +50,18 @@
                         <div class="mt-3 flex flex-wrap items-center gap-2">
                             <span class="pill {{ $o->statusClass() }}">{{ $o->statusLabel() }}</span>
                             @if ($o->status === 'dikirim')
-                                <button type="button" wire:click="setStatus({{ $o->id }}, 'diterima')" class="btn-ghost min-h-9 px-3 text-xs">Sudah diterima dari lab</button>
+                                @if ($canEdit)<button type="button" wire:click="setStatus({{ $o->id }}, 'diterima')" class="btn-ghost min-h-9 px-3 text-xs">Sudah diterima dari lab</button>@endif
                             @elseif ($o->status === 'diterima')
-                                <button type="button" wire:click="setStatus({{ $o->id }}, 'dipasang')" class="btn-ghost min-h-9 px-3 text-xs">Sudah dipasang</button>
+                                @if ($canEdit)<button type="button" wire:click="setStatus({{ $o->id }}, 'dipasang')" class="btn-ghost min-h-9 px-3 text-xs">Sudah dipasang</button>@endif
                             @endif
                             @if (! $o->paid_at && $o->status !== 'batal')
-                                <button type="button" wire:click="markPaid({{ $o->id }})" wire:confirm="Catat pembayaran @rupiah($o->cost) ke {{ $o->lab_name }}? Akan masuk ke Pengeluaran (Lab gigi) hari ini." class="btn-soft min-h-9 px-3 text-xs">Bayar ke lab</button>
+                                @if ($canEdit)<button type="button" wire:click="markPaid({{ $o->id }})" wire:confirm="Catat pembayaran @rupiah($o->cost) ke {{ $o->lab_name }}? Akan masuk ke Pengeluaran (Lab gigi) hari ini." class="btn-soft min-h-9 px-3 text-xs">Bayar ke lab</button>@endif
                             @elseif ($o->paid_at)
-                                <button type="button" wire:click="unmarkPaid({{ $o->id }})" wire:confirm="Batalkan catatan pembayaran? Pengeluaran terkait akan dihapus." class="min-h-9 px-2 text-xs text-muted hover:text-rose-ink">Batalkan bayar</button>
+                                @if ($canEdit)<button type="button" wire:click="unmarkPaid({{ $o->id }})" wire:confirm="Batalkan catatan pembayaran? Pengeluaran terkait akan dihapus." class="min-h-9 px-2 text-xs text-muted hover:text-rose-ink">Batalkan bayar</button>@endif
                             @endif
-                            <button type="button" wire:click="edit({{ $o->id }})" class="min-h-9 px-2 text-xs text-brand-600 hover:underline">Ubah</button>
+                            @if ($canEdit)<button type="button" wire:click="edit({{ $o->id }})" class="min-h-9 px-2 text-xs text-brand-600 hover:underline">Ubah</button>@endif
                             @if (in_array($o->status, ['dikirim', 'diterima'], true) && ! $o->paid_at)
-                                <button type="button" wire:click="setStatus({{ $o->id }}, 'batal')" wire:confirm="Batalkan order ini?" class="min-h-9 px-2 text-xs text-muted hover:text-rose-ink">Batal</button>
+                                @if ($canEdit)<button type="button" wire:click="setStatus({{ $o->id }}, 'batal')" wire:confirm="Batalkan order ini?" class="min-h-9 px-2 text-xs text-muted hover:text-rose-ink">Batal</button>@endif
                             @endif
                         </div>
                     </li>

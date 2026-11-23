@@ -215,7 +215,7 @@
                                 <span><b>{{ $s->doctor->name }}</b> · {{ $s->procedure->name }}</span>
                                 <span class="flex items-center gap-4">
                                     <b>{{ rtrim(rtrim(number_format((float) $s->share_percent, 2, ',', '.'), '0'), ',') }}%</b>
-                                    <button type="button" wire:click="removeSpecial({{ $s->id }})" wire:confirm="Hapus tarif khusus ini?" class="text-xs text-rose-ink hover:underline">Hapus</button>
+                                    @if ($canEdit)<button type="button" wire:click="removeSpecial({{ $s->id }})" wire:confirm="Hapus tarif khusus ini?" class="text-xs text-rose-ink hover:underline">Hapus</button>@endif
                                 </span>
                             </li>
                         @empty
@@ -320,9 +320,10 @@
                 @break
 
             @case('tindakan')
-                <div class="mb-4 flex flex-wrap justify-end gap-2">
-                    <button type="button" wire:click="openProcedureImport" class="btn-soft">Impor Excel</button>
-                    <button type="button" wire:click="editProcedure" class="btn-primary">+ &nbsp;Tindakan</button>
+                <div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+                    <input type="search" wire:model.live.debounce.300ms="procedureSearch" class="input mr-auto w-full sm:max-w-sm" placeholder="Cari kode, nama, atau kategori tindakan…">
+                    @if ($canEdit)<button type="button" wire:click="openProcedureImport" class="btn-soft">Impor Excel</button>@endif
+                    @if ($canEdit)<button type="button" wire:click="editProcedure" class="btn-primary">+ &nbsp;Tindakan</button>@endif
                 </div>
                 <section class="card overflow-x-auto">
                     <table class="w-full min-w-[720px] text-left text-sm">
@@ -332,7 +333,7 @@
                                 <th class="text-right">Bagi hasil</th><th class="pr-5"></th></tr>
                         </thead>
                         <tbody>
-                            @foreach ($procedures as $p)
+                            @forelse ($procedures as $p)
                                 <tr wire:key="pr-{{ $p->id }}" @class(['border-b border-line last:border-0', 'opacity-50' => ! $p->is_active])>
                                     <td class="py-3 pl-5 font-mono text-[12px]">{{ $p->code }}</td>
                                     <td class="font-medium">{{ $p->name }}</td>
@@ -341,11 +342,14 @@
                                         <td class="text-right">{{ ($price = $p->priceFor($b->id)) !== null ? Format::rupiah($price) : '—' }}</td>
                                     @endforeach
                                     <td class="text-right text-[13px]">{{ $p->share_percent !== null ? rtrim(rtrim($p->share_percent, '0'), '.').'%' : 'Ikut dokter' }}</td>
-                                    <td class="pr-5 text-right"><button type="button" wire:click="editProcedure({{ $p->id }})" class="link-arrow">Ubah</button></td>
+                                    <td class="pr-5 text-right">@if ($canEdit)<button type="button" wire:click="editProcedure({{ $p->id }})" class="link-arrow">Ubah</button>@endif</td>
                                 </tr>
-                            @endforeach
+                            @empty
+                                <tr><td colspan="{{ 5 + $branches->count() }}" class="py-12 text-center text-muted">{{ $procedureSearch ? 'Tidak ada tindakan yang cocok.' : 'Belum ada tindakan.' }}</td></tr>
+                            @endforelse
                         </tbody>
                     </table>
+                    @if ($procedures->hasPages())<div class="border-t border-line p-4">{{ $procedures->links() }}</div>@endif
                 </section>
                 <p class="mt-3 text-xs text-muted">Perubahan tarif tidak mengubah tagihan yang sudah dibuat.</p>
                 @break
@@ -372,8 +376,84 @@
                 </section>
                 @break
 
+            @case('hak-akses')
+                <section class="card p-5 lg:p-6">
+                    <h2 class="font-semibold">Hak akses menu per peran</h2>
+                    <p class="mt-1 text-sm text-muted">
+                        <b>Lihat</b> = menu tampil & halaman bisa dibuka. <b>Edit</b> = boleh menambah/mengubah data. <b>Keuangan</b> = angka rupiah tampil (bila mati tertulis Rp•••).
+                        Owner selalu akses penuh. Satu akun bisa punya beberapa peran (atur di Pengguna & peran); izin mengikuti peran yang sedang dipilih saat login.
+                    </p>
+                </section>
+                @php
+                    // Tiap peran satu blok warna: Admin biru, Asisten kuning, Dokter hijau.
+                    $roleStyle = [
+                        'admin' => ['head' => 'bg-sky-soft text-sky-ink', 'cell' => 'bg-sky-soft/35', 'check' => 'accent-sky-ink'],
+                        'asisten' => ['head' => 'bg-amber-soft text-amber-ink', 'cell' => 'bg-amber-soft/40', 'check' => 'accent-amber-ink'],
+                        'dokter' => ['head' => 'bg-leaf-100 text-brand-600', 'cell' => 'bg-leaf-50/60', 'check' => 'accent-brand-600'],
+                    ];
+                    $menuGroups = collect($accessMenus)->groupBy(fn ($m) => $m['group'], preserveKeys: true)
+                        ->sortBy(fn ($rows, $g) => array_search($g, array_keys(\App\Support\Navigation::GROUPS)));
+                @endphp
+                <section class="card mt-4 overflow-x-auto">
+                    <table class="w-full min-w-[820px] border-separate border-spacing-0 text-left text-sm">
+                        <thead class="text-[10px] font-medium uppercase">
+                            <tr>
+                                <th class="bg-canvas/70 py-3 pl-5 text-muted" rowspan="2">Menu</th>
+                                @foreach ($accessRoles as $r)
+                                    <th colspan="3" class="border-l-8 border-white pt-3 pb-1 text-center text-[11px] font-semibold tracking-wide {{ $roleStyle[$r->value]['head'] ?? 'bg-mist' }}">{{ $r->label() }}</th>
+                                @endforeach
+                            </tr>
+                            <tr>
+                                @foreach ($accessRoles as $r)
+                                    @foreach (\App\Support\Access::ABILITIES as $label)
+                                        <th @class(['pb-2.5 text-center font-normal', $roleStyle[$r->value]['head'] ?? 'bg-mist', 'border-l-8 border-white' => $loop->first])>{{ $label }}</th>
+                                    @endforeach
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($menuGroups as $group => $rows)
+                                <tr wire:key="acc-g-{{ $group }}">
+                                    <td colspan="{{ 1 + 3 * count($accessRoles) }}" class="border-b border-line bg-canvas/70 px-5 pt-4 pb-1.5 text-[10px] font-semibold tracking-wide text-muted uppercase">
+                                        {{ \App\Support\Navigation::GROUPS[$group] ?? ucfirst($group) }}
+                                    </td>
+                                </tr>
+                                @foreach ($rows as $menuKey => $menu)
+                                    <tr wire:key="acc-{{ $menuKey }}">
+                                        <td class="border-b border-line py-2.5 pl-5 font-semibold">{{ $menu['label'] }}</td>
+                                        @foreach ($accessRoles as $r)
+                                            @php $p = $access[$r->value][$menuKey] ?? ['lihat' => false, 'edit' => false, 'keuangan' => false]; $st = $roleStyle[$r->value] ?? ['cell' => '', 'check' => 'accent-brand-600']; @endphp
+                                            @foreach (array_keys(\App\Support\Access::ABILITIES) as $ab)
+                                                <td @class(['border-b border-line text-center', $st['cell'], 'border-l-8 border-l-white' => $loop->first])>
+                                                    @if ($menuKey === 'dashboard' && $ab !== 'keuangan')
+                                                        <span class="text-[11px] text-muted" title="Dashboard adalah halaman awal; yang diatur hanya angka pendapatan.">selalu</span>
+                                                    @elseif ($ab === 'keuangan' && ! in_array($menuKey, \App\Support\Access::FINANCE_MENUS, true))
+                                                        <span class="text-[11px] text-muted" title="{{ in_array($menuKey, \App\Support\Access::MONEY_ONLY_MENUS, true) ? 'Isi menu ini seluruhnya angka uang: ikut izin Lihat.' : 'Menu ini tidak memuat angka uang.' }}">—</span>
+                                                    @elseif ($ab === 'lihat')
+                                                        <input type="checkbox" class="size-4 {{ $st['check'] }}" wire:model.live="access.{{ $r->value }}.{{ $menuKey }}.lihat"
+                                                            aria-label="{{ $r->label() }} Lihat {{ $menu['label'] }}">
+                                                    @else
+                                                        <input type="checkbox" class="size-4 disabled:opacity-30 {{ $st['check'] }}" wire:model="access.{{ $r->value }}.{{ $menuKey }}.{{ $ab }}"
+                                                            aria-label="{{ $r->label() }} {{ \App\Support\Access::ABILITIES[$ab] }} {{ $menu['label'] }}"
+                                                            @disabled($menuKey !== 'dashboard' && ! $p['lihat'])>
+                                                    @endif
+                                                </td>
+                                            @endforeach
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            @endforeach
+                        </tbody>
+                    </table>
+                </section>
+                <div class="mt-4 flex flex-wrap justify-end gap-2">
+                    <button type="button" wire:click="resetAccess" wire:confirm="Kembalikan semua hak akses ke bawaan?" class="btn-ghost">Kembalikan bawaan</button>
+                    <button type="button" wire:click="saveAccess" class="btn-primary">Simpan hak akses</button>
+                </div>
+                @break
+
             @case('kategori')
-                <div class="mb-4 flex justify-end"><button type="button" wire:click="editCategory" class="btn-primary">+ &nbsp;Kategori</button></div>
+                <div class="mb-4 flex justify-end">@if ($canEdit)<button type="button" wire:click="editCategory" class="btn-primary">+ &nbsp;Kategori</button>@endif</div>
                 <section class="card">
                     <ul class="divide-y divide-line">
                         @foreach ($categories as $c)
@@ -381,7 +461,7 @@
                                 <span>{{ $c->name }} <span class="text-xs text-muted">· {{ $c->expenses_count }} catatan</span>
                                     @if ($c->is_system)<span class="pill ml-1 bg-indigo-soft px-2 py-0.5 text-[10px] text-indigo-ink">Otomatis</span>@endif</span>
                                 @unless ($c->is_system)
-                                    <button type="button" wire:click="editCategory({{ $c->id }})" class="link-arrow">Ubah</button>
+                                    @if ($canEdit)<button type="button" wire:click="editCategory({{ $c->id }})" class="link-arrow">Ubah</button>@endif
                                 @endunless
                             </li>
                         @endforeach
@@ -494,7 +574,7 @@
                         <label class="label mt-2">Dasar fee ikut pembayaran tindakan</label>
                         <select wire:model="data.fee_from_procedure_id" class="input">
                             <option value="">— Tidak ada —</option>
-                            @foreach (($procedures ?? collect())->where('id', '!=', $editingId) as $opt)
+                            @foreach (($procedureOptions ?? collect())->where('id', '!=', $editingId) as $opt)
                                 <option value="{{ $opt->id }}">{{ $opt->name }}</option>
                             @endforeach
                         </select>
@@ -592,7 +672,7 @@
                 <div><label class="label">Nama kategori</label><input type="text" wire:model="data.name" class="input"><x-error for="data.name" /></div>
                 <div class="flex justify-between gap-2">
                     @if ($editingId)
-                        <button type="button" wire:click="deleteCategory({{ $editingId }})" wire:confirm="Hapus kategori ini?" class="btn-ghost text-rose-ink">Hapus</button>
+                        @if ($canEdit)<button type="button" wire:click="deleteCategory({{ $editingId }})" wire:confirm="Hapus kategori ini?" class="btn-ghost text-rose-ink">Hapus</button>@endif
                     @else <span></span> @endif
                     <button class="btn-primary">Simpan</button>
                 </div>

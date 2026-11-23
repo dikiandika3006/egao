@@ -4,9 +4,11 @@
 
 <div class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
+        @if ($canEdit)
         <button type="button" wire:click="post" wire:confirm="Catat gaji dokter & karyawan {{ $start->translatedFormat('F Y') }} ke pengeluaran? Catatan sebelumnya untuk bulan ini akan diganti." class="btn-primary" @disabled($start->isAfter(now()))>
             {{ $posted ? 'Perbarui di pengeluaran' : 'Catat ke pengeluaran' }}
         </button>
+        @endif
     </x-page-header>
 
     <div class="mt-7 flex flex-wrap items-center justify-between gap-3">
@@ -134,7 +136,7 @@
                     </div>
                 @endforeach
             </div>
-            <button type="button" wire:click="newEmployee" class="btn-soft">+ Tambah karyawan</button>
+            @if ($canEdit)<button type="button" wire:click="newEmployee" class="btn-soft">+ Tambah karyawan</button>@endif
         </div>
 
         <section class="card mt-6 overflow-x-auto">
@@ -170,7 +172,7 @@
                             <td @class(['text-right', 'text-rose-ink' => $adjNet < 0, 'text-muted' => $adjNet === 0])>{{ $adjNet < 0 ? '−' : ($adjNet > 0 ? '+' : '') }}@rupiah(abs($adjNet))</td>
                             <td class="text-right font-semibold">@rupiah($row['total'])</td>
                             <td class="pr-5 text-right whitespace-nowrap" wire:click.stop>
-                                <button type="button" wire:click="editEmployee({{ $e->id }})" class="link-arrow mr-3">Ubah</button>
+                                @if ($canEdit)<button type="button" wire:click="editEmployee({{ $e->id }})" class="link-arrow mr-3">Ubah</button>@endif
                                 <a href="{{ route('gaji.slip', ['type' => 'employee', 'id' => $e->id, 'bulan' => $start->format('Y-m')]) }}" target="_blank" class="link-arrow">PDF</a>
                             </td>
                         </tr>

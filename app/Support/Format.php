@@ -4,9 +4,26 @@ namespace App\Support;
 
 class Format
 {
+    /** Diset per halaman modul (ModulePage::page) bila peran tidak boleh melihat keuangan menu itu; berlaku untuk request ini saja. */
+    public static function mask(bool $masked): void
+    {
+        request()->attributes->set('money_masked', $masked);
+    }
+
+    public static function masked(): bool
+    {
+        return (bool) request()->attributes->get('money_masked', false);
+    }
+
+    public const MASK = 'Rp•••';
+
     /** Rp1.250.000 */
     public static function rupiah(int|float|null $amount): string
     {
+        if (static::masked()) {
+            return static::MASK;
+        }
+
         // Minus ditulis di depan: −Rp475.000 (bukan Rp-475.000).
         return ($amount < 0 ? '−' : '').'Rp'.number_format(abs((float) $amount), 0, ',', '.');
     }
@@ -14,6 +31,10 @@ class Format
     /** 2,1 (juta) */
     public static function juta(int|float|null $amount, int $decimals = 1): string
     {
+        if (static::masked()) {
+            return '•••';
+        }
+
         return number_format(((float) $amount) / 1_000_000, $decimals, ',', '.');
     }
 

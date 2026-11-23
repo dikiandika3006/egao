@@ -25,6 +25,11 @@ class OrderLab extends Component
 {
     use ModulePage, PicksBranch;
 
+    public const MENU = 'lab';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = [];
+
     #[Url(as: 'filter', except: 'aktif')]
     public string $filter = 'aktif'; // aktif | belum_bayar | semua
 

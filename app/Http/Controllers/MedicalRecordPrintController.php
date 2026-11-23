@@ -14,6 +14,7 @@ class MedicalRecordPrintController extends Controller
     public function __invoke(Visit $visit)
     {
         abort_unless($visit->patient()->value('clinic_id') === auth()->user()->clinic_id, 404);
+        \App\Support\Format::mask(! \App\Support\Access::can('rekam-medis', 'keuangan'));
 
         $visit->load([
             'patient.clinic', 'doctor', 'branch', 'medicalRecord',

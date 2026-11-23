@@ -10,6 +10,7 @@ use App\Models\Item;
 use App\Models\Purchase;
 use App\Models\StockMovement;
 use App\Services\StockService;
+use App\Support\Access;
 use App\Support\BranchContext;
 use App\Support\Report;
 use Carbon\Carbon;
@@ -26,6 +27,33 @@ use Maatwebsite\Excel\Facades\Excel;
 class Stok extends Component
 {
     use ModulePage, PicksBranch;
+
+    public const MENU = 'stok';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['setTab', 'export', 'cancelPurchaseEdit', 'closeCancelPurchase'];
+
+    /** Aksi master barang mengikuti izin menu "Master barang". */
+    private const ITEM_ACTIONS = ['newItem', 'editItem', 'saveItem'];
+
+    protected function menuKey(?string $method = null): string
+    {
+        if ($method !== null) {
+            return in_array($method, self::ITEM_ACTIONS, true) ? 'master-barang' : 'stok';
+        }
+
+        return $this->tab === 'barang' ? 'master-barang' : 'stok';
+    }
+
+    /** Tab barang ikut izin "Master barang", tab lain ikut izin "Stok obat & bahan". */
+    private function tabs(): array
+    {
+        return array_filter(
+            self::TABS,
+            fn ($k) => Access::can($k === 'barang' ? 'master-barang' : 'stok', 'lihat'),
+            ARRAY_FILTER_USE_KEY,
+        );
+    }
 
     public const TABS = ['barang' => 'Barang', 'pembelian' => 'Pembelian', 'pakai' => 'Pemakaian & opname', 'mutasi' => 'Mutasi stok', 'laporan' => 'Laporan jual-beli'];
 
@@ -75,7 +103,7 @@ class Stok extends Component
 
     public function setTab(string $tab): void
     {
-        abort_unless(array_key_exists($tab, self::TABS), 404);
+        abort_unless(array_key_exists($tab, $this->tabs()), 404);
         $this->tab = $tab;
         $this->resetErrorBag();
     }
@@ -337,6 +365,7 @@ class Stok extends Component
 
     public function export(BranchContext $context)
     {
+        abort_unless(Access::can('stok', 'lihat') && Access::can('stok', 'keuangan'), 403);
         $r = $this->report($context);
         $rows = $r['rows']->map(fn ($x) => [
             $x['item']->code, $x['item']->name, Item::CATEGORIES[$x['item']->category] ?? $x['item']->category, $x['item']->unit,
@@ -352,6 +381,11 @@ class Stok extends Component
 
     public function render(BranchContext $context)
     {
+        $tabs = $this->tabs();
+        if (! array_key_exists($this->tab, $tabs)) {
+            $this->tab = (string) array_key_first($tabs);
+        }
+
         $branchIds = $context->id() ? [$context->id()] : $context->options()->pluck('id')->all();
         $branches = $context->options()->whereIn('id', $branchIds)->keyBy('id');
 
@@ -372,7 +406,7 @@ class Stok extends Component
             'allItems' => $allItems,
             'lowCount' => $low->count(),
             'stockValue' => (int) $allItems->sum(fn (Item $i) => $i->stocks->sum(fn ($s) => max(0, $s->quantity) * $s->avg_cost)),
-            'tabs' => self::TABS,
+            'tabs' => $tabs,
         ];
 
         if ($this->tab === 'pembelian') {

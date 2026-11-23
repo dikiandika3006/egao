@@ -1,7 +1,7 @@
 @php use App\Models\Invoice; use App\Support\Format; @endphp
 <div wire:poll.30s class="mx-auto max-w-[1152px]">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
-        <button type="button" wire:click="openDirectSale" class="btn-soft">+ Penjualan langsung</button>
+        @if ($canEdit)<button type="button" wire:click="openDirectSale" class="btn-soft">+ Penjualan langsung</button>@endif
     </x-page-header>
 
     <div class="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">

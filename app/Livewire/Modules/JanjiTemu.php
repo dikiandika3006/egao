@@ -31,6 +31,11 @@ class JanjiTemu extends Component
 {
     use ModulePage, PicksBranch;
 
+    public const MENU = 'janji';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['shiftDay', 'goToday', 'setView', 'shiftMonth'];
+
     #[Url(as: 'tanggal', except: '')]
     public string $date = '';
 
@@ -82,7 +87,7 @@ class JanjiTemu extends Component
 
     private function canWrite(): bool
     {
-        return app(BranchContext::class)->is(Role::Admin, Role::Owner);
+        return app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu();
     }
 
     private function resetForm(): void

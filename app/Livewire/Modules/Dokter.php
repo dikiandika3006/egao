@@ -4,10 +4,18 @@ namespace App\Livewire\Modules;
 
 use App\Enums\Role;
 use App\Livewire\Concerns\ModulePage;
+use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\Doctor;
+use App\Models\GoogleCalendar;
+use App\Models\InvoiceItem;
+use App\Models\LabOrder;
+use App\Models\MedicalRecord;
+use App\Models\PayrollAdjustment;
+use App\Models\PayrollHour;
 use App\Models\User;
+use App\Models\Visit;
 use App\Services\GoogleCalendar\GoogleCalendarSync;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -23,6 +31,11 @@ use Livewire\Component;
 class Dokter extends Component
 {
     use ModulePage;
+
+    public const MENU = 'dokter';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['closeForm'];
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
@@ -156,6 +169,71 @@ class Dokter extends Component
         $this->closeForm();
     }
 
+    /**
+     * Data yang menandakan dokter sudah pernah dipakai (kunjungan, rekam medis, tagihan, janji temu, lab, gaji).
+     * Dokter seperti ini hanya boleh dinonaktifkan; jadwal & tarif khusus bukan transaksi.
+     *
+     * @return array<int, string> label data yang ditemukan
+     */
+    private function usage(Doctor $doctor): array
+    {
+        $checks = [
+            'kunjungan' => fn () => Visit::where('doctor_id', $doctor->id)->exists(),
+            'rekam medis' => fn () => MedicalRecord::where('doctor_id', $doctor->id)->exists(),
+            'tagihan' => fn () => InvoiceItem::where('doctor_id', $doctor->id)->exists(),
+            'janji temu' => fn () => Appointment::where('doctor_id', $doctor->id)->exists(),
+            'order lab' => fn () => LabOrder::where('doctor_id', $doctor->id)->exists(),
+            'gaji' => fn () => PayrollAdjustment::where('payee_type', PayrollAdjustment::PAYEE_DOCTOR)->where('payee_id', $doctor->id)->exists()
+                || PayrollHour::where('payee_type', PayrollAdjustment::PAYEE_DOCTOR)->where('payee_id', $doctor->id)->exists(),
+        ];
+
+        return array_keys(array_filter($checks, fn ($check) => $check()));
+    }
+
+    /**
+     * Id dokter (dari daftar) yang sudah punya transaksi — dipakai untuk menyembunyikan tombol Hapus.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, int>
+     */
+    private function usedDoctorIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $payee = fn (string $model) => $model::where('payee_type', PayrollAdjustment::PAYEE_DOCTOR)->whereIn('payee_id', $ids)->pluck('payee_id');
+
+        return collect([Visit::class, MedicalRecord::class, InvoiceItem::class, Appointment::class, LabOrder::class])
+            ->flatMap(fn (string $model) => $model::whereIn('doctor_id', $ids)->distinct()->pluck('doctor_id'))
+            ->merge($payee(PayrollAdjustment::class))->merge($payee(PayrollHour::class))
+            ->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /** Hapus permanen dokter yang belum pernah punya transaksi; selebihnya wajib dinonaktifkan. */
+    public function deleteDoctor(int $id): void
+    {
+        $doctor = $this->doctorQuery()->findOrFail($id);
+
+        if ($used = $this->usage($doctor)) {
+            $this->toast('Dokter tidak bisa dihapus karena sudah punya data ('.implode(', ', $used).'). Nonaktifkan saja.');
+
+            return;
+        }
+
+        DB::transaction(function () use ($doctor) {
+            AuditLog::record('doctor.deleted', $doctor, $doctor->only(['name', 'str_number', 'sip_number', 'primary_branch_id', 'user_id', 'joined_at']));
+            // Kalender Google dokter: hapus barisnya agar tidak tertukar dengan kalender Owner (doctor_id null).
+            GoogleCalendar::where('clinic_id', $doctor->clinic_id)->where('doctor_id', $doctor->id)->delete();
+            $doctor->delete(); // jadwal, jadwal khusus, tarif khusus, diagnosis favorit ikut terhapus (cascade)
+        });
+
+        if ($this->editingId === $id) {
+            $this->closeForm();
+        }
+        $this->toast('Dokter dihapus.');
+    }
+
     private function isOwner(): bool
     {
         return app(BranchContext::class)->is(Role::Owner);
@@ -243,7 +321,9 @@ class Dokter extends Component
             ->whereNotIn('id', $linked)->orderBy('name')->get();
 
         $isOwner = $this->isOwner();
+        // Tombol Hapus hanya untuk dokter yang belum punya transaksi.
+        $deletable = $doctors->pluck('id')->diff($this->usedDoctorIds($doctors->pluck('id')->all()))->values()->all();
 
-        return $this->page('dokter', 'livewire.modules.dokter', compact('doctors', 'branches', 'accounts', 'isOwner'));
+        return $this->page('dokter', 'livewire.modules.dokter', compact('doctors', 'branches', 'accounts', 'isOwner', 'deletable'));
     }
 }

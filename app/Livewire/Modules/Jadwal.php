@@ -6,12 +6,14 @@ use App\Enums\Role;
 use App\Livewire\Concerns\ModulePage;
 use App\Models\Appointment;
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\DoctorSchedule;
 use App\Models\ScheduleOverride;
 use App\Support\BranchContext;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -24,6 +26,11 @@ use Livewire\Component;
 class Jadwal extends Component
 {
     use ModulePage;
+
+    public const MENU = 'jadwal';
+
+    /** Boleh tanpa izin Edit (lihat ModulePage). */
+    public const READ_ACTIONS = ['shiftWeek', 'thisWeek', 'closeForm'];
 
     /** Senin minggu yang ditampilkan (Y-m-d). */
     #[Url(as: 'minggu', except: '')]
@@ -62,7 +69,7 @@ class Jadwal extends Component
 
     private function canEdit(BranchContext $context): bool
     {
-        return $context->is(Role::Owner, Role::Admin);
+        return $context->is(Role::Owner, Role::Admin, Role::Asisten) && $this->canEditMenu();
     }
 
     // ---- Jadwal rutin (FR-JDW-06/07) ------------------------------------------------
@@ -101,7 +108,7 @@ class Jadwal extends Component
         abort_unless($this->canEdit($context), 403);
 
         $data = $this->validate([
-            'routine.doctor_id' => ['required', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())],
+            'routine.doctor_id' => ['required', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
             'routine.branch_id' => ['required', Rule::in($context->options()->pluck('id')->all())],
             'routine.day_of_week' => ['required', 'integer', 'between:1,7'],
             'routine.starts_at' => ['required', 'date_format:H:i'],
@@ -191,14 +198,14 @@ class Jadwal extends Component
         abort_unless($this->canEdit($context), 403);
 
         $data = $this->validate([
-            'override.doctor_id' => ['required', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())],
+            'override.doctor_id' => ['required', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
             'override.date' => ['required', 'date'],
             'override.type' => ['required', Rule::in([ScheduleOverride::TYPE_MOVE, ScheduleOverride::TYPE_OFF])],
             'override.branch_id' => ['required_if:override.type,move', 'nullable', Rule::in($context->options()->pluck('id')->all())],
             'override.starts_at' => ['nullable', 'date_format:H:i'],
             'override.ends_at' => ['nullable', 'date_format:H:i', 'after:override.starts_at'],
             'override.note' => ['nullable', 'string', 'max:255'],
-            'override.substitute_id' => ['nullable', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId()), 'different:override.doctor_id'],
+            'override.substitute_id' => ['nullable', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true), 'different:override.doctor_id'],
             'override.move_appointments' => ['boolean'],
         ], attributes: ['override.branch_id' => 'cabang tujuan', 'override.ends_at' => 'jam selesai', 'override.substitute_id' => 'dokter pengganti'])['override'];
 
@@ -350,11 +357,67 @@ class Jadwal extends Component
             'context' => $context,
             'days' => $days,
             'grid' => $grid,
+            'groups' => $this->groupByBranch($grid, $branches),
             'perDay' => $perDay,
             'branches' => $branches,
             'doctors' => $doctors,
             'canEdit' => $this->canEdit($context),
             'dayNames' => [1 => 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
         ]);
+    }
+
+    /**
+     * Kelompokkan baris kisi per cabang praktik: blok cabang pertama (Batu) di atas, dokter yang praktik di
+     * dua cabang atau lebih di "perbatasan", lalu cabang berikutnya (Malang). Cabang praktik = jadwal rutin
+     * ∪ sel minggu ini (termasuk pindah sementara); dokter tanpa jadwal masuk blok cabang utamanya.
+     *
+     * @return list<array{label:string, branch:?Branch, rows:Collection}>
+     */
+    private function groupByBranch(Collection $grid, Collection $branches): array
+    {
+        $known = collect();
+        $keyOf = function (array $row) use ($known) {
+            $doctor = $row['doctor'];
+            foreach ($doctor->schedules as $s) {
+                $known->put($s->branch_id, $s->branch);
+            }
+            if ($doctor->primaryBranch) {
+                $known->put($doctor->primaryBranch->id, $doctor->primaryBranch);
+            }
+
+            $ids = $doctor->schedules->pluck('branch_id')
+                ->merge(collect($row['cells'])->pluck('schedule.branch_id'))
+                ->filter()->unique()->values();
+
+            if ($ids->count() > 1) {
+                return 'multi';
+            }
+
+            return $ids->first() ?? $doctor->primary_branch_id ?? 0;
+        };
+
+        $buckets = $grid->groupBy($keyOf);
+        $ids = $branches->keys()->merge($buckets->keys()->filter(fn ($k) => $k !== 'multi' && $k !== 0))->unique()->values();
+        $order = [$ids->first(), 'multi', ...$ids->slice(1)->all(), 0];
+
+        $groups = [];
+        foreach ($order as $key) {
+            $rows = $buckets->get($key);
+            if (! $rows || $rows->isEmpty()) {
+                continue;
+            }
+            $branch = is_int($key) && $key ? ($branches->get($key) ?? $known->get($key)) : null;
+            $label = match (true) {
+                $key === 'multi' => $branches->count() > 1 ? $branches->map->shortName()->implode(' & ') : 'Beberapa cabang',
+                $branch !== null => $branch->name,
+                default => 'Tanpa cabang',
+            };
+            // Dokter tanpa jadwal (rutin maupun minggu ini) di bawah blok; urutan nama tetap.
+            $rows = $rows->sortBy(fn ($row) => $row['doctor']->schedules->isEmpty()
+                && collect($row['cells'])->every(fn ($c) => ! $c['schedule']) ? 1 : 0)->values();
+            $groups[] = ['label' => $label, 'branch' => $branch, 'rows' => $rows];
+        }
+
+        return $groups;
     }
 }

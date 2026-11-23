@@ -14,6 +14,7 @@ use App\Models\Procedure;
 use App\Models\User;
 use App\Services\ProcedureImportService;
 use App\Support\BranchContext;
+use App\Support\Navigation;
 use App\Support\Settings;
 use App\Models\Payment;
 use Illuminate\Support\Facades\Artisan;
@@ -47,8 +48,15 @@ class Pengaturan extends Component
 
     public array $special = ['doctor_id' => null, 'procedure_id' => null, 'share_percent' => null];
 
-    #[Url(as: 'tab', except: 'tindakan')]
-    public string $tab = 'tindakan';
+    /** Kosong = tab pertama yang tampil (Owner: Klinik & cabang, Admin: Tindakan & tarif). */
+    #[Url(as: 'tab', except: '')]
+    public string $tab = '';
+
+    /**
+     * Tab data master (tab => key pintasan di Navigation): dibuka dari menu Master data, tidak tampil di deretan
+     * tab Pengaturan. Pengaturan sendiri hanya berisi pengaturan program.
+     */
+    private const MASTER_TABS = ['tindakan' => 'tindakan', 'kategori' => 'kategori-pengeluaran', 'bagi-hasil' => 'tarif-gaji'];
 
     /** null | clinic | branch | procedure | user | category */
     public ?string $form = null;
@@ -464,6 +472,8 @@ class Pengaturan extends Component
             'code' => (string) $p?->code, 'name' => (string) $p?->name, 'category' => (string) $p?->category,
             'share_percent' => $p?->share_percent !== null ? (string) (float) $p->share_percent : '',
             'is_active' => $p->is_active ?? true,
+            'fee_from_procedure_id' => (string) $p?->fee_from_procedure_id,
+            'fee_minus_lab' => (bool) $p?->fee_minus_lab,
             'prices' => $this->branches()->mapWithKeys(fn ($b) => [$b->id => $p?->priceFor($b->id)])->all(),
         ];
         $this->resetValidation();
@@ -478,18 +488,28 @@ class Pengaturan extends Component
             'data.category' => ['nullable', 'string', 'max:60'],
             'data.share_percent' => ['nullable', 'numeric', 'between:0,100'],
             'data.is_active' => ['boolean'],
+            // Aturan fee bertahap (gigi palsu/behel): tindakan tahap awal milik klinik ini, bukan dirinya sendiri.
+            'data.fee_from_procedure_id' => ['nullable', Rule::exists('procedures', 'id')->where('clinic_id', $this->clinicId()), Rule::notIn(array_filter([$this->editingId]))],
+            'data.fee_minus_lab' => ['boolean'],
             'data.prices' => ['array'],
             'data.prices.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
-        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif'])['data'];
+        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif', 'data.fee_from_procedure_id' => 'dasar fee ikut tindakan'])['data'];
+
+        // Aturan fee memengaruhi gaji dokter: hanya Owner yang boleh mengubah.
+        $canSetFeeRule = $this->isOwner();
 
         $branchIds = $this->branches()->pluck('id');
 
-        $p = DB::transaction(function () use ($v, $branchIds) {
+        $p = DB::transaction(function () use ($v, $branchIds, $canSetFeeRule) {
             $p = $this->editingId ? Procedure::where('clinic_id', $this->clinicId())->findOrFail($this->editingId) : new Procedure(['clinic_id' => $this->clinicId()]);
             $p->fill([
                 'code' => strtoupper($v['code']), 'name' => $v['name'], 'category' => $v['category'] ?: null,
                 'share_percent' => $v['share_percent'] === '' ? null : $v['share_percent'], 'is_active' => $v['is_active'],
-            ])->save();
+            ]);
+            if ($canSetFeeRule) {
+                $p->fill(['fee_from_procedure_id' => ($v['fee_from_procedure_id'] ?? '') ?: null, 'fee_minus_lab' => (bool) ($v['fee_minus_lab'] ?? false)]);
+            }
+            $p->save();
 
             foreach ($v['prices'] ?? [] as $branchId => $price) {
                 if (! $branchIds->contains((int) $branchId)) {
@@ -670,9 +690,12 @@ class Pengaturan extends Component
     public function render(BranchContext $context)
     {
         $tabs = $this->tabs($context);
+        $shownTabs = array_diff_key($tabs, self::MASTER_TABS);
         if (! array_key_exists($this->tab, $tabs)) {
-            $this->tab = array_key_first($tabs);
+            // Admin tidak punya tab program → jatuh ke tab master pertama (Tindakan & tarif).
+            $this->tab = array_key_first($shownTabs) ?? array_key_first($tabs);
         }
+        $masterKey = self::MASTER_TABS[$this->tab] ?? null;
 
         if ($this->tab === 'aplikasi' && $this->app === []) {
             $this->loadApp();
@@ -682,7 +705,7 @@ class Pengaturan extends Component
         }
 
         $branches = $this->branches();
-        $view =['context' => $context, 'tabs' => $tabs, 'branches' => $branches, 'isOwner' => $context->is(Role::Owner)];
+        $view = ['context' => $context, 'tabs' => $shownTabs, 'branches' => $branches, 'isOwner' => $context->is(Role::Owner)];
 
         $view += match ($this->tab) {
             'klinik' => ['clinic' => Clinic::findOrFail($this->clinicId()), 'globalShare' => Settings::globalShare()],
@@ -703,6 +726,15 @@ class Pengaturan extends Component
                 ->paginate(30)],
             default => [],
         };
+
+        if ($masterKey) {
+            // Tab master tampil sebagai halaman Master data sendiri: judul & breadcrumb dari pintasannya.
+            $master = Navigation::item($masterKey);
+
+            return $this->page('pengaturan', 'livewire.modules.pengaturan', $view + ['masterItem' => $master])
+                ->title($master['label'])
+                ->layoutData(['breadcrumb' => $master['breadcrumb'], 'active' => 'pengaturan']);
+        }
 
         return $this->page('pengaturan', 'livewire.modules.pengaturan', $view);
     }

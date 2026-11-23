@@ -56,7 +56,7 @@
                 <tr>
                     <td>{{ $l['paid_at']?->format('d/m') }}</td>
                     <td>{{ $branches->get($l['branch_id'])?->shortName() }}</td>
-                    <td>{{ $l['name'] }}{{ $l['quantity'] > 1 ? ' ×'.$l['quantity'] : '' }}</td>
+                    <td>{{ $l['name'] }}{{ $l['quantity'] > 1 ? ' ×'.$l['quantity'] : '' }}@if ($l['carry'] > 0)<br><span class="muted">+ tahap awal (cetak/DP) {{ Format::rupiah($l['carry']) }}</span>@endif</td>
                     <td class="r">{{ Format::rupiah($l['gross']) }}</td>
                     <td class="r">{{ $l['cost'] ? '−'.Format::rupiah($l['cost']) : '—' }}</td>
                     <td class="r">{{ $pct($l['percent']) }}%</td>

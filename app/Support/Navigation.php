@@ -86,6 +86,13 @@ class Navigation
                 'roles' => [Role::Owner, Role::Admin], 'title' => 'Kategori pengeluaran', 'subtitle' => '',
                 'breadcrumb' => ['Master data', 'Kategori pengeluaran'], 'requirements' => '-',
             ],
+            'tarif-gaji' => [
+                'group' => 'master', 'number' => null, 'label' => 'Tarif gaji & bagi hasil', 'route' => 'pengaturan', 'path' => '/pengaturan',
+                'query' => ['tab' => 'bagi-hasil'], 'shortcut' => true,
+                'roles' => [Role::Owner], 'title' => 'Tarif gaji & bagi hasil',
+                'subtitle' => 'Bagi hasil global, per dokter, per tindakan, gaji pokok, dan komponen gaji per peran.',
+                'breadcrumb' => ['Master data', 'Tarif gaji & bagi hasil'], 'requirements' => 'FR-GJI',
+            ],
             'laporan' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Laporan', 'route' => 'laporan', 'path' => '/laporan',
                 'roles' => [Role::Owner, Role::Admin], 'title' => 'Angka yang mudah dipahami.',
@@ -118,8 +125,9 @@ class Navigation
             ],
             'pengaturan' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Pengaturan', 'route' => 'pengaturan', 'path' => '/pengaturan',
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Pengaturan',
-                'subtitle' => 'Profil klinik, master dokter, tindakan & tarif, pengguna dan peran.',
+                // Route tetap Owner+Admin (pintasan Master data milik Admin membuka tab di sini); menunya hanya untuk Owner.
+                'roles' => [Role::Owner, Role::Admin], 'menu_roles' => [Role::Owner], 'title' => 'Pengaturan',
+                'subtitle' => 'Pengaturan program: profil klinik & cabang, aplikasi, integrasi, pengguna dan peran.',
                 'breadcrumb' => ['Manajemen', 'Pengaturan'], 'requirements' => 'FR-SET-01 – 10',
             ],
             // Grup "bantuan" tidak tampil di sidebar; dibuka dari kotak "Butuh bantuan?" dan menu Lainnya.
@@ -152,7 +160,7 @@ class Navigation
     /**
      * Menu tersorot? Pintasan aktif bila halaman induknya terbuka di tab yang sama;
      * modul induk tidak ikut tersorot selama tab itu milik pintasan.
-     * Tanpa ?tab=, tab bawaan modul induk dipakai (Stok → barang, Pengaturan → tindakan).
+     * Tanpa ?tab=, tab bawaan modul induk dipakai (Stok → barang).
      */
     public static function isActive(string $key, array $item, ?string $active, ?string $tab = null): bool
     {
@@ -167,7 +175,7 @@ class Navigation
     }
 
     /** Tab bawaan modul yang punya pintasan (sama dengan default properti $tab di komponennya). */
-    private const DEFAULT_TABS = ['stok' => 'barang', 'pengaturan' => 'tindakan'];
+    private const DEFAULT_TABS = ['stok' => 'barang'];
 
     /** "role:owner,admin" untuk route modul. */
     public static function roleMiddleware(string $key): string
@@ -180,7 +188,7 @@ class Navigation
     {
         return array_filter(
             static::items(),
-            fn (array $i) => $role && in_array($role, $i['roles'], true) && (! $group || $i['group'] === $group),
+            fn (array $i) => $role && in_array($role, $i['menu_roles'] ?? $i['roles'], true) && (! $group || $i['group'] === $group),
         );
     }
 

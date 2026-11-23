@@ -1,16 +1,20 @@
 @php use App\Enums\Role; use App\Support\Format; @endphp
 <div class="mx-auto max-w-[1152px]">
-    <x-page-header :title="$item['title']" :subtitle="$item['subtitle']" />
+    @php $header = $masterItem ?? $item; @endphp
+    <x-page-header :title="$header['title']" :subtitle="$header['subtitle']" />
 
-    <div class="mt-7 flex gap-6 overflow-x-auto border-b border-line text-sm">
-        @foreach ($tabs as $key => $label)
-            <button type="button" wire:click="setTab('{{ $key }}')" @class([
-                '-mb-px shrink-0 border-b-2 pb-3',
-                'border-leaf-500 font-semibold text-brand-600' => $tab === $key,
-                'border-transparent text-muted hover:text-brand-700' => $tab !== $key,
-            ])>{{ $label }}</button>
-        @endforeach
-    </div>
+    {{-- Deretan tab hanya untuk pengaturan program; tab data master dibuka dari menu Master data. --}}
+    @unless (isset($masterItem))
+        <div class="mt-7 flex gap-6 overflow-x-auto border-b border-line text-sm">
+            @foreach ($tabs as $key => $label)
+                <button type="button" wire:click="setTab('{{ $key }}')" @class([
+                    '-mb-px shrink-0 border-b-2 pb-3',
+                    'border-leaf-500 font-semibold text-brand-600' => $tab === $key,
+                    'border-transparent text-muted hover:text-brand-700' => $tab !== $key,
+                ])>{{ $label }}</button>
+            @endforeach
+        </div>
+    @endunless
 
     <div class="mt-6">
         @switch($tab)
@@ -484,6 +488,21 @@
                     <div><label class="label">Tarif {{ $b->shortName() }} (Rp)</label><x-money model="data.prices.{{ $b->id }}" placeholder="Kosong = tidak tersedia" /><x-error for="data.prices.{{ $b->id }}" /></div>
                 @endforeach
                 <div class="sm:col-span-2"><label class="label">Bagi hasil khusus (%) <span class="font-normal text-muted">kosong = ikut dokter/global</span></label><input type="number" step="0.01" wire:model="data.share_percent" class="input"><x-error for="data.share_percent" /></div>
+                @if ($isOwner)
+                    <div class="sm:col-span-2 rounded-xl border border-line p-3">
+                        <p class="text-[13px] font-semibold">Aturan fee bertahap <span class="font-normal text-muted">(gigi palsu, behel)</span></p>
+                        <label class="label mt-2">Dasar fee ikut pembayaran tindakan</label>
+                        <select wire:model="data.fee_from_procedure_id" class="input">
+                            <option value="">— Tidak ada —</option>
+                            @foreach (($procedures ?? collect())->where('id', '!=', $editingId) as $opt)
+                                <option value="{{ $opt->id }}">{{ $opt->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-error for="data.fee_from_procedure_id" />
+                        <p class="mt-1 text-xs text-muted">Mis. Insersi ← Cetak gigi tiruan; Pasang behel ← Cetak behel. Pembayaran tahap awal pasien yang sama ikut dihitung saat tindakan ini lunas.</p>
+                        <label class="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" wire:model="data.fee_minus_lab" class="accent-brand-600"> Potong biaya lab pasien saat tindakan ini lunas</label>
+                    </div>
+                @endif
                 <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" wire:model="data.is_active" class="accent-brand-600"> Aktif</label>
                 <div class="flex justify-end gap-2 sm:col-span-2"><button type="button" wire:click="closeForm" class="btn-ghost">Batal</button><button class="btn-primary">Simpan</button></div>
             </form>

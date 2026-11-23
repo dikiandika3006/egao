@@ -59,7 +59,7 @@ class About
             'title' => 'Keuangan',
             'rules' => [
                 'Pemasukan dihitung dari pembayaran yang diterima; pengeluaran dari catatan pengeluaran per cabang.',
-                'Fee dokter dihitung dari tindakan (sebelum diskon) pada tagihan lunas, setelah dikurangi biaya modal tindakan (mis. alat behel, x-ray). Biaya order lab dokter di bulan itu ikut dipotong dari fee. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global.',
+                'Fee dokter dihitung dari tindakan (sebelum diskon) pada tagihan lunas, setelah dikurangi biaya modal tindakan (mis. alat behel, x-ray). Biaya order lab dokter di bulan itu ikut dipotong dari fee; bila ada tindakan bertanda "Potong biaya lab", lab pasien dipotong saat tindakan itu lunas. Tindakan bertahap (gigi palsu, behel) dapat memakai pembayaran tahap awal (cetak/DP) pasien yang sama sebagai dasar fee. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global.',
                 'Dokter: gaji pokok + uang duduk per jam + fee. Asisten: gaji pokok + uang duduk per jam + fee % dari tindakan lunas yang didampingi (dipilih di Kasir) + lembur per jam. Admin & staf lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang tiap bulan.',
                 'Fee dibebankan ke cabang tempat tindakan; komponen lain ke cabang utama.',
                 'Mencatat gaji ke pengeluaran bisa diulang; catatan bulan yang sama diganti, tidak dobel.',
@@ -111,6 +111,8 @@ class About
             'date' => '23 November 2026',
             'changes' => [
                 'Logo baru Egao Dental Care 2024 dipasang di sidebar, halaman masuk, ikon aplikasi (PWA/favicon), dan logo bawaan kwitansi. Warna aksen hijau & kuning disesuaikan dengan logo.',
+                'Pengaturan kini hanya berisi pengaturan program (Klinik & cabang, Aplikasi, SATUSEHAT, Google Calendar, Pengguna & peran, Jejak audit). Tindakan & tarif, Kategori pengeluaran, dan Tarif gaji & bagi hasil (baru, khusus Owner) dibuka dari menu Master data. Menu Pengaturan tidak lagi tampil untuk Admin.',
+                'Fee bertahap gigi palsu & behel (Owner, di Tindakan & tarif): dasar fee bisa ikut pembayaran tindakan tahap awal pasien (mis. Insersi ← Cetak, Pasang behel ← Cetak behel) dan biaya lab pasien dipotong saat tindakan akhir lunas. Rincian gaji & slip menampilkan "+ tahap awal (cetak/DP)".',
             ],
         ],
         [

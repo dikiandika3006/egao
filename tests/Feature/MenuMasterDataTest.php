@@ -21,7 +21,7 @@ function masukSebagaiPeran(string $username, string $role, string|int $branch)
 
 it('mengelompokkan data master dalam satu grup', function () {
     expect(array_keys(Navigation::visible(Role::Owner, 'master')))
-        ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran'])
+        ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran', 'tarif-gaji'])
         ->and(array_keys(Navigation::visible(Role::Admin, 'master')))
         ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran'])
         ->and(array_keys(Navigation::visible(Role::Dokter, 'master')))->toBe(['pasien'])
@@ -32,7 +32,8 @@ it('pintasan master membuka tab modul induk dan tidak punya route sendiri', func
     expect(Navigation::url(Navigation::item('master-barang')))->toBe(route('stok', ['tab' => 'barang']))
         ->and(Navigation::url(Navigation::item('tindakan')))->toBe(route('pengaturan', ['tab' => 'tindakan']))
         ->and(Navigation::url(Navigation::item('kategori-pengeluaran')))->toBe(route('pengaturan', ['tab' => 'kategori']))
-        ->and(Navigation::modules())->not->toHaveKeys(['master-barang', 'tindakan', 'kategori-pengeluaran']);
+        ->and(Navigation::url(Navigation::item('tarif-gaji')))->toBe(route('pengaturan', ['tab' => 'bagi-hasil']))
+        ->and(Navigation::modules())->not->toHaveKeys(['master-barang', 'tindakan', 'kategori-pengeluaran', 'tarif-gaji']);
 });
 
 it('menyorot pintasan sesuai tab yang terbuka', function () {
@@ -75,4 +76,43 @@ it('menu Lainnya di ponsel ikut dikelompokkan', function () {
         ->assertOk()
         ->assertSeeInOrder(['Master data', 'Data pasien', 'Master barang', 'Manajemen'])
         ->assertSee(route('pengaturan', ['tab' => 'tindakan']), false);
+});
+
+it('tab Tindakan & tarif tidak dobel di Pengaturan tetapi tetap bisa dibuka dari Master data', function () {
+    masukSebagaiPeran('owner', 'owner', 'all');
+
+    $this->get(route('pengaturan'))->assertOk()
+        ->assertSee('Klinik &amp; cabang', false)
+        ->assertDontSee("setTab('tindakan')", false);
+
+    $this->get(route('pengaturan', ['tab' => 'tindakan']))->assertOk()
+        ->assertSee('Impor Excel')
+        ->assertDontSee("setTab('tindakan')", false);
+});
+
+it('Pengaturan hanya berisi pengaturan program; tab data master tidak tampil di deretan tab', function () {
+    masukSebagaiPeran('owner', 'owner', 'all');
+
+    $this->get(route('pengaturan'))->assertOk()
+        ->assertSee("setTab('klinik')", false)
+        ->assertSee("setTab('pengguna')", false)
+        ->assertDontSee("setTab('bagi-hasil')", false)
+        ->assertDontSee("setTab('kategori')", false);
+
+    $this->get(route('pengaturan', ['tab' => 'bagi-hasil']))->assertOk()
+        ->assertSee('Tarif gaji &amp; bagi hasil', false)
+        ->assertSee('wire:submit="saveShares"', false)
+        ->assertDontSee("setTab('klinik')", false);
+});
+
+it('menu Pengaturan disembunyikan untuk Admin, data master tetap bisa dibuka', function () {
+    expect(Navigation::visible(Role::Admin, 'manajemen'))->not->toHaveKey('pengaturan')
+        ->and(Navigation::visible(Role::Owner, 'manajemen'))->toHaveKey('pengaturan')
+        ->and(Navigation::visible(Role::Admin, 'master'))->not->toHaveKey('tarif-gaji');
+
+    masukSebagaiPeran('admin', 'admin', $this->batu->id);
+
+    $this->get(route('pengaturan'))->assertOk()->assertSee('Impor Excel');
+    $this->get(route('pengaturan', ['tab' => 'kategori']))->assertOk()->assertSee('Kategori pengeluaran');
+    $this->get(route('pengaturan', ['tab' => 'bagi-hasil']))->assertOk()->assertDontSee('wire:submit="saveShares"', false);
 });

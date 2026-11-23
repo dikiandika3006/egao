@@ -10,6 +10,7 @@ use App\Models\InvoiceItem;
 use App\Models\LabOrder;
 use App\Models\PayrollAdjustment;
 use App\Models\PayrollHour;
+use App\Models\Procedure;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -19,7 +20,11 @@ use Illuminate\Support\Collection;
  * Dokter  = gaji pokok + UD (jam hadir × tarif/jam) + fee − potongan lab + bonus/THR − potongan.
  *           Fee per tindakan = (harga − biaya modal × qty) × %fee, dari tagihan LUNAS dalam periode.
  *           Prioritas %fee: khusus dokter × tindakan → tindakan → dokter → global.
- *           Potongan lab = biaya order lab dokter (dikirim dalam periode, tidak batal) × %fee dokter.
+ *           Tindakan bertahap (gigi palsu, behel): bila tindakan punya "dasar ikut tindakan" (fee_from_procedure_id),
+ *           pembayaran tindakan tahap awal pasien yang sama sejak tahap akhir sebelumnya ikut dasar fee (DP cetak → insersi).
+ *           Potongan lab = biaya lab × %fee. Bila ada tindakan bertanda "potong lab" (fee_minus_lab), lab pasien dipotong
+ *           saat tindakan itu lunas (mis. insersi) memakai %fee tindakan; bila tidak ada, cara lama: order lab dokter
+ *           yang dikirim dalam periode (tidak batal) × %fee dokter.
  * Asisten = gaji pokok + UD + %fee asisten × tindakan lunas pada kunjungan yang didampingi + lembur + bonus/THR − potongan.
  * Admin   = gaji pokok + lembur + bonus/THR − potongan (semua jabatan selain asisten).
  */
@@ -50,11 +55,13 @@ class Payroll
         $items = InvoiceItem::query()
             ->whereNotNull('doctor_id')
             ->whereHas('invoice', fn ($q) => $q->where('status', Invoice::STATUS_PAID)->whereBetween('paid_at', [$start, $end]))
-            ->with(['invoice:id,branch_id,paid_at', 'procedure:id,share_percent,cost_amount'])
-            ->get()
-            ->groupBy('doctor_id');
+            ->with(['invoice:id,visit_id,branch_id,paid_at,patient_id', 'invoice.visit:id,patient_id', 'procedure:id,share_percent,cost_amount,fee_from_procedure_id,fee_minus_lab'])
+            ->get();
 
-        $labs = LabOrder::query()
+        $staged = static::stagedContext($clinicId, $items, $end);
+        $items = $items->groupBy('doctor_id');
+
+        $labs = $staged['lab_at_procedure'] ? collect() : LabOrder::query()
             ->where('clinic_id', $clinicId)
             ->whereNotNull('doctor_id')
             ->where('status', '!=', 'batal')
@@ -76,10 +83,12 @@ class Payroll
             ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $items->keys()))
             ->orderBy('name')
             ->get()
-            ->map(function (Doctor $doctor) use ($items, $labs, $global, $hourly, $adjustments, $hours, $special) {
-                $rows = ($items->get($doctor->id) ?? collect())->map(function (InvoiceItem $i) use ($doctor, $global, $special) {
+            ->map(function (Doctor $doctor) use ($items, $labs, $global, $hourly, $adjustments, $hours, $special, $staged) {
+                $rows = ($items->get($doctor->id) ?? collect())->map(function (InvoiceItem $i) use ($doctor, $global, $special, $staged) {
                     $percent = (float) ($special[$doctor->id.':'.$i->procedure_id] ?? $i->procedure?->share_percent ?? $doctor->share_percent ?? $global);
                     $cost = min((int) $i->amount, (int) ($i->procedure?->cost_amount ?? 0) * (int) $i->quantity);
+                    [$carry, $lab] = static::stageAmounts($i, $staged);
+                    $share = (int) round(((int) $i->amount + $carry - $cost) * $percent / 100);
 
                     return [
                         'name' => $i->name,
@@ -88,16 +97,22 @@ class Payroll
                         'quantity' => (int) $i->quantity,
                         'gross' => (int) $i->amount,
                         'cost' => $cost,
+                        'carry' => $carry,
+                        'lab' => $lab,
                         'percent' => $percent,
-                        'share' => (int) round(($i->amount - $cost) * $percent / 100),
+                        'share' => $share,
+                        // Potongan lab kasus ini (tidak melebihi fee barisnya).
+                        'lab_cut' => min($share, (int) round($lab * $percent / 100)),
                     ];
                 });
 
-                // Potongan lab memakai %fee dokter (atau global), dibebankan ke cabang order lab.
+                // Potongan lab: saat tindakan "potong lab" lunas (cabang tindakan itu), atau cara lama
+                // %fee dokter (atau global) × order lab yang dikirim, dibebankan ke cabang order lab.
                 $doctorPercent = (float) ($doctor->share_percent ?? $global);
                 $labRows = $labs->get($doctor->id) ?? collect();
-                $labByBranch = $labRows->groupBy('branch_id')
-                    ->map(fn ($g) => (int) round($g->sum('cost') * $doctorPercent / 100));
+                $labByBranch = $staged['lab_at_procedure']
+                    ? $rows->where('lab_cut', '>', 0)->groupBy('branch_id')->map(fn ($g) => (int) $g->sum('lab_cut'))
+                    : $labRows->groupBy('branch_id')->map(fn ($g) => (int) round($g->sum('cost') * $doctorPercent / 100));
 
                 $branches = $rows->groupBy('branch_id')
                     ->map(fn ($g) => ['gross' => (int) $g->sum('gross'), 'share' => (int) $g->sum('share')])
@@ -119,7 +134,8 @@ class Payroll
                     'doctor' => $doctor,
                     'gross' => (int) $rows->sum('gross'),
                     'cost' => (int) $rows->sum('cost'),
-                    'lab' => (int) $labRows->sum('cost'),
+                    'lab' => $staged['lab_at_procedure'] ? (int) $rows->sum('lab') : (int) $labRows->sum('cost'),
+                    'carry' => (int) $rows->sum('carry'),
                     'lab_deduction' => $labDeduction,
                     'share' => $share,
                     'base' => $base,
@@ -132,7 +148,7 @@ class Payroll
                     'count' => $rows->count(),
                     'branches' => $branches,
                     'procedures' => $rows->groupBy('name')->map(fn ($g, $name) => [
-                        'name' => $name, 'count' => $g->count(), 'gross' => $g->sum('gross'), 'cost' => $g->sum('cost'),
+                        'name' => $name, 'count' => $g->count(), 'gross' => $g->sum('gross'), 'cost' => $g->sum('cost'), 'carry' => $g->sum('carry'),
                         'percent' => $g->first()['percent'], 'share' => $g->sum('share'),
                     ])->sortByDesc('gross')->values(),
                     // Rincian per tanggal & cabang untuk slip (FR-GJI-03).
@@ -232,6 +248,100 @@ class Payroll
         $target = Settings::int('annual_revenue_target');
 
         return ['revenue' => $revenue, 'target' => $target, 'reached' => $target > 0 && $revenue >= $target];
+    }
+
+    /**
+     * Data pendukung tindakan bertahap: riwayat tindakan lunas & order lab pasien yang relevan.
+     *
+     * @return array{lab_at_procedure:bool, minus_lab_ids:array<int,int>, history:Collection, labs:Collection}
+     */
+    private static function stagedContext(int $clinicId, Collection $items, CarbonInterface $end): array
+    {
+        $minusLabIds = Procedure::where('clinic_id', $clinicId)->where('fee_minus_lab', true)->pluck('id')->all();
+        $context = ['lab_at_procedure' => $minusLabIds !== [], 'minus_lab_ids' => $minusLabIds, 'history' => collect(), 'labs' => collect()];
+
+        $staged = $items->filter(fn (InvoiceItem $i) => static::patientOf($i)
+            && ($i->procedure?->fee_from_procedure_id || $i->procedure?->fee_minus_lab));
+        if ($staged->isEmpty()) {
+            return $context;
+        }
+
+        $patientIds = $staged->map(fn (InvoiceItem $i) => static::patientOf($i))->unique()->values()->all();
+        $procedureIds = $staged->pluck('procedure_id')
+            ->merge($staged->pluck('procedure.fee_from_procedure_id'))
+            ->merge($minusLabIds)->filter()->unique()->values()->all();
+
+        $context['history'] = InvoiceItem::query()
+            ->whereIn('procedure_id', $procedureIds)
+            ->whereHas('invoice', fn ($q) => $q->where('status', Invoice::STATUS_PAID)->where('paid_at', '<=', $end)
+                ->where(fn ($q) => $q->whereIn('patient_id', $patientIds)->orWhereHas('visit', fn ($v) => $v->whereIn('patient_id', $patientIds))))
+            ->with(['invoice:id,visit_id,patient_id,paid_at', 'invoice.visit:id,patient_id'])
+            ->get(['id', 'invoice_id', 'procedure_id', 'amount'])
+            ->map(fn (InvoiceItem $h) => [
+                'id' => $h->id, 'procedure_id' => (int) $h->procedure_id, 'patient_id' => static::patientOf($h),
+                'at' => $h->invoice->paid_at->getTimestamp(), 'amount' => (int) $h->amount,
+            ]);
+
+        if ($context['lab_at_procedure']) {
+            $context['labs'] = LabOrder::query()
+                ->where('clinic_id', $clinicId)
+                ->whereIn('patient_id', $patientIds)
+                ->where('status', '!=', 'batal')
+                ->whereNotNull('sent_at')
+                ->where('sent_at', '<=', $end->toDateString())
+                ->get(['patient_id', 'sent_at', 'cost']);
+        }
+
+        return $context;
+    }
+
+    /** Pasien tagihan: kunjungan atau pembeli penjualan langsung. */
+    private static function patientOf(InvoiceItem $i): int
+    {
+        return (int) ($i->invoice?->visit?->patient_id ?? $i->invoice?->patient_id);
+    }
+
+    /**
+     * [pembayaran tahap awal yang ikut dasar fee, biaya lab yang dipotong] untuk satu baris tindakan.
+     * Jendela = sejak tindakan akhir sebelumnya milik pasien yang sama (kasus lama tidak terhitung dua kali).
+     *
+     * @return array{0:int,1:int}
+     */
+    private static function stageAmounts(InvoiceItem $i, array $staged): array
+    {
+        $procedure = $i->procedure;
+        $patientId = static::patientOf($i);
+        if (! $patientId || ! $procedure || (! $procedure->fee_from_procedure_id && ! $procedure->fee_minus_lab)) {
+            return [0, 0];
+        }
+
+        $at = $i->invoice->paid_at->getTimestamp();
+        $mine = $staged['history']->where('patient_id', $patientId);
+        // Baris sebelum baris ini (urut waktu lunas, lalu id) di antara tindakan tertentu.
+        $previous = fn (array $ids) => $mine
+            ->filter(fn ($h) => in_array($h['procedure_id'], $ids, true) && ($h['at'] < $at || ($h['at'] === $at && $h['id'] < $i->id)))
+            ->max('at');
+
+        $carry = 0;
+        if ($procedure->fee_from_procedure_id) {
+            $since = $previous([(int) $i->procedure_id]);
+            $carry = (int) $mine
+                ->filter(fn ($h) => $h['procedure_id'] === (int) $procedure->fee_from_procedure_id && $h['at'] <= $at && ($since === null || $h['at'] > $since))
+                ->sum('amount');
+        }
+
+        $lab = 0;
+        if ($procedure->fee_minus_lab) {
+            $since = $previous($staged['minus_lab_ids']);
+            $sinceDate = $since === null ? null : date('Y-m-d', $since);
+            $today = $i->invoice->paid_at->toDateString();
+            $lab = (int) $staged['labs']
+                ->filter(fn ($l) => (int) $l->patient_id === $patientId && $l->sent_at->toDateString() <= $today
+                    && ($sinceDate === null || $l->sent_at->toDateString() > $sinceDate))
+                ->sum('cost');
+        }
+
+        return [$carry, $lab];
     }
 
     /** @return array{0:int,1:int} [bonus (termasuk THR & bonus akhir tahun), potongan] */

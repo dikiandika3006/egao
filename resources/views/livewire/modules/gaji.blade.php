@@ -100,13 +100,13 @@
                                                     <thead class="text-[10px] text-muted uppercase"><tr><th class="py-1.5 text-left">Tindakan</th><th class="text-right">Jumlah</th><th class="text-right">Kotor</th><th class="text-right">Biaya modal</th><th class="text-right">Tarif</th><th class="text-right">Fee</th></tr></thead>
                                                     <tbody>
                                                         @foreach ($row['procedures'] as $p)
-                                                            <tr><td class="py-1">{{ $p['name'] }}</td><td class="text-right">{{ $p['count'] }}</td><td class="text-right">@rupiah($p['gross'])</td><td class="text-right">{{ $p['cost'] ? '−' : '' }}@rupiah($p['cost'])</td><td class="text-right">{{ $pct($p['percent']) }}%</td><td class="text-right">@rupiah($p['share'])</td></tr>
+                                                            <tr><td class="py-1">{{ $p['name'] }}@if ($p['carry'] > 0)<span class="block text-[11px] text-muted">+ tahap awal (cetak/DP) @rupiah($p['carry'])</span>@endif</td><td class="text-right">{{ $p['count'] }}</td><td class="text-right">@rupiah($p['gross'])</td><td class="text-right">{{ $p['cost'] ? '−' : '' }}@rupiah($p['cost'])</td><td class="text-right">{{ $pct($p['percent']) }}%</td><td class="text-right">@rupiah($p['share'])</td></tr>
                                                         @endforeach
                                                     </tbody>
                                                 </table>
                                             @endif
                                             @if ($row['lab'] > 0)
-                                                <p class="mt-3 text-[13px]">Potongan order lab: biaya lab @rupiah($row['lab']) × fee dokter = <b class="text-rose-ink">−@rupiah($row['lab_deduction'])</b> dari fee.</p>
+                                                <p class="mt-3 text-[13px]">Potongan order lab: biaya lab @rupiah($row['lab']) × %fee = <b class="text-rose-ink">−@rupiah($row['lab_deduction'])</b> dari fee.</p>
                                             @endif
                                         </div>
                                         <div class="space-y-4">

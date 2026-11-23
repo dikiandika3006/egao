@@ -108,6 +108,12 @@ class About
 
     public const CHANGELOG = [
         [
+            'date' => '23 November 2026',
+            'changes' => [
+                'Logo baru Egao Dental Care 2024 dipasang di sidebar, halaman masuk, ikon aplikasi (PWA/favicon), dan logo bawaan kwitansi. Warna aksen hijau & kuning disesuaikan dengan logo.',
+            ],
+        ],
+        [
             'date' => '21 November 2026',
             'changes' => [
                 'Menu baru "Master data" di sidebar (bisa dibuka/tutup): Data pasien, Data dokter, Master barang, Tindakan & tarif, dan Kategori pengeluaran dikumpulkan dalam satu grup.',

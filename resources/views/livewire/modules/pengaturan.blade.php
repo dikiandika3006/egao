@@ -234,7 +234,7 @@
                                     @elseif ($clinic->logo_path)
                                         <img src="{{ asset('storage/'.$clinic->logo_path) }}" alt="Logo klinik" class="size-full object-contain">
                                     @else
-                                        <img src="{{ asset('images/logo.jpg') }}" alt="Logo bawaan" class="size-full object-contain">
+                                        <img src="{{ asset('images/logo.png') }}" alt="Logo bawaan" class="size-full object-contain">
                                     @endif
                                 </div>
                                 <div class="min-w-0 text-sm">

@@ -7,7 +7,7 @@
  * - Permintaan Livewire/POST tidak pernah di-cache (data klinik selalu dari server).
  * Offline draft rekam medis (NFR-AVL-02) akan ditambahkan bersama modul rekam medis.
  */
-const VERSION = 'egao-v2';
+const VERSION = 'egao-v3';
 const SCOPE = new URL(self.registration.scope).pathname; // mis. "/" atau "/egao/public/"
 const OFFLINE_URL = SCOPE + 'offline.html';
 

@@ -8,7 +8,7 @@
     // Logo dari Pengaturan → Aplikasi (fallback logo bawaan), disematkan base64 agar aman untuk Dompdf.
     $logoData = null;
     if (\App\Support\Settings::bool('receipt_show_logo')) {
-        $logoFile = $branch->clinic->logo_path ? storage_path('app/public/'.$branch->clinic->logo_path) : public_path('images/logo.jpg');
+        $logoFile = $branch->clinic->logo_path ? storage_path('app/public/'.$branch->clinic->logo_path) : public_path('images/logo.png');
         if (is_file($logoFile)) {
             $logoData = 'data:'.(mime_content_type($logoFile) ?: 'image/png').';base64,'.base64_encode(file_get_contents($logoFile));
         }

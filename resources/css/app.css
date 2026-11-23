@@ -25,7 +25,7 @@
     --color-leaf-50: #eef4df;
     --color-leaf-100: #eaf1da;
     --color-leaf-200: #dde9be;
-    --color-leaf-500: #a2c636;
+    --color-leaf-500: #84c03a; /* hijau logo */
 
     --color-amber-soft: #fff4cc;
     --color-amber-ink: #7b6217;
@@ -37,7 +37,7 @@
     --color-sky-ink: #385d91;
     --color-rose-soft: #fde8ec;
     --color-rose-ink: #9b3b4e;
-    --color-sun: #ecd444;
+    --color-sun: #fcc63f; /* kuning logo */
 }
 
 @layer base {

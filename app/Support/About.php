@@ -109,9 +109,18 @@ class About
 
     public const CHANGELOG = [
         [
+            'date' => '24 November 2026',
+            'changes' => [
+                'Rekam medis › Pemeriksaan dirapikan: konfirmasi alergi dan tindakan Rp0 kini satu jendela "Periksa sebelum kirim"; bar bawah menampilkan kelengkapan (keluhan, diagnosis, tindakan, alergi, resep) dan tanda "belum disimpan", dengan konfirmasi bila meninggalkan halaman; tekanan darah divalidasi (mis. 120/80); info alergi dan daftar temuan tidak lagi tampil dobel; obat di kartu tagihan diringkas satu baris. Diperbaiki: kolom gigi di "+ Tambah tindakan" kini terisi gigi yang dipilih di peta gigi.',
+            ],
+        ],
+        [
             'date' => '23 November 2026',
             'changes' => [
+                'Jadwal dokter › Libur / izin dengan dokter pengganti: tombol Simpan tidak lagi gagal diam-diam karena sisa isian cabang/jam yang tersembunyi; bila masih ada kesalahan, pesannya tampil di dalam jendela.',
                 'Jadwal dokter dengan dua sesi sehari (mis. Jumat 10.00–13.00 dan 17.00–20.00) kini tampil lengkap di Jadwal dokter, Dashboard, Antrean, dan Janji temu; sebelumnya hanya sesi pertama.',
+                'Rekam medis › Pemeriksaan: tagihan dikelompokkan Tindakan / Obat dan item baru disorot; Resep jadi kartu sendiri (cari obat dengan mengetik, label stok, tombol aturan pakai 3×1/2×1/1×1 & sesudah/sebelum makan, jumlah dihitung dari lama hari); saran tindakan dari diagnosis ICD-10 (sekali klik); konfirmasi bila ada tindakan bertarif Rp0. Diperbaiki: obat di tagihan tidak lagi muncul sebagai "Tindakan Rp0" saat kunjungan dibuka lagi.',
+                'Rekam medis › Tindakan & tagihan: pilih tindakan dengan mengetik nama atau kode (daftar tersaring otomatis, bisa pakai ↑ ↓ Enter), tidak perlu menggulir daftar panjang.',
                 'Data dokter: tombol Hapus untuk dokter yang belum pernah punya transaksi (kunjungan, rekam medis, tagihan, janji temu, order lab, gaji); dokter yang sudah punya data tetap hanya bisa dinonaktifkan. Dokter nonaktif ditolak di server saat dijadwalkan atau dipilih sebagai pengganti.',
                 'Jadwal dokter: kisi mingguan dikelompokkan per cabang — Batu di atas, dokter yang praktik di dua cabang di tengah, Malang di bawah. Dokter tanpa jadwal tetap di blok cabang utamanya, di bagian bawah.',
                 'Peran baru Asisten dan Pengaturan › Hak akses peran (Owner): atur per menu untuk Admin, Asisten, dan Dokter apakah boleh Lihat, Edit, dan melihat angka Keuangan (bila tidak, rupiah tampil Rp•••). Bawaan sama dengan sebelumnya; Owner selalu akses penuh. Izin dicek di server dan perubahan tercatat di jejak audit.',

@@ -97,3 +97,13 @@
 @utility link-arrow {
     @apply inline-flex items-center gap-1 text-[13px] font-semibold text-brand-600 hover:underline;
 }
+
+/* Item baru di layar Pemeriksaan disorot sebentar (tindakan, obat, resep). */
+@keyframes flash-new {
+    from { background-color: var(--color-leaf-200); }
+    to { background-color: transparent; }
+}
+
+.flash-new {
+    animation: flash-new 1.6s ease-out;
+}

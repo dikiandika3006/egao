@@ -64,7 +64,7 @@ it('meminta konfirmasi alergi sebelum mengirim ke kasir (UAT-11)', function () {
 
     Livewire::test(Exam::class, ['visit' => $visit])
         ->call('confirmSend')
-        ->assertSet('showAllergyPrompt', true);
+        ->assertSet('showSendReview', true);
 
     expect($visit->fresh()->status)->toBe(VisitStatus::Diperiksa);
 });
@@ -75,7 +75,7 @@ it('mengirim ke kasir dengan total yang sama di cabang yang sama (UAT-12)', func
 
     Livewire::test(Exam::class, ['visit' => $visit])
         ->call('confirmSend')
-        ->call('confirmAllergyAndSend')
+        ->call('confirmChecksAndSend')
         ->assertRedirect(route('rekam-medis'));
 
     $visit->refresh()->load('invoice.items', 'medicalRecord.versions');
@@ -196,7 +196,7 @@ it('koreksi setelah final membuat versi baru dan tagihan tidak berubah (FR-RM-22
         ->call('confirmSend');
 
     Livewire::test(Exam::class, ['visit' => $visit->fresh()])
-        ->assertSet('showAllergyPrompt', false)
+        ->assertSet('showSendReview', false)
         ->set('plan', 'Scaling ulang 2 minggu lagi.')
         ->set('correctionReason', '')
         ->call('saveCorrection')
@@ -244,4 +244,15 @@ it('menampilkan daftar pasien hari ini untuk dokter', function () {
     loginAs($visit->doctor->user->username, 'dokter', $this->batu->id);
 
     $this->get(route('rekam-medis'))->assertOk()->assertSee('Ahmad Fauzi')->assertSee('Lanjutkan');
+});
+
+it('tindakan dipilih lewat kolom cari yang bisa diketik (nama/kode)', function () {
+    $visit = todayVisit('Budi Santoso');
+    loginAs($visit->doctor->user->username, 'dokter', $this->batu->id);
+
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->set('addingProcedure', true)
+        ->assertSee('Ketik nama/kode tindakan')
+        ->assertSee('CBUT')
+        ->assertDontSeeHtml('<option value="">Pilih tindakan');
 });

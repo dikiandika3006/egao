@@ -79,7 +79,7 @@ it('kunjungan yang dikirim ke kasir masuk antrean satusehat', function () {
 
     Livewire::test(Exam::class, ['visit' => $visit])
         ->call('confirmSend')
-        ->call('confirmAllergyAndSend');
+        ->call('confirmChecksAndSend');
 
     $submission = SatuSehatSubmission::where('visit_id', $visit->id)->first();
     expect($submission)->not->toBeNull()

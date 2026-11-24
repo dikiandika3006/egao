@@ -302,8 +302,16 @@ class Faq
         // ── Rekam medis ──────────────────────────────────────────────
         [
             'group' => 'Rekam medis',
+            'q' => 'Cara cepat mengisi tindakan dan resep di pemeriksaan',
+            'a' => 'Setelah diagnosis ICD-10 dipilih, muncul kotak hijau "Saran dari diagnosis" (mis. K03.6 karang gigi → Scaling). Klik saran untuk langsung menambah tindakan; bila sebuah gigi sedang dipilih di peta gigi, nomor gigi ikut terisi. Tindakan lain dicari dengan mengetik nama/kode di "+ Tambah tindakan". Tagihan dikelompokkan Tindakan dan Obat; item yang baru ditambah disorot sebentar. Resep ada di kartu biru tersendiri: ketik nama obat (stok tampil; yang habis tidak bisa dipilih) atau pilih "Obat luar", klik tombol aturan pakai (3×1, 2×1, 1×1, sesudah/sebelum makan), lalu isi lama hari agar jumlah dihitung otomatis. Bila alergi belum dicek atau ada tindakan bertarif Rp0, saat "Simpan & kirim ke kasir" muncul satu jendela "Periksa sebelum kirim" berisi ringkasan dan peringatannya; tekan "Sudah dicek, kirim" untuk lanjut. Tarif Rp0 diisi di Master data › Tindakan & tarif.',
+            'where' => 'Rekam medis › Pemeriksaan',
+            'roles' => 'Dokter, Owner, Admin',
+            'tags' => 'tindakan resep obat saran diagnosis icd cepat aturan pakai dosis stok tarif rp0 tagihan',
+        ],
+        [
+            'group' => 'Rekam medis',
             'q' => 'Bagaimana dokter mengisi pemeriksaan?',
-            'a' => 'Dari Antrean tekan "Periksa", atau buka Rekam medis. Yang bisa mengisi: dokter kunjungan, Admin (cabangnya sendiri, mis. bila dokter mendikte), dan Owner; penginput tercatat. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
+            'a' => 'Dari Antrean tekan "Periksa", atau buka Rekam medis. Yang bisa mengisi: dokter kunjungan, Admin (cabangnya sendiri, mis. bila dokter mendikte), dan Owner; penginput tercatat. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Bar bawah menampilkan kelengkapan (✓ sudah, ! wajib belum, – opsional) dan tanda "belum disimpan"; bila meninggalkan halaman sebelum menyimpan, aplikasi meminta konfirmasi. Tekanan darah ditulis sistolik/diastolik, mis. 120/80. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
             'where' => 'Rekam medis',
             'roles' => 'Dokter, Admin, Owner',
             'tags' => 'periksa pemeriksaan odontogram diagnosis icd tindakan resep',

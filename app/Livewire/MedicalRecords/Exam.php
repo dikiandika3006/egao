@@ -11,6 +11,7 @@ use App\Models\Visit;
 use App\Services\ExamService;
 use App\Support\BranchContext;
 use App\Support\Format;
+use App\Support\TreatmentSuggestions;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
@@ -28,7 +29,7 @@ class Exam extends Component
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
         'drugOptions', 'drugTotal', 'standardPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
-        'editable', 'selectTooth',
+        'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist',
     ];
 
     public const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
@@ -105,7 +106,17 @@ class Exam extends Component
     // Modal
     public bool $showHistory = false;
 
-    public bool $showAllergyPrompt = false;
+    /** Satu modal "Periksa sebelum kirim": alergi belum dikonfirmasi dan/atau tindakan bertarif Rp0. */
+    public bool $showSendReview = false;
+
+    public bool $zeroPriceConfirmed = false;
+
+    /** Sidik isian terakhir yang tersimpan; dipakai untuk peringatan "belum disimpan". */
+    #[Locked]
+    public string $savedHash = '';
+
+    /** Ada isian yang belum disimpan (dihitung ulang tiap respons; dibaca Alpine lewat $wire.unsaved). */
+    public bool $unsaved = false;
 
     public bool $showCorrection = false;
 
@@ -134,8 +145,9 @@ class Exam extends Component
 
         $this->diagnoses = $visit->diagnoses->map(fn ($d) => ['code' => $d->icd10_code, 'primary' => $d->is_primary])->all();
 
-        $this->procedures = $visit->invoice?->items->map(fn ($i) => [
-            'procedure_id' => $i->procedure_id, 'tooth' => $i->tooth, 'quantity' => $i->quantity,
+        // Hanya baris tindakan; item obat/barang (procedure_id null) dimuat lewat resep, bukan sebagai tindakan.
+        $this->procedures = $visit->invoice?->items->whereNotNull('procedure_id')->values()->map(fn ($i) => [
+            'procedure_id' => $i->procedure_id, 'tooth' => $i->tooth, 'quantity' => $i->quantity, 'name' => $i->name,
             // Harga dinaikkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
             'unit_price' => $i->isRaised() ? (int) $i->unit_price : null,
         ])->all() ?? [];
@@ -147,6 +159,35 @@ class Exam extends Component
         if (collect($this->findings)->contains(fn ($f) => $f['tooth'] > 50)) {
             $this->dentition = 'child';
         }
+
+        $this->savedHash = $this->formHash();
+    }
+
+    public function dehydrate(): void
+    {
+        $this->unsaved = $this->editable && $this->formHash() !== $this->savedHash;
+    }
+
+    /** Sidik isian yang disimpan ke rekam medis/tagihan (bukan state tampilan). */
+    private function formHash(): string
+    {
+        return md5(json_encode([
+            $this->complaint, $this->anamnesis, $this->bloodPressure, $this->currentMedication, $this->plan,
+            $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions,
+        ]));
+    }
+
+    /** Status kelengkapan untuk bar aksi: [label, terisi?, wajib?]. */
+    #[Computed]
+    public function checklist(): array
+    {
+        return [
+            ['Keluhan', filled(trim($this->complaint)), true],
+            ['Diagnosis', $this->diagnoses !== [], true],
+            ['Tindakan', $this->procedures !== [], true],
+            ['Alergi dicek', $this->allergyConfirmed, true],
+            ['Resep', $this->prescriptions !== [], false],
+        ];
     }
 
     // ── Data turunan ────────────────────────────────────────────────
@@ -447,8 +488,46 @@ class Exam extends Component
         }
 
         $this->procedures[] = ['procedure_id' => $this->newProcedureId, 'tooth' => trim($this->newTooth) ?: null, 'quantity' => $this->newQuantity, 'unit_price' => null];
-        $this->reset('newProcedureId', 'newQuantity', 'newTooth', 'addingProcedure');
+        $this->reset('newProcedureId', 'newQuantity', 'newTooth', 'addingProcedure', 'zeroPriceConfirmed');
         $this->resetErrorBag('procedures');
+    }
+
+    /** Membuka form tambah tindakan: kolom gigi terisi gigi yang sedang dipilih di peta gigi. */
+    public function updatedAddingProcedure(bool $value): void
+    {
+        if ($value && $this->selectedTooth && trim($this->newTooth) === '') {
+            $this->newTooth = (string) $this->selectedTooth;
+        }
+    }
+
+    /** Saran tindakan dari diagnosis (peta ICD + riwayat klinik), hanya yang bertarif di cabang & belum ada. */
+    #[Computed]
+    public function suggestions(): Collection
+    {
+        return TreatmentSuggestions::for(
+            collect($this->diagnoses)->pluck('code')->filter()->values()->all(),
+            $this->procedureOptions,
+            collect($this->procedures)->pluck('procedure_id')->map(fn ($id) => (int) $id)->all(),
+        );
+    }
+
+    /** Tambah tindakan dari chip saran: jumlah 1, gigi = gigi yang sedang dipilih di peta gigi. */
+    public function addSuggestedProcedure(int $procedureId): void
+    {
+        $this->authorizeBilling();
+        abort_unless($this->procedureOptions->has($procedureId), 422);
+
+        $this->procedures[] = ['procedure_id' => $procedureId, 'tooth' => $this->selectedTooth ? (string) $this->selectedTooth : null, 'quantity' => 1, 'unit_price' => null];
+        $this->reset('zeroPriceConfirmed');
+        $this->resetErrorBag('procedures');
+        unset($this->suggestions);
+    }
+
+    /** Tindakan yang harganya Rp0 (tarif cabang belum diisi): perlu dikonfirmasi sebelum kirim ke kasir. */
+    #[Computed]
+    public function zeroPriceProcedures(): Collection
+    {
+        return collect($this->procedures)->filter(fn ($p) => $this->priceOf($p) <= 0)->values();
     }
 
     public function removeProcedure(int $index): void
@@ -477,19 +556,26 @@ class Exam extends Component
     {
         $this->validateFields();
         $exam->saveDraft($this->visit, $this->payload());
+        $this->savedHash = $this->formHash();
         unset($this->visit);
 
         $this->dispatch('toast', message: 'Draf tersimpan. Anda dapat melanjutkan nanti.');
     }
 
-    /** Langkah 1: pengingat periksa catatan & konfirmasi alergi (FR-RM-21). */
+    /**
+     * Langkah 1 kirim ke kasir. Isian wajib (keluhan, diagnosis, tindakan) yang kosong langsung tampil sebagai error.
+     * Bila lengkap tapi alergi belum dikonfirmasi (FR-RM-21) atau ada tindakan Rp0 → satu modal "Periksa sebelum kirim".
+     */
     public function confirmSend(): void
     {
         $this->authorizeBilling();
         $this->validateFields();
 
-        if (! $this->allergyConfirmed) {
-            $this->showAllergyPrompt = true;
+        $incomplete = blank(trim($this->complaint)) || $this->diagnoses === [] || $this->procedures === [];
+        $needsReview = ! $this->allergyConfirmed || ($this->zeroPriceProcedures->isNotEmpty() && ! $this->zeroPriceConfirmed);
+
+        if (! $incomplete && $needsReview) {
+            $this->showSendReview = true;
 
             return;
         }
@@ -497,16 +583,21 @@ class Exam extends Component
         $this->send(app(ExamService::class));
     }
 
-    public function confirmAllergyAndSend(ExamService $exam)
+    /** Langkah 2 dari modal: alergi dikonfirmasi & tindakan Rp0 disetujui, lalu kirim. */
+    public function confirmChecksAndSend(ExamService $exam)
     {
+        $this->authorizeBilling();
         $this->allergyConfirmed = true;
-        $this->showAllergyPrompt = false;
+        $this->zeroPriceConfirmed = true;
+        $this->showSendReview = false;
 
         return $this->send($exam);
     }
 
     public function send(ExamService $exam)
     {
+        $this->authorizeBilling();
+
         try {
             $exam->sendToCashier($this->visit, $this->payload());
         } catch (ValidationException $e) {
@@ -514,6 +605,8 @@ class Exam extends Component
 
             return null;
         }
+
+        $this->savedHash = $this->formHash();
 
         session()->flash('status', 'Rekam medis tersimpan dan tagihan terkirim ke kasir '.$this->visit->branch->name.'.');
 
@@ -524,6 +617,7 @@ class Exam extends Component
     {
         $this->validateFields();
         $exam->correct($this->visit, $this->payload(), $this->correctionReason);
+        $this->savedHash = $this->formHash();
 
         $this->reset('showCorrection', 'correctionReason');
         unset($this->visit);
@@ -536,14 +630,15 @@ class Exam extends Component
             'complaint' => 'nullable|string|max:500',
             'plan' => 'nullable|string|max:2000',
             'anamnesis' => 'nullable|string|max:2000',
-            'bloodPressure' => 'nullable|string|max:20',
+            'bloodPressure' => ['nullable', 'string', 'max:20', 'regex:/^\d{2,3}\s*\/\s*\d{2,3}(\s*mmhg)?$/i'],
             'currentMedication' => 'nullable|string|max:255',
             'followUp' => 'in:'.implode(',', array_keys(self::FOLLOW_UPS)),
             'prescriptions.*.drug_name' => 'nullable|string|max:255',
             'prescriptions.*.dose' => 'nullable|string|max:255',
             'prescriptions.*.quantity' => 'nullable|string|max:30',
             'prescriptions.*.item_quantity' => 'nullable|integer|min:1|max:999',
-        ], attributes: ['complaint' => 'keluhan utama', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
+        ], ['bloodPressure.regex' => 'Format tekanan darah: sistolik/diastolik, mis. 120/80.'],
+            ['complaint' => 'keluhan utama', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
     }
 
     private function payload(): array

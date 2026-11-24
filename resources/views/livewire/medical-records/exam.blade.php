@@ -10,7 +10,31 @@
     };
 @endphp
 
-<div class="mx-auto max-w-[1152px] pb-24 lg:pb-0">
+{{-- Peringatan "belum disimpan": $wire.unsaved (server) atau sedang mengetik di kolom yang belum terkirim. --}}
+<div class="mx-auto max-w-[1152px] pb-40 lg:pb-0"
+    x-data="{
+        typing: false,
+        get dirty() { return this.typing || $wire.unsaved },
+        mark(e) {
+            const model = [...e.target.attributes].find(a => a.name.startsWith('wire:model'));
+            if (model && /^(complaint|plan|anamnesis|bloodPressure|currentMedication|prescriptions|procedures)/.test(model.value)) this.typing = true;
+        },
+        init() {
+            this.offCommit = Livewire.hook('commit', ({ component, respond }) => {
+                if (component.id === $wire.$id) respond(() => this.typing = false);
+            });
+            this.onNavigate = (e) => { if (this.dirty && ! confirm('Ada isian pemeriksaan yang belum disimpan. Tinggalkan halaman ini?')) e.preventDefault(); };
+            this.onUnload = (e) => { if (this.dirty) { e.preventDefault(); e.returnValue = ''; } };
+            document.addEventListener('livewire:navigate', this.onNavigate);
+            window.addEventListener('beforeunload', this.onUnload);
+        },
+        destroy() {
+            this.offCommit?.();
+            document.removeEventListener('livewire:navigate', this.onNavigate);
+            window.removeEventListener('beforeunload', this.onUnload);
+        },
+    }"
+    x-on:input="mark($event)" x-on:change="mark($event)">
     {{-- Judul --}}
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -42,7 +66,7 @@
     @endif
 
     {{-- Header pasien (FR-RM-01) --}}
-    <div class="mt-6 grid gap-4 rounded-xl bg-leaf-100 px-5 py-4 sm:grid-cols-[1fr_1.3fr_auto] sm:items-center">
+    <div @class(['mt-6 grid gap-4 rounded-xl px-5 py-4 sm:grid-cols-[1fr_1.3fr_auto] sm:items-center', 'bg-amber-soft' => $patient->hasAllergy(), 'bg-leaf-100' => ! $patient->hasAllergy()])>
         <div>
             <p class="font-semibold">{{ $patient->rmCode() }}</p>
             <p class="mt-1 text-xs text-muted">{{ $patient->genderLabel() }} • {{ $patient->ageLabel() }}</p>
@@ -63,12 +87,6 @@
         </div>
         <button type="button" wire:click="$set('showHistory', true)" class="link-arrow justify-self-start sm:justify-self-end">Riwayat lintas cabang <span aria-hidden="true">→</span></button>
     </div>
-
-    @if ($patient->hasAllergy())
-        <div class="mt-3 rounded-xl bg-amber-soft px-5 py-3 text-sm text-amber-ink">
-            <strong>Alergi {{ $patient->allergies }}.</strong> Konfirmasi kembali sebelum tindakan.
-        </div>
-    @endif
 
     <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_368px]">
         <div class="min-w-0 space-y-6">
@@ -131,7 +149,7 @@
 
                         @foreach ($findingsByTooth->get($selectedTooth, collect()) as $f)
                             <p class="mt-2 text-xs"><span class="font-medium" style="color: {{ $conditions->get($f['condition_id'])->color }}">{{ $conditions->get($f['condition_id'])->name }}</span>
-                                — {{ (new \App\Models\ToothFinding(['surfaces' => $f['surfaces']]))->surfaceLabel() }}{{ $f['note'] ? ' • '.$f['note'] : '' }}</p>
+                                — {{ \App\Models\ToothFinding::labelFor($f['surfaces']) }}{{ $f['note'] ? ' • '.$f['note'] : '' }}</p>
                         @endforeach
 
                         @if ($editable)
@@ -168,13 +186,6 @@
                             </ul>
                         @endif
                     </div>
-                @elseif ($findings)
-                    <p class="mt-3 text-xs text-muted">
-                        Dipilih:
-                        @foreach ($findings as $f)
-                            gigi {{ $f['tooth'] }} • {{ (new \App\Models\ToothFinding(['surfaces' => $f['surfaces']]))->surfaceLabel() }}@if (! $loop->last); @endif
-                        @endforeach
-                    </p>
                 @endif
 
                 @if ($findings)
@@ -184,7 +195,7 @@
                                 <span>
                                     <span class="font-medium">Gigi {{ $f['tooth'] }}</span>
                                     <span class="ml-1.5" style="color: {{ $conditions->get($f['condition_id'])->color }}">{{ $conditions->get($f['condition_id'])->name }}</span>
-                                    <span class="text-xs text-muted">• {{ (new \App\Models\ToothFinding(['surfaces' => $f['surfaces']]))->surfaceLabel() }}{{ $f['note'] ? ' • '.$f['note'] : '' }}</span>
+                                    <span class="text-xs text-muted">• {{ \App\Models\ToothFinding::labelFor($f['surfaces']) }}{{ $f['note'] ? ' • '.$f['note'] : '' }}</span>
                                 </span>
                                 @if ($editable)
                                     <button type="button" wire:click="removeFinding({{ $i }})" class="text-xs text-rose-ink hover:underline">Hapus</button>
@@ -228,7 +239,7 @@
                 @error('diagnoses') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
 
                 @if ($editable)
-                    <div class="relative mt-2" x-data @click.outside="$wire.set('icdSearch', '')">
+                    <div class="relative mt-2" x-data @click.outside="if ($wire.icdSearch) $wire.set('icdSearch', '')">
                         <input type="search" wire:model.live.debounce.250ms="icdSearch" placeholder="Cari kode atau nama, mis. “karang” atau “K02”" class="input">
                         @if ($this->icdResults->isNotEmpty())
                             <ul class="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-line bg-white p-1 shadow-lg">
@@ -273,7 +284,7 @@
                 </div>
 
                 {{-- Anamnesis tambahan (opsional) --}}
-                <details class="group mt-5" @if ($anamnesis || $bloodPressure || $currentMedication) open @endif>
+                <details class="group mt-5" @if ($anamnesis || $bloodPressure || $currentMedication || $errors->has('bloodPressure')) open @endif>
                     <summary class="cursor-pointer text-xs font-medium text-brand-600 select-none">Anamnesis & pemeriksaan tambahan (opsional)</summary>
                     <div class="mt-3 grid gap-3 sm:grid-cols-2">
                         <div class="sm:col-span-2">
@@ -282,7 +293,8 @@
                         </div>
                         <div>
                             <label class="text-xs text-muted">Tekanan darah</label>
-                            <input type="text" wire:model.blur="bloodPressure" placeholder="120/80" @disabled(! $editable) class="input mt-1">
+                            <input type="text" wire:model.blur="bloodPressure" placeholder="120/80" maxlength="20" @disabled(! $editable) class="input mt-1">
+                            <x-error for="bloodPressure" />
                         </div>
                         <div>
                             <label class="text-xs text-muted">Obat yang sedang dikonsumsi</label>
@@ -294,28 +306,48 @@
         </div>
 
         <div class="space-y-6">
-            {{-- Tindakan & tagihan (FR-RM-15 … 19) --}}
-            <section class="card p-5">
+            {{-- Tindakan & tagihan (FR-RM-15 … 19): dikelompokkan Tindakan / Obat, item baru disorot sebentar. --}}
+            <section class="card p-5" x-data x-init="window.__examReady = false; setTimeout(() => window.__examReady = true, 600)">
                 <h2 class="text-xl font-semibold">Tindakan & tagihan</h2>
                 <p class="mt-1.5 text-xs text-muted">Terisi otomatis untuk kasir • harga {{ $visit->branch->name }}</p>
 
-                <ul class="mt-5 space-y-3.5 text-[15px]">
+                @php
+                    $procedureSubtotal = collect($procedures)->sum(fn ($p) => $this->priceOf($p) * max(1, (int) $p['quantity']));
+                    $drugLines = collect($prescriptions)->map(function ($rx, $i) {
+                        $d = filled($rx['item_id'] ?? null) ? $this->drugOptions->get((int) $rx['item_id']) : null;
+
+                        return $d ? ['i' => $i, 'item' => $d, 'qty' => max(1, (int) ($rx['item_quantity'] ?? 1))] : null;
+                    })->filter();
+                @endphp
+
+                <div class="mt-5 flex items-baseline justify-between border-b border-line pb-2">
+                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Tindakan</p>
+                    <p class="text-xs text-muted">{{ Format::rupiah($procedureSubtotal) }}</p>
+                </div>
+                <ul class="mt-3 space-y-1.5 text-[15px]">
                     @forelse ($procedures as $i => $p)
                         @php
                             $opt = $this->procedureOptions->get($p['procedure_id']);
                             $standard = $this->standardPrice($p['procedure_id']);
                             $price = $this->priceOf($p);
                         @endphp
-                        <li wire:key="p{{ $i }}" class="flex items-start justify-between gap-3" x-data="{ editPrice: false }">
+                        <li wire:key="p{{ $i }}-{{ $p['procedure_id'] }}" class="-mx-2 flex items-start justify-between gap-3 rounded-lg px-2 py-1.5"
+                            x-data="{ editPrice: false }"
+                            x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
                             <div class="min-w-0">
-                                <p>{{ $opt?->name ?? 'Tindakan' }}</p>
+                                <p>{{ $opt?->name ?? ($p['name'] ?? 'Tindakan') }}</p>
                                 @if ($p['quantity'] > 1 || $p['tooth'] || $price > $standard)
                                     <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
                                         @if ($price > $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
                                     </p>
                                 @endif
+                                @if (! $opt)
+                                    <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tidak tersedia / tanpa tarif di {{ $visit->branch->name }}</p>
+                                @elseif ($price <= 0)
+                                    <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tarif Rp0 — cek Master data › Tindakan & tarif</p>
+                                @endif
                                 @if ($billing && $this->canEditPrice)
-                                    <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
+                                    <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 block text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
                                     <div x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2">
                                         <input type="number" min="{{ $standard }}" step="1000" inputmode="numeric"
                                             wire:model.blur="procedures.{{ $i }}.unit_price" placeholder="{{ $standard }}"
@@ -339,19 +371,58 @@
                 </ul>
                 @error('procedures') <p class="mt-2 text-xs text-rose-ink">{{ $message }}</p> @enderror
 
+                {{-- Saran dari diagnosis: sekali klik menambah tindakan (gigi = gigi yang dipilih di peta gigi). --}}
+                @if ($billing && $this->suggestions->isNotEmpty())
+                    <div class="mt-4 rounded-xl bg-leaf-50 p-3">
+                        <p class="text-[11px] font-semibold text-brand-600">Saran dari diagnosis{{ $selectedTooth ? ' • gigi '.$selectedTooth : '' }}</p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            @foreach ($this->suggestions as $s)
+                                <button type="button" wire:key="sg{{ $s->id }}" wire:click="addSuggestedProcedure({{ $s->id }})" wire:loading.attr="disabled"
+                                    class="rounded-full border border-leaf-200 bg-white px-3 py-1.5 text-xs font-medium text-brand-600 hover:bg-leaf-100">
+                                    + {{ $s->name }} <span class="text-muted">{{ Format::rupiah($s->prices->first()?->price) }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 @if ($billing)
                     @if ($addingProcedure)
                         <form wire:submit="addProcedure" wire:key="add-procedure" class="mt-4 space-y-2 rounded-xl border border-line p-3">
-                            <select wire:model="newProcedureId" class="input">
-                                <option value="">Pilih tindakan…</option>
-                                @foreach ($this->procedureOptions as $opt)
-                                    <option value="{{ $opt->id }}">{{ $opt->name }} — {{ Format::rupiah($opt->prices->first()->price) }}</option>
-                                @endforeach
-                            </select>
+                            {{-- Cari tindakan: ketik nama/kode, pilih dengan klik atau ↑ ↓ Enter. --}}
+                            <div class="relative" x-data="{
+                                q: '', open: false, active: 0,
+                                opts: @js($this->procedureOptions->values()->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'code' => $o->code, 'price' => Format::rupiah($o->prices->first()->price), 'zero' => (int) $o->prices->first()->price <= 0])),
+                                get list() {
+                                    const terms = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+                                    return this.opts.filter(o => terms.every(t => (o.code + ' ' + o.name).toLowerCase().includes(t))).slice(0, 50);
+                                },
+                                pick(o) { this.q = o.name; this.open = false; $wire.$set('newProcedureId', o.id, false); },
+                                type() { this.open = true; this.active = 0; $wire.$set('newProcedureId', null, false); },
+                                enter(e) { if (this.open && this.list[this.active]) { e.preventDefault(); this.pick(this.list[this.active]); } },
+                            }" x-on:click.outside="open = false">
+                                <input type="text" x-model="q" x-on:input="type()" x-on:focus="open = true"
+                                    x-on:keydown.arrow-down.prevent="open = true; active = Math.min(active + 1, list.length - 1)"
+                                    x-on:keydown.arrow-up.prevent="active = Math.max(active - 1, 0)"
+                                    x-on:keydown.enter="enter($event)" x-on:keydown.escape="open = false"
+                                    placeholder="Ketik nama/kode tindakan…" autocomplete="off" class="input" aria-label="Tindakan" x-ref="search" x-init="$nextTick(() => $refs.search.focus())">
+                                <ul x-show="open" x-cloak class="absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white py-1 text-sm shadow-lg">
+                                    <template x-for="(o, i) in list" :key="o.id">
+                                        <li>
+                                            <button type="button" x-on:mousedown.prevent="pick(o)" x-on:mouseenter="active = i"
+                                                :class="i === active ? 'bg-mist' : ''" class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                                                <span><span x-text="o.name"></span> <span class="text-xs text-muted" x-text="o.code"></span></span>
+                                                <span class="shrink-0 text-xs" :class="o.zero ? 'rounded bg-amber-soft px-1.5 font-semibold text-amber-ink' : 'text-muted'" x-text="o.price"></span>
+                                            </button>
+                                        </li>
+                                    </template>
+                                    <li x-show="list.length === 0" class="px-3 py-2 text-muted">Tindakan tidak ditemukan.</li>
+                                </ul>
+                            </div>
                             @error('newProcedureId') <p class="text-xs text-rose-ink">{{ $message }}</p> @enderror
                             <div class="grid grid-cols-2 gap-2">
                                 <input type="number" wire:model="newQuantity" min="1" max="99" class="input" aria-label="Jumlah">
-                                <input type="text" wire:model="newTooth" maxlength="10" placeholder="Gigi (opsional)" class="input" @if ($selectedTooth) value="{{ $selectedTooth }}" @endif>
+                                <input type="text" wire:model="newTooth" maxlength="10" placeholder="Gigi (opsional)" class="input">
                             </div>
                             <div class="flex gap-2">
                                 {{-- mousedown.prevent: fokus input tidak lepas, keyboard ponsel tidak menutup & menggeser tombol sebelum klik. --}}
@@ -363,64 +434,165 @@
                             </div>
                         </form>
                     @else
-                        <button type="button" wire:click="$set('addingProcedure', true)" class="mt-5 text-sm font-semibold text-brand-600 hover:underline">+ Tambah tindakan</button>
+                        <button type="button" wire:click="$set('addingProcedure', true)" class="mt-4 text-sm font-semibold text-brand-600 hover:underline">+ Tambah tindakan</button>
                     @endif
                 @endif
 
-                @if ($this->drugTotal > 0)
-                    <div class="mt-4 flex justify-between text-[15px]"><span>Obat dari resep</span><span>{{ Format::rupiah($this->drugTotal) }}</span></div>
+                @if ($drugLines->isNotEmpty())
+                    <div class="mt-6 flex items-baseline justify-between border-b border-line pb-2">
+                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Obat dari resep</p>
+                        <p class="text-xs text-muted">{{ $drugLines->count() }} item</p>
+                    </div>
+                    {{-- Rincian per obat ada di kartu Resep; di sini cukup satu baris ringkas. --}}
+                    <div wire:key="bill-rx-{{ $drugLines->count() }}-{{ $this->drugTotal }}" class="-mx-2 mt-3 flex items-start justify-between gap-3 rounded-lg px-2 py-1.5 text-[15px]"
+                        x-data x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
+                        <p class="min-w-0 text-sm text-muted">{{ $drugLines->map(fn ($l) => $l['item']->name.' ×'.$l['qty'])->implode(', ') }}</p>
+                        <span class="shrink-0">{{ Format::rupiah($this->drugTotal) }}</span>
+                    </div>
                 @endif
 
                 <div class="mt-5 border-t border-line pt-5">
                     <p class="text-sm text-muted">Total sementara</p>
                     <p class="mt-2 text-[32px] font-semibold tracking-tight text-brand-600">{{ Format::rupiah($this->total) }}</p>
                 </div>
+            </section>
 
-                {{-- Resep (FR-RM-18) --}}
-                <div class="mt-4">
-                    @if (! $prescriptions)
-                        <p class="text-xs text-muted">Resep: tidak ada obat diresepkan</p>
-                    @else
-                        <p class="text-xs font-medium text-muted">Resep</p>
-                        <div class="mt-2 space-y-2">
-                            @foreach ($prescriptions as $i => $rx)
-                                <div wire:key="rx{{ $i }}" class="grid grid-cols-[1fr_auto] gap-2 rounded-lg bg-canvas p-2.5">
-                                    @if ($this->drugOptions->isNotEmpty())
-                                        {{-- Obat dari stok klinik: ikut ditagihkan di kasir & mengurangi stok saat lunas --}}
-                                        <select wire:model.live="prescriptions.{{ $i }}.item_id" @disabled(! $billing) class="input col-span-2 min-h-9 text-[13px]">
-                                            <option value="">Obat luar / tidak dari stok klinik</option>
-                                            @foreach ($this->drugOptions as $drug)
-                                                @php $left = (int) ($drug->stocks->first()?->quantity ?? 0); @endphp
-                                                <option value="{{ $drug->id }}" @disabled($left <= 0 && (int) ($rx['item_id'] ?? 0) !== $drug->id)>{{ $drug->name }} — @rupiah($drug->sell_price)/{{ $drug->unit }} · stok {{ $left }}</option>
-                                            @endforeach
-                                        </select>
+            {{-- Resep (FR-RM-18): kartu tersendiri. Obat dari stok ikut ditagihkan & mengurangi stok saat lunas. --}}
+            <section class="card border-l-4 border-l-sky-ink/50 p-5">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-xl font-semibold">Resep</h2>
+                    @if ($prescriptions)<span class="pill bg-sky-soft text-sky-ink">{{ count($prescriptions) }} obat</span>@endif
+                </div>
+                <p class="mt-1.5 text-xs text-muted">Pilih dari stok {{ $visit->branch->name }} agar ikut ditagihkan, atau tulis obat luar.</p>
+
+                @php
+                    $drugJs = $this->drugOptions->values()->map(fn ($d) => [
+                        'id' => $d->id, 'name' => $d->name, 'unit' => $d->unit,
+                        'price' => Format::rupiah($d->sell_price), 'stock' => (int) ($d->stocks->first()?->quantity ?? 0),
+                    ]);
+                @endphp
+
+                <div class="mt-4 space-y-3">
+                    @forelse ($prescriptions as $i => $rx)
+                        @php
+                            $chosen = filled($rx['item_id'] ?? null) ? $this->drugOptions->get((int) $rx['item_id']) : null;
+                            $left = (int) ($chosen?->stocks->first()?->quantity ?? 0);
+                            $need = max(1, (int) ($rx['item_quantity'] ?? 1));
+                        @endphp
+                        <div wire:key="rx{{ $i }}" class="space-y-2 rounded-xl bg-sky-soft/40 p-3"
+                            x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }"
+                            x-data="{
+                                q: @js($chosen?->name ?? ''), open: false, active: 0, days: '',
+                                opts: @js($drugJs),
+                                get list() {
+                                    const terms = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+                                    return this.opts.filter(o => terms.every(t => o.name.toLowerCase().includes(t))).slice(0, 30);
+                                },
+                                pick(o) { if (o.stock <= 0) return; this.q = o.name; this.open = false; $wire.set('prescriptions.{{ $i }}.item_id', o.id); },
+                                external() { this.q = ''; this.open = false; $wire.set('prescriptions.{{ $i }}.item_id', ''); },
+                                enter(e) { if (this.open && this.list[this.active]) { e.preventDefault(); this.pick(this.list[this.active]); } },
+                                dose(part, kind) {
+                                    let d = ($wire.prescriptions[{{ $i }}]?.dose || '').trim();
+                                    if (kind === 'freq') d = /\d+\s*[×x]\s*\d+/.test(d) ? d.replace(/\d+\s*[×x]\s*\d+/, part) : (part + ' ' + d).trim();
+                                    else d = /(sesudah|sebelum) makan/.test(d) ? d.replace(/(sesudah|sebelum) makan/, part) : (d + ' ' + part).trim();
+                                    $wire.set('prescriptions.{{ $i }}.dose', d);
+                                },
+                                perDay() { const m = ($wire.prescriptions[{{ $i }}]?.dose || '').match(/(\d+)\s*[×x]\s*(\d+)/); return m ? m[1] * m[2] : 0; },
+                                calc() { const n = this.perDay() * parseInt(this.days || 0); if (n > 0) $wire.set('prescriptions.{{ $i }}.item_quantity', Math.min(n, 999)); },
+                            }">
+                            <div class="flex items-start gap-2">
+                                <div class="min-w-0 flex-1">
+                                    @if ($billing && $this->drugOptions->isNotEmpty())
+                                        <div class="relative" x-on:click.outside="open = false">
+                                            <input type="text" x-model="q" x-on:input="open = true; active = 0" x-on:focus="open = true"
+                                                x-on:keydown.arrow-down.prevent="open = true; active = Math.min(active + 1, list.length - 1)"
+                                                x-on:keydown.arrow-up.prevent="active = Math.max(active - 1, 0)"
+                                                x-on:keydown.enter="enter($event)" x-on:keydown.escape="open = false"
+                                                placeholder="Ketik nama obat…" autocomplete="off" class="input min-h-10 bg-white text-[14px] font-medium" aria-label="Obat">
+                                            <ul x-show="open" x-cloak class="absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white py-1 text-sm shadow-lg">
+                                                <template x-for="(o, k) in list" :key="o.id">
+                                                    <li>
+                                                        <button type="button" x-on:mousedown.prevent="pick(o)" x-on:mouseenter="active = k" :disabled="o.stock <= 0"
+                                                            :class="[k === active ? 'bg-mist' : '', o.stock <= 0 ? 'opacity-50 cursor-not-allowed' : '']"
+                                                            class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                                                            <span><span x-text="o.name"></span> <span class="text-xs text-muted" x-text="o.price + '/' + o.unit"></span></span>
+                                                            <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                                                                :class="o.stock <= 0 ? 'bg-rose-soft text-rose-ink' : (o.stock < 10 ? 'bg-amber-soft text-amber-ink' : 'bg-leaf-100 text-brand-600')"
+                                                                x-text="o.stock <= 0 ? 'habis' : 'stok ' + o.stock"></span>
+                                                        </button>
+                                                    </li>
+                                                </template>
+                                                <li class="border-t border-line">
+                                                    <button type="button" x-on:mousedown.prevent="external()" class="w-full px-3 py-2 text-left text-xs text-muted hover:bg-mist">Obat luar / tidak dari stok klinik</button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    @elseif ($chosen)
+                                        <p class="font-medium">{{ $chosen->name }}</p>
                                     @endif
-                                    <input type="text" wire:model.blur="prescriptions.{{ $i }}.drug_name" placeholder="Nama obat" @disabled(! $editable) class="input min-h-9 text-[13px]">
-                                    @if ($editable)
-                                        <button type="button" wire:click="removePrescription({{ $i }})" class="px-2 text-muted hover:text-rose-ink" title="Hapus">✕</button>
+
+                                    @if (! $chosen)
+                                        <input type="text" wire:model.blur="prescriptions.{{ $i }}.drug_name" placeholder="Nama obat luar" @disabled(! $editable)
+                                            class="input mt-2 min-h-9 bg-white text-[13px]" aria-label="Nama obat luar">
                                     @else
-                                        <span></span>
-                                    @endif
-                                    <div class="col-span-2 grid grid-cols-[1fr_88px] gap-2">
-                                        <input type="text" wire:model.blur="prescriptions.{{ $i }}.dose" placeholder="Dosis, mis. 3×1 sesudah makan" @disabled(! $editable) class="input min-h-9 text-[13px]">
-                                        @if (filled($rx['item_id'] ?? null))
-                                            <input type="number" wire:model.blur="prescriptions.{{ $i }}.item_quantity" min="1" max="999" @disabled(! $billing) class="input min-h-9 text-[13px]" title="Jumlah ditagihkan">
-                                        @else
-                                            <input type="text" wire:model.blur="prescriptions.{{ $i }}.quantity" placeholder="Jumlah" @disabled(! $editable) class="input min-h-9 text-[13px]">
-                                        @endif
-                                    </div>
-                                    @if ($d = filled($rx['item_id'] ?? null) ? $this->drugOptions->get((int) $rx['item_id']) : null)
-                                        <p class="col-span-2 text-[11px] text-muted">Ditagihkan {{ max(1, (int) ($rx['item_quantity'] ?? 1)) }} {{ $d->unit }} × @rupiah($d->sell_price) = <b class="text-brand-700">@rupiah($d->sell_price * max(1, (int) ($rx['item_quantity'] ?? 1)))</b></p>
+                                        <p class="mt-1 text-[11px]">
+                                            <span @class(['rounded px-1.5 py-0.5 font-semibold', 'bg-rose-soft text-rose-ink' => $left < $need, 'bg-leaf-100 text-brand-600' => $left >= $need])>stok {{ $left }} {{ $chosen->unit }}</span>
+                                            @if ($left < $need)<span class="ml-1 text-rose-ink">stok kurang</span>@endif
+                                        </p>
                                     @endif
                                 </div>
-                            @endforeach
+                                @if ($editable)
+                                    <button type="button" wire:click="removePrescription({{ $i }})" class="mt-2 px-1 text-muted hover:text-rose-ink" title="Hapus obat">✕</button>
+                                @endif
+                            </div>
+
+                            <div>
+                                <input type="text" wire:model.blur="prescriptions.{{ $i }}.dose" placeholder="Aturan pakai, mis. 3×1 sesudah makan" @disabled(! $editable)
+                                    class="input min-h-9 bg-white text-[13px]" aria-label="Aturan pakai">
+                                @if ($editable)
+                                    <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                        @foreach (['3×1', '2×1', '1×1'] as $f)
+                                            <button type="button" x-on:click="dose('{{ $f }}', 'freq')" class="rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-medium hover:border-sky-ink hover:text-sky-ink">{{ $f }}</button>
+                                        @endforeach
+                                        @foreach (['sesudah makan', 'sebelum makan'] as $m)
+                                            <button type="button" x-on:click="dose('{{ $m }}', 'meal')" class="rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-medium hover:border-sky-ink hover:text-sky-ink">{{ $m }}</button>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+
+                            @if ($chosen)
+                                <div class="flex flex-wrap items-center gap-2 text-[13px]">
+                                    <label class="flex items-center gap-1.5">
+                                        <span class="text-muted">Jumlah</span>
+                                        <input type="number" wire:model.blur="prescriptions.{{ $i }}.item_quantity" min="1" max="999" @disabled(! $billing)
+                                            class="input min-h-9 w-20 bg-white text-[13px]" aria-label="Jumlah ditagihkan">
+                                        <span class="text-muted">{{ $chosen->unit }}</span>
+                                    </label>
+                                    @if ($billing)
+                                        <label class="flex items-center gap-1.5" x-show="perDay() > 0">
+                                            <span class="text-muted">atau</span>
+                                            <input type="number" x-model="days" x-on:change="calc()" min="1" max="60" placeholder="hari"
+                                                class="input min-h-9 w-16 bg-white text-[13px]" aria-label="Lama minum (hari)">
+                                            <span class="text-muted">hari</span>
+                                            <span class="text-[11px] text-muted" x-show="days" x-text="'= ' + (perDay() * parseInt(days || 0))"></span>
+                                        </label>
+                                    @endif
+                                    <span class="ml-auto text-[12px] font-semibold text-brand-700">{{ Format::rupiah($chosen->sell_price * $need) }}</span>
+                                </div>
+                            @else
+                                <input type="text" wire:model.blur="prescriptions.{{ $i }}.quantity" placeholder="Jumlah, mis. 10 tablet" @disabled(! $editable)
+                                    class="input min-h-9 bg-white text-[13px]" aria-label="Jumlah">
+                            @endif
                         </div>
-                        @error('prescriptions') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
-                    @endif
-                    @if ($editable)
-                        <button type="button" wire:click="addPrescription" class="mt-2 text-xs font-semibold text-brand-600 hover:underline">+ Tambah obat</button>
-                    @endif
+                    @empty
+                        <p class="text-sm text-muted">Tidak ada obat diresepkan.</p>
+                    @endforelse
                 </div>
+                @error('prescriptions') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                @if ($editable)
+                    <button type="button" wire:click="addPrescription" class="mt-3 text-sm font-semibold text-sky-ink hover:underline">+ Tambah obat</button>
+                @endif
             </section>
 
             {{-- Kunjungan sebelumnya (FR-RM-14) --}}
@@ -441,9 +613,24 @@
     {{-- Bar aksi (FR-RM-20/21) --}}
     <div class="fixed inset-x-0 bottom-[68px] z-30 border-t border-line bg-canvas/95 px-5 py-3 backdrop-blur lg:static lg:mt-6 lg:border-0 lg:bg-transparent lg:p-0">
         <div class="mx-auto flex max-w-[1152px] flex-wrap items-center justify-between gap-3">
-            <p class="hidden text-sm text-muted sm:block">
-                @if ($editable) Periksa catatan sebelum disimpan ke rekam medis. @else Dicetak dengan kop klinik & tanda tangan dokter. @endif
-            </p>
+            @if ($billing)
+                {{-- Indikator kelengkapan: wajib (✓ / !) dan opsional (✓ / –). --}}
+                <ul class="flex flex-wrap items-center gap-1.5 text-[11px] font-medium" aria-label="Kelengkapan pemeriksaan">
+                    @foreach ($this->checklist as [$label, $done, $required])
+                        <li @class([
+                            'rounded-full px-2.5 py-1',
+                            'bg-leaf-100 text-brand-600' => $done,
+                            'bg-amber-soft text-amber-ink' => ! $done && $required,
+                            'bg-mist text-muted' => ! $done && ! $required,
+                        ])>{{ $done ? '✓' : ($required ? '!' : '–') }} {{ $label }}</li>
+                    @endforeach
+                    <li x-show="dirty" x-cloak class="px-1 text-muted">• belum disimpan</li>
+                </ul>
+            @else
+                <p class="hidden text-sm text-muted sm:block">
+                    @if ($editable) Periksa catatan sebelum disimpan ke rekam medis. @else Dicetak dengan kop klinik & tanda tangan dokter. @endif
+                </p>
+            @endif
             <div class="flex w-full gap-3 sm:w-auto">
                 @if ($visit->medicalRecord()->exists())
                     <a href="{{ route('rekam-medis.cetak', $visit) }}" target="_blank" class="btn-ghost">Cetak</a>
@@ -460,19 +647,45 @@
         </div>
     </div>
 
-    {{-- Modal: konfirmasi alergi (UAT-11) --}}
-    @if ($showAllergyPrompt)
-        <div class="fixed inset-0 z-50 flex items-end justify-center bg-brand-800/40 p-4 sm:items-center" wire:key="allergy-modal">
+    {{-- Modal: periksa sebelum kirim — konfirmasi alergi (UAT-11) & tindakan Rp0 dalam satu langkah. --}}
+    @if ($showSendReview)
+        @php
+            $zero = $this->zeroPriceProcedures;
+            $rxCount = count($prescriptions);
+        @endphp
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-brand-800/40 p-4 sm:items-center" wire:key="send-review-modal">
             <div class="card w-full max-w-md p-6">
-                <span class="pill bg-amber-soft text-amber-ink">Periksa sebelum menyimpan</span>
-                <h3 class="mt-4 text-lg font-semibold">Alergi pasien belum dikonfirmasi</h3>
-                <p class="mt-2 text-sm text-muted">
-                    {{ $patient->hasAllergy() ? "Pasien tercatat alergi {$patient->allergies}." : 'Pasien belum melaporkan alergi.' }}
-                    Pastikan sudah ditanyakan ke pasien sebelum rekam medis disimpan final dan dikirim ke kasir.
-                </p>
+                <span class="pill bg-amber-soft text-amber-ink">Periksa sebelum kirim</span>
+                <h3 class="mt-4 text-lg font-semibold">Kirim ke kasir {{ $visit->branch->name }}?</h3>
+
+                <ul class="mt-4 space-y-1.5 text-sm">
+                    <li class="text-brand-600">✓ Keluhan, {{ count($diagnoses) }} diagnosis, {{ count($procedures) }} tindakan{{ $rxCount ? ", {$rxCount} obat" : '' }}</li>
+                    <li class="text-brand-600">✓ Total {{ Format::rupiah($this->total) }}</li>
+                </ul>
+
+                <div class="mt-4 space-y-3">
+                    @if (! $allergyConfirmed)
+                        <div class="rounded-xl bg-amber-soft px-4 py-3 text-sm text-amber-ink">
+                            <p class="font-semibold">Alergi belum dikonfirmasi</p>
+                            <p class="mt-1">{{ $patient->hasAllergy() ? "Pasien tercatat alergi {$patient->allergies}." : 'Pasien belum melaporkan alergi.' }} Pastikan sudah ditanyakan ke pasien.</p>
+                        </div>
+                    @endif
+                    @if ($zero->isNotEmpty() && ! $zeroPriceConfirmed)
+                        <div class="rounded-xl bg-amber-soft px-4 py-3 text-sm text-amber-ink">
+                            <p class="font-semibold">Ada tindakan bertarif Rp0</p>
+                            <ul class="mt-1 list-disc pl-5">
+                                @foreach ($zero as $zp)
+                                    <li>{{ $this->procedureOptions->get($zp['procedure_id'])?->name ?? ($zp['name'] ?? 'Tindakan') }}</li>
+                                @endforeach
+                            </ul>
+                            <p class="mt-1">Kalau memang gratis, lanjutkan. Kalau belum, isi tarifnya dulu di Master data › Tindakan & tarif.</p>
+                        </div>
+                    @endif
+                </div>
+
                 <div class="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
-                    <button type="button" wire:click="confirmAllergyAndSend" class="btn-primary flex-1">Sudah dikonfirmasi, kirim</button>
-                    <button type="button" wire:click="$set('showAllergyPrompt', false)" class="btn-ghost">Kembali</button>
+                    <button type="button" wire:click="confirmChecksAndSend" wire:loading.attr="disabled" class="btn-primary flex-1">Sudah dicek, kirim</button>
+                    <button type="button" wire:click="$set('showSendReview', false)" class="btn-ghost">Kembali</button>
                 </div>
             </div>
         </div>

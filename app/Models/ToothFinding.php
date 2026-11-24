@@ -36,7 +36,13 @@ class ToothFinding extends Model
 
     public function surfaceLabel(): string
     {
-        $labels = collect($this->surfaces ?? [])->map(fn ($s) => self::SURFACES[$s] ?? $s);
+        return self::labelFor($this->surfaces);
+    }
+
+    /** Label permukaan dari daftar kode, mis. ['O','M'] → "permukaan oklusal, mesial". */
+    public static function labelFor(?array $surfaces): string
+    {
+        $labels = collect($surfaces ?? [])->map(fn ($s) => self::SURFACES[$s] ?? $s);
 
         return $labels->isEmpty() ? 'seluruh gigi' : 'permukaan '.$labels->implode(', ');
     }

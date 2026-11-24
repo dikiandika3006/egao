@@ -189,3 +189,77 @@ it('kartu resep tampil terpisah dengan pencarian obat dan pilihan aturan pakai',
         ->assertSee('sesudah makan')
         ->assertSee('Obat luar / tidak dari stok klinik');
 });
+
+it('klik kondisi di panel gigi langsung mencatat temuan', function () {
+    $visit = kunjunganHariIni('Budi Santoso');
+    periksaLogin($visit);
+    $karies = \App\Models\ToothConditionType::where('code', 'KAR')->firstOrFail();
+
+    $exam = Livewire::test(Exam::class, ['visit' => $visit])
+        ->call('selectTooth', 36)
+        ->call('toggleSurface', 'O')
+        ->set('findingNote', 'Dalam')
+        ->call('recordFinding', $karies->id);
+
+    expect(collect($exam->get('findings'))->last())
+        ->toMatchArray(['tooth' => 36, 'condition_id' => $karies->id, 'surfaces' => ['O'], 'note' => 'Dalam'])
+        ->and($exam->get('selectedSurfaces'))->toBe([]);
+});
+
+it('temuan karies menyarankan diagnosis K02.9 lalu tindakan dengan gigi terisi', function () {
+    $visit = kunjunganHariIni('Budi Santoso');
+    periksaLogin($visit);
+    $karies = \App\Models\ToothConditionType::where('code', 'KAR')->firstOrFail();
+
+    $exam = Livewire::test(Exam::class, ['visit' => $visit])
+        ->set('diagnoses', [])
+        ->set('findings', [])
+        ->call('selectTooth', 46)
+        ->call('recordFinding', $karies->id)
+        ->call('selectTooth', 46) // tutup panel: gigi tidak lagi dipilih
+        ->assertSee('Saran dari peta gigi');
+
+    expect($exam->instance()->diagnosisSuggestions->pluck('code')->all())->toBe(['K02.9']);
+
+    $exam->call('addDiagnosis', 'K02.9');
+    expect($exam->instance()->diagnosisSuggestions)->toBeEmpty();
+
+    $saran = $exam->instance()->suggestions->first();
+    expect($saran)->not->toBeNull();
+
+    $exam->call('addSuggestedProcedure', $saran->id);
+    expect(collect($exam->get('procedures'))->last())->toMatchArray(['procedure_id' => $saran->id, 'tooth' => '46', 'quantity' => 1]);
+});
+
+it('gigi tidak diisi otomatis bila temuan relevan lebih dari satu gigi', function () {
+    $visit = kunjunganHariIni('Budi Santoso');
+    periksaLogin($visit);
+    $karies = \App\Models\ToothConditionType::where('code', 'KAR')->firstOrFail();
+
+    $exam = Livewire::test(Exam::class, ['visit' => $visit])
+        ->set('diagnoses', [])
+        ->set('findings', [])
+        ->call('selectTooth', 46)->call('recordFinding', $karies->id)
+        ->call('selectTooth', 36)->call('recordFinding', $karies->id)
+        ->call('selectTooth', 36)
+        ->call('addDiagnosis', 'K02.9');
+
+    $saran = $exam->instance()->suggestions->first();
+    $exam->call('addSuggestedProcedure', $saran->id);
+
+    expect(collect($exam->get('procedures'))->last()['tooth'])->toBeNull();
+});
+
+it('evaluasi ulang dipilih lewat tombol', function () {
+    $visit = kunjunganHariIni('Budi Santoso');
+    periksaLogin($visit);
+
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->assertSee('Evaluasi ulang')
+        ->assertSee('2 mgg')
+        ->set('followUp', '2 weeks')
+        ->call('saveDraft')
+        ->assertHasNoErrors();
+
+    expect($visit->fresh()->medicalRecord->follow_up_label)->toBe('Evaluasi 2 minggu');
+});

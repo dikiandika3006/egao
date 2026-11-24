@@ -29,7 +29,7 @@ class Exam extends Component
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
         'drugOptions', 'drugTotal', 'standardPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
-        'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist',
+        'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
     ];
 
     public const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
@@ -39,6 +39,11 @@ class Exam extends Component
     public const UPPER_CHILD = [55, 54, 53, 52, 51, 61, 62, 63, 64, 65];
 
     public const LOWER_CHILD = [85, 84, 83, 82, 81, 71, 72, 73, 74, 75];
+
+    /** Label singkat tombol evaluasi ulang. */
+    public const FOLLOW_UP_CHIPS = [
+        '' => 'Tidak', '1 week' => '1 mgg', '2 weeks' => '2 mgg', '1 month' => '1 bln', '3 months' => '3 bln', '6 months' => '6 bln',
+    ];
 
     public const FOLLOW_UPS = [
         '' => 'Tanpa evaluasi',
@@ -419,6 +424,13 @@ class Exam extends Component
         $this->findingNote = '';
     }
 
+    /** Sekali klik chip kondisi = temuan tercatat (permukaan & catatan yang sudah diisi ikut). */
+    public function recordFinding(int $conditionId): void
+    {
+        $this->selectedCondition = $conditionId;
+        $this->addFinding();
+    }
+
     public function removeFinding(int $index): void
     {
         $this->authorizeEdit();
@@ -460,6 +472,18 @@ class Exam extends Component
         foreach ($this->diagnoses as $i => $d) {
             $this->diagnoses[$i]['primary'] = $i === $index;
         }
+    }
+
+    /** Saran diagnosis dari temuan peta gigi (mis. Karies → K02.9), yang belum dipilih. */
+    #[Computed]
+    public function diagnosisSuggestions(): Collection
+    {
+        $codes = TreatmentSuggestions::diagnosesFor(
+            collect($this->findings)->map(fn ($f) => $this->conditions->get($f['condition_id'])?->code)->filter()->values()->all(),
+            collect($this->diagnoses)->pluck('code')->all(),
+        );
+
+        return $codes ? Icd10Code::whereIn('code', $codes)->get()->sortBy(fn ($c) => array_search($c->code, $codes))->values() : collect();
     }
 
     public function toggleFavorite(string $code): void
@@ -511,13 +535,23 @@ class Exam extends Component
         );
     }
 
-    /** Tambah tindakan dari chip saran: jumlah 1, gigi = gigi yang sedang dipilih di peta gigi. */
+    /**
+     * Tambah tindakan dari chip saran: jumlah 1, gigi = gigi yang sedang dipilih di peta gigi; bila tidak ada,
+     * gigi temuan yang relevan (hanya bila tepat satu gigi).
+     */
     public function addSuggestedProcedure(int $procedureId): void
     {
         $this->authorizeBilling();
         abort_unless($this->procedureOptions->has($procedureId), 422);
 
-        $this->procedures[] = ['procedure_id' => $procedureId, 'tooth' => $this->selectedTooth ? (string) $this->selectedTooth : null, 'quantity' => 1, 'unit_price' => null];
+        $tooth = $this->selectedTooth ? (string) $this->selectedTooth : TreatmentSuggestions::toothFor(
+            $procedureId,
+            collect($this->findings)->map(fn ($f) => ['tooth' => $f['tooth'], 'code' => $this->conditions->get($f['condition_id'])?->code])->all(),
+            collect($this->diagnoses)->pluck('code')->all(),
+            $this->procedureOptions,
+        );
+
+        $this->procedures[] = ['procedure_id' => $procedureId, 'tooth' => $tooth, 'quantity' => 1, 'unit_price' => null];
         $this->reset('zeroPriceConfirmed');
         $this->resetErrorBag('procedures');
         unset($this->suggestions);

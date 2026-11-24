@@ -112,6 +112,7 @@ class About
             'date' => '24 November 2026',
             'changes' => [
                 'Rekam medis › Pemeriksaan dirapikan: konfirmasi alergi dan tindakan Rp0 kini satu jendela "Periksa sebelum kirim"; bar bawah menampilkan kelengkapan (keluhan, diagnosis, tindakan, alergi, resep) dan tanda "belum disimpan", dengan konfirmasi bila meninggalkan halaman; tekanan darah divalidasi (mis. 120/80); info alergi dan daftar temuan tidak lagi tampil dobel; obat di kartu tagihan diringkas satu baris. Diperbaiki: kolom gigi di "+ Tambah tindakan" kini terisi gigi yang dipilih di peta gigi.',
+                'Rekam medis › Pemeriksaan lebih cepat: klik kondisi di panel gigi langsung mencatat temuan; temuan menyarankan diagnosis ICD-10 (Kalkulus K03.6, Karies K02.9, Gigi hilang K08.1, Impaksi K01.1, Sisa akar K08.3, Goyang K05.3); saran tindakan memakai nomor gigi temuan bila hanya satu gigi; evaluasi ulang dipilih lewat tombol.',
             ],
         ],
         [

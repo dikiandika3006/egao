@@ -31,7 +31,58 @@ class TreatmentSuggestions
         'Z01.2' => ['Pemeriksaan rutin', 'Scaling', 'Topikal Fluoride'],
     ];
 
+    /** Kode kondisi peta gigi → saran diagnosis ICD-10 (Tambalan & Mahkota = kondisi lama, tanpa saran). */
+    public const CONDITION_ICD = [
+        'KAL' => 'K03.6',
+        'KAR' => 'K02.9',
+        'HLG' => 'K08.1',
+        'IMP' => 'K01.1',
+        'SIS' => 'K08.3',
+        'GOY' => 'K05.3',
+    ];
+
     public const LIMIT = 4;
+
+    /**
+     * Saran diagnosis dari temuan peta gigi.
+     *
+     * @param  list<string>  $conditionCodes  kode kondisi temuan kunjungan ini
+     * @param  list<string>  $existing  kode ICD yang sudah dipilih
+     * @return list<string>
+     */
+    public static function diagnosesFor(array $conditionCodes, array $existing = []): array
+    {
+        return collect($conditionCodes)
+            ->map(fn ($c) => self::CONDITION_ICD[$c] ?? null)
+            ->filter()->unique()
+            ->reject(fn ($code) => in_array($code, $existing, true))
+            ->values()->all();
+    }
+
+    /**
+     * Gigi temuan yang relevan untuk tindakan saran: kondisinya menyarankan diagnosis (kategori ICD sama) yang
+     * menghasilkan tindakan itu. Hanya diisi bila tepat satu gigi, supaya jumlah tagihan tidak salah.
+     *
+     * @param  list<array{tooth:int, code:?string}>  $findings  temuan + kode kondisinya
+     * @param  list<string>  $codes  diagnosis kunjungan
+     */
+    public static function toothFor(int $procedureId, array $findings, array $codes, Collection $options): ?string
+    {
+        $teeth = [];
+        foreach ($codes as $code) {
+            if (! static::for([$code], $options)->contains('id', $procedureId)) {
+                continue;
+            }
+            foreach ($findings as $f) {
+                $icd = self::CONDITION_ICD[$f['code'] ?? ''] ?? null;
+                if ($icd && substr($icd, 0, 3) === substr($code, 0, 3)) {
+                    $teeth[$f['tooth']] = true;
+                }
+            }
+        }
+
+        return count($teeth) === 1 ? (string) array_key_first($teeth) : null;
+    }
 
     /** Minimal berapa kali tindakan ditagihkan bersama diagnosis itu agar ikut disarankan. */
     public const MIN_HISTORY = 2;

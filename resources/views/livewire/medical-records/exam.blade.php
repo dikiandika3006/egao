@@ -163,16 +163,15 @@
                                     ])>{{ $label }}</button>
                                 @endforeach
                             </div>
-                            <p class="mt-4 text-xs font-medium text-muted">Kondisi</p>
+                            <input type="text" wire:model="findingNote" maxlength="255" placeholder="Catatan (opsional)" class="input mt-3" aria-label="Catatan temuan">
+                            {{-- Klik kondisi = temuan langsung tercatat (permukaan & catatan di atas ikut). --}}
+                            <p class="mt-4 text-xs font-medium text-muted">Kondisi <span class="font-normal">• klik untuk mencatat</span></p>
                             <div class="mt-2 flex flex-wrap gap-2">
                                 @foreach ($conditions as $c)
-                                    <button type="button" wire:click="$set('selectedCondition', {{ $c->id }})" class="min-h-9 rounded-lg border px-3 text-xs"
-                                            style="{{ $selectedCondition === $c->id ? "border-color: {$c->color}; background: {$c->color}1f; color: {$c->color}; font-weight: 600" : 'border-color: var(--color-line)' }}">{{ $c->name }}</button>
+                                    <button type="button" wire:click="recordFinding({{ $c->id }})" wire:loading.attr="disabled" wire:target="recordFinding"
+                                            class="min-h-9 rounded-lg border px-3 text-xs font-medium hover:opacity-80"
+                                            style="border-color: {{ $c->color }}66; background: {{ $c->color }}14; color: {{ $c->color }}">+ {{ $c->name }}</button>
                                 @endforeach
-                            </div>
-                            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-                                <input type="text" wire:model="findingNote" maxlength="255" placeholder="Catatan (opsional)" class="input">
-                                <button type="button" wire:click="addFinding" class="btn-soft shrink-0">Catat temuan</button>
                             </div>
                         @endif
 
@@ -238,6 +237,21 @@
                 </div>
                 @error('diagnoses') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
 
+                {{-- Saran diagnosis dari temuan peta gigi: sekali klik. --}}
+                @if ($editable && $this->diagnosisSuggestions->isNotEmpty())
+                    <div class="mt-2 rounded-xl bg-leaf-50 p-3">
+                        <p class="text-[11px] font-semibold text-brand-600">Saran dari peta gigi</p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            @foreach ($this->diagnosisSuggestions as $sd)
+                                <button type="button" wire:key="sd{{ $sd->code }}" wire:click="addDiagnosis('{{ $sd->code }}')" wire:loading.attr="disabled"
+                                    class="rounded-full border border-leaf-200 bg-white px-3 py-1.5 text-xs font-medium text-brand-600 hover:bg-leaf-100">
+                                    + {{ $sd->code }} <span class="text-muted">{{ $sd->name_id ?: $sd->name_en }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 @if ($editable)
                     <div class="relative mt-2" x-data @click.outside="if ($wire.icdSearch) $wire.set('icdSearch', '')">
                         <input type="search" wire:model.live.debounce.250ms="icdSearch" placeholder="Cari kode atau nama, mis. “karang” atau “K02”" class="input">
@@ -272,12 +286,17 @@
                 <textarea id="plan" wire:model.blur="plan" rows="2" @disabled(! $editable)
                           class="mt-2 w-full resize-none rounded-lg bg-canvas px-3.5 py-3 text-[15px] focus:ring-2 focus:ring-leaf-200 focus:outline-none disabled:text-brand-700"
                           placeholder="Contoh: scaling dan edukasi kebersihan mulut."></textarea>
-                <div class="mt-2 flex flex-wrap items-center gap-3">
-                    <select wire:model.live="followUp" @disabled(! $editable) class="input w-auto min-w-[200px]">
-                        @foreach (\App\Livewire\MedicalRecords\Exam::FOLLOW_UPS as $k => $label)
-                            <option value="{{ $k }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
+                <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                    <span class="mr-1 text-xs text-muted">Evaluasi ulang</span>
+                    @foreach (\App\Livewire\MedicalRecords\Exam::FOLLOW_UP_CHIPS as $k => $label)
+                        <button type="button" wire:click="$set('followUp', '{{ $k }}')" @disabled(! $editable)
+                            title="{{ \App\Livewire\MedicalRecords\Exam::FOLLOW_UPS[$k] }}" aria-pressed="{{ $followUp === $k ? 'true' : 'false' }}"
+                            @class([
+                                'rounded-full border px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed',
+                                'border-brand-600 bg-leaf-100 text-brand-700' => $followUp === $k,
+                                'border-line bg-white text-muted hover:border-brand-600 hover:text-brand-700' => $followUp !== $k,
+                            ])>{{ $label }}</button>
+                    @endforeach
                     @if ($followUp)
                         <span class="text-xs text-muted">sekitar {{ $visit->visit_date->copy()->add($followUp)->translatedFormat('j F Y') }}</span>
                     @endif

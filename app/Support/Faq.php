@@ -311,7 +311,7 @@ class Faq
         [
             'group' => 'Rekam medis',
             'q' => 'Bagaimana dokter mengisi pemeriksaan?',
-            'a' => 'Dari Antrean tekan "Periksa", atau buka Rekam medis. Yang bisa mengisi: dokter kunjungan, Admin (cabangnya sendiri, mis. bila dokter mendikte), dan Owner; penginput tercatat. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Bar bawah menampilkan kelengkapan (✓ sudah, ! wajib belum, – opsional) dan tanda "belum disimpan"; bila meninggalkan halaman sebelum menyimpan, aplikasi meminta konfirmasi. Tekanan darah ditulis sistolik/diastolik, mis. 120/80. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
+            'a' => 'Dari Antrean tekan "Periksa", atau buka Rekam medis. Yang bisa mengisi: dokter kunjungan, Admin (cabangnya sendiri, mis. bila dokter mendikte), dan Owner; penginput tercatat. Isi keluhan, odontogram, diagnosis ICD-10, tindakan, dan resep. Di peta gigi: pilih gigi, (opsional) permukaan & catatan, lalu klik kondisinya — temuan langsung tercatat. Temuan memunculkan "Saran dari peta gigi" untuk diagnosis (mis. Karies → K02.9, Sisa akar → K08.3); saran tindakan yang ditambahkan otomatis memakai nomor gigi temuan bila hanya satu gigi. Evaluasi ulang dipilih lewat tombol (1 mgg … 6 bln). Bar bawah menampilkan kelengkapan (✓ sudah, ! wajib belum, – opsional) dan tanda "belum disimpan"; bila meninggalkan halaman sebelum menyimpan, aplikasi meminta konfirmasi. Tekanan darah ditulis sistolik/diastolik, mis. 120/80. Tindakan otomatis menjadi rincian tagihan di Kasir setelah dikirim.',
             'where' => 'Rekam medis',
             'roles' => 'Dokter, Admin, Owner',
             'tags' => 'periksa pemeriksaan odontogram diagnosis icd tindakan resep',

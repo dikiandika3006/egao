@@ -6,11 +6,14 @@ use App\Enums\Role;
 use App\Enums\VisitStatus;
 use App\Livewire\Concerns\ModulePage;
 use App\Livewire\Concerns\PicksBranch;
+use App\Models\Appointment;
 use App\Models\AuditLog;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Visit;
+use App\Support\AppointmentRules;
 use App\Support\BranchContext;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -27,7 +30,10 @@ class Antrean extends Component
     public const MENU = 'antrean';
 
     /** Boleh tanpa izin Edit (lihat ModulePage). */
-    public const READ_ACTIONS = ['examine', 'closeForm'];
+    public const READ_ACTIONS = ['examine', 'closeForm', 'closeTransfer'];
+
+    /** Form "Alihkan" pasien walk-in ke cabang / hari lain (menjadi janji temu). */
+    public array $transfer = [];
 
     /** Tab antrean: menunggu | selesai (selesai tindakan) | batal (tidak hadir). */
     #[Url(as: 'status', except: 'menunggu')]
@@ -148,6 +154,12 @@ class Antrean extends Component
     public function backToWaiting(int $id, BranchContext $context): void
     {
         $visit = $this->find($id, $context);
+
+        // Kunjungan yang sudah dialihkan menjadi janji temu tidak dihidupkan lagi (cegah pasien ganda di dua cabang).
+        if ($this->transferOf($visit->id)) {
+            throw ValidationException::withMessages(['antrean' => 'Pasien ini sudah dialihkan menjadi janji temu. Atur lewat menu Janji temu.']);
+        }
+
         if (in_array($visit->status, [VisitStatus::Dipanggil, VisitStatus::Batal], true)) {
             $visit->update(['status' => VisitStatus::Menunggu, 'called_at' => null]);
             AuditLog::record('visit.requeued', $visit);
@@ -162,6 +174,95 @@ class Antrean extends Component
         $visit->update(['status' => VisitStatus::Batal]);
         AuditLog::record('visit.cancelled', $visit);
         $this->toast('Ditandai tidak hadir.');
+    }
+
+    // ---- Alihkan pasien walk-in ke cabang / hari lain ---------------------------------
+
+    private function canTransfer(BranchContext $context): bool
+    {
+        return $context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu();
+    }
+
+    private function transferOf(int $visitId): ?Appointment
+    {
+        return Appointment::where('clinic_id', $this->clinicId())
+            ->where('source', Appointment::SOURCE_TRANSFER)->where('source_visit_id', $visitId)->first();
+    }
+
+    public function openTransfer(int $id, BranchContext $context): void
+    {
+        abort_unless($this->canTransfer($context), 403);
+        $visit = $this->find($id, $context);
+        abort_unless(in_array($visit->status, [VisitStatus::Menunggu, VisitStatus::Dipanggil], true), 422);
+
+        $this->resetValidation();
+        $this->transfer = [
+            'visit_id' => $visit->id, 'branch_id' => '', 'date' => today()->toDateString(),
+            'time' => '', 'doctor_id' => '', 'reason' => '',
+        ];
+    }
+
+    public function closeTransfer(): void
+    {
+        $this->transfer = [];
+        $this->resetValidation();
+    }
+
+    /** Kunjungan hari ini dibatalkan, diganti janji temu di cabang/tanggal tujuan; di sana pasien masuk lewat "Datang → antrean". */
+    public function saveTransfer(BranchContext $context): void
+    {
+        abort_unless($this->canTransfer($context), 403);
+        abort_unless($this->transfer['visit_id'] ?? null, 422);
+
+        $data = $this->validate([
+            'transfer.branch_id' => ['required', Rule::exists('branches', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
+            'transfer.date' => ['required', 'date', 'after_or_equal:today'],
+            'transfer.time' => ['nullable', 'date_format:H:i'],
+            'transfer.doctor_id' => ['nullable', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
+            'transfer.reason' => ['required', 'string', 'max:255'],
+        ], ['transfer.date.after_or_equal' => 'Tanggal tidak boleh sebelum hari ini.'], [
+            'transfer.branch_id' => 'cabang', 'transfer.date' => 'tanggal', 'transfer.time' => 'jam',
+            'transfer.doctor_id' => 'dokter', 'transfer.reason' => 'alasan',
+        ])['transfer'];
+
+        $branchId = (int) $data['branch_id'];
+        $doctorId = filled($data['doctor_id']) ? (int) $data['doctor_id'] : null;
+        $time = filled($data['time']) ? $data['time'] : null;
+
+        $visit = $this->find((int) $this->transfer['visit_id'], $context);
+
+        if ($branchId === (int) $visit->branch_id && $data['date'] === today()->toDateString()) {
+            throw ValidationException::withMessages(['transfer.branch_id' => 'Pilih cabang lain atau tanggal lain. Untuk ganti dokter di cabang ini, tandai tidak hadir lalu daftarkan ulang.']);
+        }
+
+        AppointmentRules::rejectDoubleBooking($this->clinicId(), $doctorId, $data['date'], $time, null, 'transfer.time');
+
+        $appointment = DB::transaction(function () use ($visit, $data, $branchId, $doctorId, $time) {
+            $visit = Visit::lockForUpdate()->findOrFail($visit->id);
+            abort_unless(in_array($visit->status, [VisitStatus::Menunggu, VisitStatus::Dipanggil], true), 422);
+
+            $appointment = Appointment::create([
+                'clinic_id' => $this->clinicId(), 'patient_id' => $visit->patient_id, 'branch_id' => $branchId,
+                'doctor_id' => $doctorId, 'date' => $data['date'], 'time' => $time,
+                'purpose' => $visit->purpose, 'note' => 'Dialihkan: '.trim($data['reason']),
+                'status' => Appointment::SCHEDULED, 'source' => Appointment::SOURCE_TRANSFER,
+                'source_visit_id' => $visit->id, 'created_by' => auth()->id(),
+            ]);
+
+            $visit->update(['status' => VisitStatus::Batal]);
+
+            return $appointment;
+        });
+
+        AuditLog::record('visit.dialihkan', $visit, [
+            'appointment_id' => $appointment->id, 'branch_id' => $branchId, 'date' => $data['date'], 'alasan' => trim($data['reason']),
+        ]);
+
+        $appointment->load('branch');
+        $this->transfer = [];
+        $warning = AppointmentRules::hoursWarning($appointment->branch, $appointment->date, $appointment->time);
+        $this->toast("{$visit->patient->name} dialihkan ke {$appointment->branch->shortName()}, {$appointment->date->translatedFormat('j M')}. Pasien masuk antrean di sana lewat Janji temu › Datang."
+            .($warning ? ' Perhatian: '.str_replace(' Janji tetap bisa disimpan.', '', $warning) : ''));
     }
 
     private function find(int $id, BranchContext $context): Visit
@@ -226,7 +327,24 @@ class Antrean extends Component
             ? Patient::where('clinic_id', $this->clinicId())->find($this->visit['patient_id'])
             : null;
 
+        // Keterangan "Dialihkan ke …" di tab Tidak hadir.
+        $transfers = $tab === 'batal'
+            ? Appointment::where('clinic_id', $this->clinicId())->where('source', Appointment::SOURCE_TRANSFER)
+                ->whereIn('source_visit_id', $list->pluck('id'))->with('branch')->get()->keyBy('source_visit_id')
+            : collect();
+
+        $transferBranches = $this->transfer ? AppointmentRules::branches($this->clinicId()) : collect();
+        $transferDate = rescue(fn () => Carbon::parse($this->transfer['date'] ?? today()), today(), false);
+        $transferBranch = $this->transfer ? $transferBranches->firstWhere('id', (int) ($this->transfer['branch_id'] ?? 0)) : null;
+
         return $this->page('antrean', 'livewire.modules.antrean', [
+            'transfers' => $transfers,
+            'canTransfer' => $this->canTransfer($context),
+            'transferVisit' => $this->transfer ? $visits->firstWhere('id', $this->transfer['visit_id']) : null,
+            'transferBranches' => $transferBranches,
+            'transferDoctors' => $this->transfer ? Doctor::where('clinic_id', $this->clinicId())->where('is_active', true)->orderBy('name')->get() : collect(),
+            'transferOnDuty' => $transferBranch ? AppointmentRules::doctorsOn($this->clinicId(), $transferBranch->id, $transferDate)->pluck('id')->all() : [],
+            'transferWarning' => $transferBranch ? AppointmentRules::hoursWarning($transferBranch, $transferDate, $this->transfer['time'] ?? '') : null,
             'context' => $context,
             'visits' => $list,
             'counts' => $counts,

@@ -28,6 +28,8 @@ class About
                 'Nomor antrean berurutan per dokter, per cabang, per hari.',
                 'Pasien yang masih aktif di antrean hari ini tidak bisa didaftarkan dua kali.',
                 'Antrean: Menunggu → Selesai tindakan (otomatis setelah dokter menyimpan pemeriksaan; keterangan Belum bayar/Lunas) atau Tidak hadir. Tanpa langkah Panggil.',
+                'Pasien tanpa janji tetap dilayani. Bila perlu, pasien yang menunggu dialihkan ke cabang lain atau hari lain (wajib alasan): antrean hari ini dibatalkan dan diganti janji temu di tujuan.',
+                'Jadwal ulang janji temu boleh ke cabang mana pun milik klinik; alasan wajib bila tanggal, jam, cabang, atau dokter berubah, dan riwayatnya tersimpan.',
             ],
         ],
         [
@@ -42,7 +44,7 @@ class About
         [
             'title' => 'Kasir & kwitansi',
             'rules' => [
-                'Diskon wajib diberi alasan dan hanya bisa sebelum ada pembayaran. Admin dibatasi persentase diskon maksimal; Owner tidak dibatasi.',
+                'Diskon diberikan dokter penanggung jawab saat pemeriksaan, wajib beralasan, dan dibatasi persentase di Pengaturan. Admin/Asisten tidak bisa memberi diskon; mereka mencatat pembayaran dan mencetak kwitansi. Owner boleh memberi diskon di Kasir tanpa batas sebelum ada pembayaran.',
                 'Pembayaran boleh sebagian. Kunjungan baru Selesai setelah tagihan lunas.',
                 'Kwitansi terbit saat lunas, bernomor urut per cabang mulai dari "nomor awal kwitansi" di pengaturan cabang.',
                 'Metode bayar yang tampil di kasir mengikuti pengaturan Owner.',
@@ -53,6 +55,8 @@ class About
             'rules' => [
                 'Satu dokter hanya boleh berada di satu lokasi pada jam yang sama; jadwal bentrok ditolak.',
                 'Pindah cabang sementara dan libur berlaku per tanggal dan tidak mengubah jadwal rutin.',
+                'Tukar jadwal dua dokter (seret sel) hanya untuk satu tanggal, hari ini atau ke depan; janji temu boleh ikut ditukar.',
+                'Absensi lokasi: absen hanya dalam radius cabang, akurasi GPS ≤ 150 m, dan di jam shift. Absen dokter = tanda hadir shift (uang duduk); absen asisten = upah shift & lembur per jam penuh. Koreksi hanya oleh Owner dan tercatat di audit.',
                 'Hanya Owner dan Admin yang bisa mengubah jadwal.',
             ],
         ],
@@ -100,7 +104,7 @@ class About
         [
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
-                'Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan, dan tidak boleh di bawah harga standar cabang, kecuali tindakan bertanda "harga boleh di bawah standar" (mis. cabut tidak selesai) dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
+                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan: di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
                 'Biaya admin & kartu ditagih sekali per pasien di tagihan pertamanya dan tidak masuk bagi hasil.',
                 'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
                 'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
@@ -114,6 +118,13 @@ class About
         [
             'date' => '24 November 2026',
             'changes' => [
+                'Janji temu: tombol "Ubah" menjadi "Jadwal ulang". Jadwal ulang bisa pindah cabang, wajib alasan, riwayatnya tersimpan, dan bisa dipakai pada janji Batal/Tidak datang. Batal/Tidak datang bisa diberi alasan. Form janji punya tautan "Daftarkan pasien baru".',
+                'Antrean: tombol "Alihkan" mengalihkan pasien yang menunggu ke cabang/hari lain menjadi janji temu.',
+                'Diskon pindah ke dokter di halaman pemeriksaan (batas % diatur di Pengaturan › Aplikasi). Admin/Asisten di Kasir tidak lagi bisa memberi diskon; Owner tetap bisa.',
+                'Tarif tindakan bisa berupa range (min–maks). Di Pemeriksaan, dokter bebas memilih harga di dalam range; di bawah minimal hanya dengan centang "Tidak selesai" + alasan.',
+                'Jadwal dokter: seret sel ke dokter lain untuk tukar jadwal satu hari (janji temu bisa ikut ditukar). Tab baru "Asisten": jadwal rutin asisten dan centang hadir Shift Pagi/Sore.',
+                'Menu baru Absensi: absen masuk/pulang per shift berbasis lokasi cabang untuk dokter & asisten, rekap bulanan, dan koreksi oleh Owner. Titik lokasi & radius diatur di Pengaturan › Cabang.',
+                'Gaji asisten: upah per shift hadir (Pagi Rp15.000, Sore Rp20.000; bisa per asisten), lembur Rp5.000/jam dari absen pulang, ditambah fee 2%/nominal tindakan.',
                 'Aturan Owner bagi hasil & gaji: fee dokter dan asisten dihitung dari tindakan menurut tanggal kunjungan (tidak lagi menunggu lunas), dari harga setelah diskon, dipotong biaya modal, bahan resep, dan lab. Perhitungan ulang bulan lama bisa berbeda dari slip yang sudah dibayar.',
                 'Uang duduk dokter per shift: tandai hadir Shift 1/2 di Jadwal dokter; kotor shift < Rp100.000 → uang duduk Rp40.000 (fee shift itu 0), selain itu fee %.',
                 'Master data › Tindakan: resep bahan per tindakan (takaran pecahan, stok otomatis), tarif terkunci (mis. Analisis kasus), harga boleh di bawah standar dengan alasan (mis. cabut tidak selesai), dan fee asisten nominal (mis. pasang behel/gigi palsu Rp8.000).',

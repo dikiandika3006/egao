@@ -61,6 +61,12 @@ class Navigation
                 'subtitle' => 'Jadwal rolling dokter di Batu dan Malang. Satu dokter, satu lokasi di jam yang sama.',
                 'breadcrumb' => ['Operasional', 'Jadwal dokter'], 'requirements' => 'FR-JDW-01 – 11',
             ],
+            'absensi' => [
+                'group' => 'klinik', 'number' => null, 'label' => 'Absensi', 'route' => 'absensi', 'path' => '/absensi',
+                'roles' => $all, 'title' => 'Absensi shift',
+                'subtitle' => 'Absen masuk & pulang per shift dari lokasi klinik. Dasar uang duduk dokter, upah shift & lembur asisten.',
+                'breadcrumb' => ['Operasional', 'Absensi'], 'requirements' => 'Permintaan klien: absensi berbasis lokasi',
+            ],
             'dokter' => [
                 'group' => 'master', 'number' => '07', 'label' => 'Data dokter', 'route' => 'dokter', 'path' => '/dokter',
                 'roles' => [Role::Owner, Role::Admin], 'title' => 'Data dokter',

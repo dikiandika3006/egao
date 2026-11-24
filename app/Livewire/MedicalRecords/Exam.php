@@ -28,7 +28,7 @@ class Exam extends Component
 
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
-        'drugOptions', 'drugTotal', 'standardPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
+        'drugOptions', 'drugTotal', 'standardPrice', 'maxPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
         'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
     ];
 
@@ -71,6 +71,11 @@ class Exam extends Component
     public string $followUp = '';
 
     public bool $allergyConfirmed = false;
+
+    /** Diskon tagihan dari dokter (Rp) + alasan; hanya dokter penanggung jawab / Owner yang bisa mengubah. */
+    public ?int $discount = 0;
+
+    public string $discountReason = '';
 
     /** @var list<array{tooth:int, condition_id:int, surfaces:list<string>, note:?string}> */
     public array $findings = [];
@@ -142,6 +147,8 @@ class Exam extends Component
         $this->plan = (string) $record?->plan;
         $this->followUp = (string) array_search($record?->follow_up_label, self::FOLLOW_UPS, true) ?: '';
         $this->allergyConfirmed = (bool) $record?->allergy_confirmed;
+        $this->discount = (int) $visit->invoice?->discount;
+        $this->discountReason = (string) $visit->invoice?->discount_reason;
 
         $this->findings = $visit->findings->map(fn (ToothFinding $f) => [
             'tooth' => $f->tooth, 'condition_id' => $f->tooth_condition_type_id,
@@ -156,6 +163,7 @@ class Exam extends Component
             // Harga dinaikkan/diturunkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
             'unit_price' => $i->isRaised() || $i->isLowered() ? (int) $i->unit_price : null,
             'price_reason' => $i->price_reason,
+            'is_incomplete' => (bool) $i->is_incomplete,
         ])->all() ?? [];
 
         $this->prescriptions = $visit->prescriptions->map->only(['item_id', 'drug_name', 'dose', 'quantity', 'item_quantity'])->all();
@@ -180,6 +188,7 @@ class Exam extends Component
         return md5(json_encode([
             $this->complaint, $this->anamnesis, $this->bloodPressure, $this->currentMedication, $this->plan,
             $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions,
+            $this->discount, $this->discountReason,
         ]));
     }
 
@@ -281,6 +290,20 @@ class Exam extends Component
         return $procedures + $this->drugTotal;
     }
 
+    /** Dokter penanggung jawab / Owner boleh memberi diskon sebelum dikirim ke kasir. */
+    #[Computed]
+    public function canGiveDiscount(): bool
+    {
+        return app(ExamService::class)->canGiveDiscount($this->visit);
+    }
+
+    /** Batas diskon untuk subtotal di layar (tanpa biaya admin yang ditambahkan saat simpan). */
+    #[Computed]
+    public function maxDiscount(): int
+    {
+        return app(ExamService::class)->maxDiscount($this->total);
+    }
+
     /** Obat dari stok cabang kunjungan yang bisa diresepkan & ditagihkan. */
     #[Computed]
     public function drugOptions(): Collection
@@ -307,6 +330,20 @@ class Exam extends Component
         return (int) ($this->procedureOptions->get($procedureId)?->prices->first()?->price ?? 0);
     }
 
+    /** Batas atas tarif range di cabang kunjungan (null = satu harga). */
+    public function maxPrice(?int $procedureId): ?int
+    {
+        $max = $this->procedureOptions->get($procedureId)?->prices->first()?->max_price;
+
+        return $max !== null && (int) $max > $this->standardPrice($procedureId) ? (int) $max : null;
+    }
+
+    /** Harga boleh di bawah tarif minimal: dicentang "tidak selesai" atau tindakan berizin. */
+    private function mayLower(array $p): bool
+    {
+        return ! empty($p['is_incomplete']) || (bool) $this->procedureOptions->get($p['procedure_id'] ?? null)?->allow_lower_price;
+    }
+
     /** Harga yang dipakai: harga dinaikkan (bila ada) atau harga standar. */
     public function priceOf(array $p): int
     {
@@ -317,10 +354,10 @@ class Exam extends Component
             return $standard;
         }
 
-        return $procedure?->allow_lower_price ? max(0, (int) $p['unit_price']) : max($standard, (int) $p['unit_price']);
+        return $this->mayLower($p) ? max(0, (int) $p['unit_price']) : max($standard, (int) $p['unit_price']);
     }
 
-    /** Hanya Dokter & Owner yang boleh menaikkan harga tindakan (≥ harga standar). */
+    /** Hanya Dokter & Owner yang boleh mengubah harga tindakan (≥ tarif minimal, kecuali tidak selesai). */
     #[Computed]
     public function canEditPrice(): bool
     {
@@ -331,7 +368,24 @@ class Exam extends Component
     public function updatedProcedures($value, string $key): void
     {
         [$index, $field] = array_pad(explode('.', $key), 2, null);
-        if (! isset($this->procedures[$index]) || ! in_array($field, ['unit_price', 'price_reason'], true)) {
+        if (! isset($this->procedures[$index]) || ! in_array($field, ['unit_price', 'price_reason', 'is_incomplete'], true)) {
+            return;
+        }
+
+        if ($field === 'is_incomplete') {
+            if (! $this->canEditPrice) {
+                $this->procedures[$index]['is_incomplete'] = false;
+                abort(403, 'Hanya Dokter dan Owner yang boleh menandai tindakan tidak selesai.');
+            }
+            $this->procedures[$index]['is_incomplete'] = (bool) $value;
+            $standard = $this->standardPrice($this->procedures[$index]['procedure_id']);
+            // Centang dilepas: harga di bawah minimal tidak berlaku lagi.
+            if (! $this->mayLower($this->procedures[$index]) && filled($this->procedures[$index]['unit_price'] ?? null)
+                && (int) $this->procedures[$index]['unit_price'] < $standard) {
+                $this->procedures[$index]['unit_price'] = null;
+                $this->procedures[$index]['price_reason'] = null;
+            }
+
             return;
         }
 
@@ -357,11 +411,11 @@ class Exam extends Component
             $this->addError("procedures.{$index}.unit_price", 'Tarif tindakan ini terkunci, tidak bisa diubah.');
         } elseif ($value === null || $value === '' || $price === $standard) {
             $this->procedures[$index]['unit_price'] = null;
-        } elseif ($price < $standard && $procedure?->allow_lower_price) {
+        } elseif ($price < $standard && $this->mayLower($this->procedures[$index])) {
             $this->procedures[$index]['unit_price'] = $price;
         } elseif ($price < $standard) {
             $this->procedures[$index]['unit_price'] = null;
-            $this->addError("procedures.{$index}.unit_price", 'Tidak boleh di bawah harga standar '.Format::rupiah($standard).'.');
+            $this->addError("procedures.{$index}.unit_price", 'Di bawah tarif minimal '.Format::rupiah($standard).'. Centang "Tidak selesai" bila tindakannya tidak selesai.');
         } else {
             $this->procedures[$index]['unit_price'] = $price;
         }
@@ -690,6 +744,8 @@ class Exam extends Component
             'prescriptions.*.dose' => 'nullable|string|max:255',
             'prescriptions.*.quantity' => 'nullable|string|max:30',
             'prescriptions.*.item_quantity' => 'nullable|integer|min:1|max:999',
+            'discount' => 'nullable|integer|min:0',
+            'discountReason' => 'nullable|string|max:255',
         ], ['bloodPressure.regex' => 'Format tekanan darah: sistolik/diastolik, mis. 120/80.'],
             ['complaint' => 'keluhan utama', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
     }
@@ -709,6 +765,8 @@ class Exam extends Component
             'diagnoses' => $this->diagnoses,
             'procedures' => $this->procedures,
             'prescriptions' => $this->prescriptions,
+            'discount' => (int) $this->discount,
+            'discount_reason' => $this->discountReason,
         ];
     }
 

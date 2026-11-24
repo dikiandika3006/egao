@@ -10,6 +10,7 @@
     </x-page-header>
 
     <p class="mt-3 text-sm text-muted">{{ now()->translatedFormat('l, j F Y') }} · {{ $context->label() }}</p>
+    <x-error for="antrean" />
 
     <section class="card mt-6 overflow-hidden">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-5 pt-4">
@@ -60,6 +61,9 @@
                                 @if ($canExamine)
                                     <button type="button" wire:click="examine({{ $v->id }})" class="btn-primary min-h-9 px-4">Periksa</button>
                                 @endif
+                                @if ($canTransfer)
+                                    <button type="button" wire:click="openTransfer({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs" title="Alihkan ke cabang atau hari lain">Alihkan</button>
+                                @endif
                                 @if ($canEdit)
                                     <button type="button" wire:click="cancel({{ $v->id }})" wire:confirm="Tandai {{ $v->patient->name }} tidak hadir?" class="btn-ghost min-h-9 px-3 text-xs">Tidak hadir</button>
                                 @endif
@@ -75,7 +79,9 @@
                                 @endif
                                 @break
                             @case(VisitStatus::Batal)
-                                @if ($canEdit)
+                                @if ($moved = $transfers->get($v->id))
+                                    <span class="text-xs text-muted">Dialihkan ke {{ $moved->branch->shortName() }}, {{ $moved->date->translatedFormat('j M') }}{{ $moved->time ? ' '.Format::jam($moved->time) : '' }}</span>
+                                @elseif ($canEdit)
                                     <button type="button" wire:click="backToWaiting({{ $v->id }})" class="btn-ghost min-h-9 px-3 text-xs">Masukkan lagi</button>
                                 @endif
                                 @break
@@ -150,6 +156,68 @@
                 <div class="flex justify-end gap-2">
                     <button type="button" wire:click="closeForm" class="btn-ghost">Batal</button>
                     <button class="btn-primary">Ambil nomor antrean</button>
+                </div>
+            </form>
+        </x-modal>
+    @endif
+
+    @if ($transfer)
+        <x-modal title="Alihkan pasien" close="closeTransfer">
+            <form wire:submit="saveTransfer" class="space-y-4">
+                @if ($transferVisit)
+                    <p class="rounded-lg bg-leaf-50 px-4 py-3 text-sm">
+                        <b>{{ $transferVisit->patient->name }}</b> · No. {{ $transferVisit->queueLabel() }} · {{ $transferVisit->branch->shortName() }}
+                    </p>
+                @endif
+                <p class="text-xs text-muted">Antrean hari ini dibatalkan dan diganti janji temu di cabang/tanggal tujuan. Saat pasien tiba, cabang tujuan menekan "Datang → antrean" di menu Janji temu.</p>
+                <div>
+                    <label class="label">Cabang tujuan</label>
+                    <select wire:model.live="transfer.branch_id" class="input">
+                        <option value="">Pilih cabang…</option>
+                        @foreach ($transferBranches as $b)
+                            <option value="{{ $b->id }}">{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                    <x-error for="transfer.branch_id" />
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="label">Tanggal</label>
+                        <input type="date" wire:model.live="transfer.date" min="{{ today()->toDateString() }}" class="input">
+                        <x-error for="transfer.date" />
+                    </div>
+                    <div>
+                        <label class="label">Jam (opsional)</label>
+                        <input type="time" wire:model.live.debounce.500ms="transfer.time" class="input">
+                        <x-error for="transfer.time" />
+                    </div>
+                </div>
+                <div>
+                    <label class="label">Dokter (opsional)</label>
+                    <select wire:model="transfer.doctor_id" class="input">
+                        <option value="">Dokter yang bertugas</option>
+                        @foreach ($transferDoctors as $d)
+                            <option value="{{ $d->id }}">{{ $d->name }}{{ in_array($d->id, $transferOnDuty, true) ? ' · bertugas' : '' }}</option>
+                        @endforeach
+                    </select>
+                    <x-error for="transfer.doctor_id" />
+                </div>
+                @if ($transferWarning)
+                    <p class="rounded-xl bg-amber-soft px-3 py-2 text-[13px] text-amber-ink">⚠ {{ $transferWarning }}</p>
+                @endif
+                <div>
+                    <label class="label">Alasan</label>
+                    <input type="text" wire:model="transfer.reason" maxlength="255" class="input" placeholder="Mis. antrean penuh, dokter tidak praktik">
+                    <div class="mt-2 flex flex-wrap gap-1.5">
+                        @foreach (['Antrean penuh', 'Dokter tidak praktik', 'Pasien minta cabang lain', 'Pasien minta hari lain'] as $r)
+                            <button type="button" wire:click="$set('transfer.reason', @js($r))" class="pill bg-mist text-[12px] hover:bg-leaf-100">{{ $r }}</button>
+                        @endforeach
+                    </div>
+                    <x-error for="transfer.reason" />
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" wire:click="closeTransfer" class="btn-ghost">Batal</button>
+                    <button class="btn-primary">Alihkan</button>
                 </div>
             </form>
         </x-modal>

@@ -93,7 +93,7 @@ class ExamService
 
         return DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
-            $this->persistBilling($visit, $data['procedures'] ?? [], Invoice::STATUS_DRAFT, $data['prescriptions'] ?? []);
+            $this->persistBilling($visit, $data['procedures'] ?? [], Invoice::STATUS_DRAFT, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data));
 
             return $record;
         });
@@ -108,7 +108,7 @@ class ExamService
 
         $record = DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
-            $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? []);
+            $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data));
 
             $record->update(['status' => MedicalRecord::STATUS_FINAL, 'finalized_at' => now()]);
             $this->snapshot($record->fresh(), 'Dikirim ke kasir');
@@ -266,20 +266,48 @@ class ExamService
         return $record;
     }
 
-    /** Dokter & Owner boleh menaikkan harga tindakan (tidak boleh di bawah harga standar). */
+    /**
+     * Diskon tagihan diberikan dokter penanggung jawab (atau Owner) di pemeriksaan, sebelum dikirim ke kasir.
+     * Admin/Asisten yang mengisi pemeriksaan atas nama dokter tidak bisa mengubahnya.
+     */
+    public function canGiveDiscount(Visit $visit): bool
+    {
+        return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner)) && $this->canEditBilling($visit);
+    }
+
+    /** Batas diskon dokter (% dari subtotal) dari Pengaturan; Owner tidak dibatasi. */
+    public function maxDiscount(int $subtotal): int
+    {
+        return $this->context->is(Role::Owner)
+            ? $subtotal
+            : (int) floor($subtotal * Settings::int('admin_max_discount_percent') / 100);
+    }
+
+    /** Diskon dari isian pemeriksaan; null = tidak berhak / tidak dikirim → diskon tersimpan dipertahankan. */
+    private function discountFrom(Visit $visit, array $data): ?array
+    {
+        if (! array_key_exists('discount', $data) || ! $this->canGiveDiscount($visit)) {
+            return null;
+        }
+
+        return ['amount' => max(0, (int) $data['discount']), 'reason' => $this->clean($data['discount_reason'] ?? null, 255)];
+    }
+
+    /** Dokter & Owner boleh mengubah harga tindakan (≥ tarif minimal; di bawahnya hanya bila tidak selesai). */
     public function canRaisePrice(): bool
     {
         return $this->context->is(Role::Dokter, Role::Owner);
     }
 
     /**
-     * Harga standar = harga cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items.
-     * Dokter/Owner boleh mengisi unit_price ≥ standar (bagi hasil ikut harga ini). Tindakan bertanda "harga boleh di bawah
-     * standar" (mis. cabut tidak selesai) boleh lebih rendah asal beralasan. Tindakan bertarif terkunci selalu harga standar.
+     * Harga standar = tarif minimal cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items.
+     * Tarif bisa berupa range (min–maks). Dokter/Owner boleh mengisi unit_price ≥ minimal; di atas maks tetap boleh tetapi
+     * dicatat di audit (bagi hasil ikut harga ini). Di bawah minimal hanya bila dicentang "tidak selesai" (atau tindakan
+     * bertanda "harga boleh di bawah standar") dan beralasan. Tindakan bertarif terkunci selalu tarif minimal.
      * Peran lain tidak bisa mengubah harga, tetapi harga yang sudah tersimpan untuk tindakan yang sama dipertahankan.
      * Biaya bahan resep dibekukan per baris (material_cost); biaya admin ditagih sekali di tagihan pertama pasien.
      */
-    private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = []): Invoice
+    private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = [], ?array $discount = null): Invoice
     {
         $ids = collect($procedures)->pluck('procedure_id')->unique();
         $master = Procedure::with(['prices', 'materials.item'])->whereIn('id', $ids)->get()->keyBy('id');
@@ -288,9 +316,9 @@ class ExamService
 
         // Harga yang sudah tersimpan per tindakan (antrian sesuai urutan) untuk dipertahankan saat Admin menyimpan.
         $existing = InvoiceItem::whereHas('invoice', fn ($q) => $q->where('visit_id', $visit->id))->orderBy('id')
-            ->get(['procedure_id', 'unit_price', 'price_reason', 'is_admin_fee']);
+            ->get(['procedure_id', 'unit_price', 'price_reason', 'is_incomplete', 'is_admin_fee']);
         $saved = $existing->whereNotNull('procedure_id')->groupBy('procedure_id')
-            ->map(fn ($g) => $g->map(fn ($i) => ['price' => (int) $i->unit_price, 'reason' => $i->price_reason])->values()->all())
+            ->map(fn ($g) => $g->map(fn ($i) => ['price' => (int) $i->unit_price, 'reason' => $i->price_reason, 'incomplete' => (bool) $i->is_incomplete])->values()->all())
             ->all();
 
         $raised = [];
@@ -298,28 +326,33 @@ class ExamService
 
         $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, $stock, &$saved, &$raised, &$lowered) {
             $procedure = $master->get((int) $p['procedure_id']);
-            $standard = $procedure?->priceFor($visit->branch_id);
+            $range = $procedure?->rangeFor($visit->branch_id);
 
-            if (! $procedure || $standard === null) {
+            if (! $procedure || $range === null) {
                 throw ValidationException::withMessages(['procedures' => 'Tindakan tidak tersedia di cabang ini.']);
             }
 
+            [$standard, $max] = $range;
             $requested = filled($p['unit_price'] ?? null) ? (int) $p['unit_price'] : null;
             $reason = $this->clean($p['price_reason'] ?? null, 255);
+            $incomplete = $canRaise ? (bool) ($p['is_incomplete'] ?? false) : false;
             $previous = ! empty($saved[$procedure->id]) ? array_shift($saved[$procedure->id]) : null;
 
             if ($procedure->price_locked) {
                 $price = $standard;
+                $incomplete = false;
             } elseif ($canRaise && $requested !== null) {
-                if ($requested < $standard && ! $procedure->allow_lower_price) {
+                if ($requested < $standard && ! $incomplete && ! $procedure->allow_lower_price) {
                     throw ValidationException::withMessages([
-                        'procedures' => "Harga {$procedure->name} tidak boleh di bawah harga standar Rp ".number_format($standard, 0, ',', '.').'.',
+                        'procedures' => "Harga {$procedure->name} di bawah tarif minimal Rp ".number_format($standard, 0, ',', '.')
+                            .'. Centang "Tidak selesai" bila tindakannya tidak selesai.',
                     ]);
                 }
                 $price = max(0, $requested);
-            } elseif ($previous !== null && ($previous['price'] >= $standard || $procedure->allow_lower_price)) {
+            } elseif ($previous !== null && ($previous['price'] >= $standard || $previous['incomplete'] || $procedure->allow_lower_price)) {
                 $price = $previous['price'];
                 $reason ??= $previous['reason'];
+                $incomplete = $previous['incomplete'];
             } else {
                 $price = $standard;
             }
@@ -327,16 +360,18 @@ class ExamService
             if ($price < $standard) {
                 if (! $reason) {
                     throw ValidationException::withMessages([
-                        'procedures' => "Tuliskan alasan harga {$procedure->name} di bawah standar (mis. cabut tidak selesai).",
+                        'procedures' => "Tuliskan alasan harga {$procedure->name} di bawah tarif minimal (mis. cabut tidak selesai).",
                     ]);
                 }
-                $lowered[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'harga' => $price, 'alasan' => $reason];
+                $lowered[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'harga' => $price, 'alasan' => $reason, 'tidak_selesai' => $incomplete];
             } else {
                 $reason = null;
+                $incomplete = false;
             }
 
-            if ($price > $standard) {
-                $raised[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'harga' => $price];
+            // Di dalam range = wajar; di atas maks (atau di atas tarif tunggal) dicatat di audit.
+            if ($price > ($max ?? $standard)) {
+                $raised[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'maks' => $max, 'harga' => $price];
             }
 
             $qty = max(1, min(99, (int) ($p['quantity'] ?? 1)));
@@ -353,6 +388,7 @@ class ExamService
                 'unit_price' => $price,
                 'standard_price' => $standard,
                 'price_reason' => $reason,
+                'is_incomplete' => $incomplete,
                 'material_cost' => $material,
                 'amount' => $price * $qty,
             ];
@@ -390,6 +426,23 @@ class ExamService
         }
 
         $total = (int) $items->sum('amount');
+
+        // Diskon dokter (per tagihan): wajib beralasan, dibatasi % di Pengaturan (Owner bebas).
+        if ($discount !== null) {
+            $max = $this->maxDiscount($total);
+            if ($discount['amount'] > $max) {
+                throw ValidationException::withMessages(['discount' => 'Diskon maksimal Rp '.number_format($max, 0, ',', '.').'.']);
+            }
+            if ($discount['amount'] > 0 && ! $discount['reason']) {
+                throw ValidationException::withMessages(['discountReason' => 'Tuliskan alasan diskon.']);
+            }
+            $changed = (int) $invoice->discount !== $discount['amount'];
+            $invoice->discount = $discount['amount'];
+            $invoice->discount_reason = $discount['amount'] > 0 ? $discount['reason'] : null;
+            if ($changed && $status !== Invoice::STATUS_DRAFT) {
+                AuditLog::record('invoice.discount', $invoice, ['discount' => $invoice->discount, 'reason' => $invoice->discount_reason, 'oleh' => 'pemeriksaan']);
+            }
+        }
 
         $invoice->fill([
             'branch_id' => $visit->branch_id,
@@ -444,6 +497,7 @@ class ExamService
                 'diagnoses' => $visit->diagnoses->map(fn ($d) => ['code' => $d->icd10_code, 'primary' => $d->is_primary])->all(),
                 'prescriptions' => $visit->prescriptions->map->only(['drug_name', 'dose', 'quantity'])->all(),
                 'procedures' => $visit->invoice?->items->map->only(['name', 'tooth', 'quantity', 'unit_price', 'amount'])->all() ?? [],
+                'discount' => ['amount' => (int) $visit->invoice?->discount, 'reason' => $visit->invoice?->discount_reason],
             ],
         ]);
 

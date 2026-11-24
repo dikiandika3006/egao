@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Branch extends Model
 {
     protected $fillable = [
-        'clinic_id', 'code', 'name', 'city', 'address', 'phone', 'color',
+        'clinic_id', 'code', 'name', 'city', 'address', 'latitude', 'longitude', 'attendance_radius_m', 'phone', 'color',
         'opens_at', 'closes_at', 'operating_hours', 'receipt_start_number', 'receipt_footer', 'is_active',
         'satusehat_org_id', 'satusehat_client_id', 'satusehat_client_secret', 'satusehat_location_id',
     ];
@@ -32,7 +32,7 @@ class Branch extends Model
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean', 'satusehat_client_secret' => 'encrypted', 'operating_hours' => 'array'];
+        return ['is_active' => 'boolean', 'latitude' => 'float', 'longitude' => 'float', 'attendance_radius_m' => 'integer', 'satusehat_client_secret' => 'encrypted', 'operating_hours' => 'array'];
     }
 
     /** Jam kerja seminggu (hari 1–7 → daftar sesi [mulai, selesai]); kosong = tutup. */
@@ -71,6 +71,12 @@ class Branch extends Model
         return $sessions
             ? collect($sessions)->map(fn ($s) => str_replace(':', '.', $s[0]).'–'.str_replace(':', '.', $s[1]))->implode(', ')
             : 'Tutup';
+    }
+
+    /** Koordinat cabang sudah diisi (syarat absensi berbasis lokasi). */
+    public function hasLocation(): bool
+    {
+        return $this->latitude !== null && $this->longitude !== null;
     }
 
     /** Kredensial SATUSEHAT lengkap untuk cabang ini. */

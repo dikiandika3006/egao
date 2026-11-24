@@ -184,7 +184,7 @@ class Gaji extends Component
 
     private function resetEmployee(): void
     {
-        $this->employee = ['name' => '', 'position' => 'Admin', 'primary_branch_id' => '', 'base_salary' => '', 'joined_at' => '', 'is_active' => true];
+        $this->employee = ['name' => '', 'position' => 'Admin', 'primary_branch_id' => '', 'base_salary' => '', 'morning_shift_rate' => '', 'evening_shift_rate' => '', 'joined_at' => '', 'is_active' => true];
         $this->editingEmployeeId = null;
     }
 
@@ -202,6 +202,7 @@ class Gaji extends Component
         $this->employee = [
             'name' => $e->name, 'position' => $e->position, 'primary_branch_id' => (string) $e->primary_branch_id,
             'base_salary' => (string) $e->base_salary, 'joined_at' => $e->joined_at?->toDateString() ?? '', 'is_active' => $e->is_active,
+            'morning_shift_rate' => (string) $e->morning_shift_rate, 'evening_shift_rate' => (string) $e->evening_shift_rate,
         ];
         $this->resetErrorBag();
         $this->showEmployeeForm = true;
@@ -215,23 +216,29 @@ class Gaji extends Component
             'employee.primary_branch_id' => ['required', Rule::exists('branches', 'id')->where('clinic_id', $this->clinicId())],
             'employee.base_salary' => ['required', 'integer', 'min:0', 'max:1000000000'],
             'employee.joined_at' => ['nullable', 'date'],
+            'employee.morning_shift_rate' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            'employee.evening_shift_rate' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'employee.is_active' => ['boolean'],
         ], attributes: [
             'employee.name' => 'nama', 'employee.position' => 'jabatan', 'employee.primary_branch_id' => 'cabang',
             'employee.base_salary' => 'gaji pokok', 'employee.joined_at' => 'tanggal masuk',
+            'employee.morning_shift_rate' => 'upah shift pagi', 'employee.evening_shift_rate' => 'upah shift sore',
         ])['employee'];
 
         $e = $this->editingEmployeeId
             ? Employee::where('clinic_id', $this->clinicId())->findOrFail($this->editingEmployeeId)
             : new Employee(['clinic_id' => $this->clinicId()]);
 
-        $before = $e->only(['base_salary', 'position', 'is_active']);
+        $before = $e->only(['base_salary', 'morning_shift_rate', 'evening_shift_rate', 'position', 'is_active']);
         $e->fill([
             'name' => $data['name'], 'position' => $data['position'], 'primary_branch_id' => (int) $data['primary_branch_id'],
             'base_salary' => (int) $data['base_salary'], 'joined_at' => $data['joined_at'] ?: null, 'is_active' => (bool) $data['is_active'],
+            // Kosong = ikut upah shift global (Pengaturan → Gaji & bagi hasil).
+            'morning_shift_rate' => ($data['morning_shift_rate'] ?? '') === '' ? null : (int) $data['morning_shift_rate'],
+            'evening_shift_rate' => ($data['evening_shift_rate'] ?? '') === '' ? null : (int) $data['evening_shift_rate'],
         ])->save();
 
-        AuditLog::record($this->editingEmployeeId ? 'employee.updated' : 'employee.created', $e, ['before' => $before, 'after' => $e->only(['base_salary', 'position', 'is_active'])]);
+        AuditLog::record($this->editingEmployeeId ? 'employee.updated' : 'employee.created', $e, ['before' => $before, 'after' => $e->only(['base_salary', 'morning_shift_rate', 'evening_shift_rate', 'position', 'is_active'])]);
 
         $this->showEmployeeForm = false;
         $this->resetEmployee();

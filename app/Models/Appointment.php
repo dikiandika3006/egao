@@ -26,8 +26,11 @@ class Appointment extends Model
 
     protected $fillable = [
         'clinic_id', 'patient_id', 'branch_id', 'doctor_id', 'date', 'time', 'purpose', 'note',
-        'status', 'source', 'source_visit_id', 'visit_id', 'created_by',
+        'status', 'status_reason', 'source', 'source_visit_id', 'visit_id', 'created_by',
     ];
+
+    /** Janji hasil pengalihan pasien walk-in dari antrean (source_visit_id = kunjungan asal). */
+    public const SOURCE_TRANSFER = 'alihan';
 
     /** Kolom yang memengaruhi isi event Google Calendar. */
     private const CALENDAR_FIELDS = ['patient_id', 'branch_id', 'doctor_id', 'date', 'time', 'purpose', 'status'];
@@ -88,6 +91,11 @@ class Appointment extends Model
     public function visit(): BelongsTo
     {
         return $this->belongsTo(Visit::class);
+    }
+
+    public function reschedules(): HasMany
+    {
+        return $this->hasMany(AppointmentReschedule::class)->latest('id');
     }
 
     public function statusLabel(): string

@@ -7,6 +7,7 @@ use App\Models\DoctorProcedureShare;
 use App\Models\DoctorSchedule;
 use App\Models\DoctorShiftAttendance;
 use App\Models\Employee;
+use App\Models\EmployeeShiftAttendance;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LabOrder;
@@ -34,8 +35,11 @@ use Illuminate\Support\Collection;
  *           yang dikirim dalam periode (tidak batal) × %fee dokter.
  *           Uang duduk per shift: tiap shift yang ditandai hadir (Jadwal), bila kotor tindakan shift itu (sebelum diskon
  *           & potongan) < ambang → dokter dapat uang duduk dan fee shift itu 0; ≥ ambang → fee normal, tanpa uang duduk.
- * Asisten = gaji pokok + UD + fee asisten (nominal per tindakan bila diisi, selain itu %fee asisten × harga setelah diskon)
- *           pada kunjungan yang didampingi + lembur + bonus/THR − potongan.
+ * Asisten = gaji pokok + upah shift + fee asisten (nominal per tindakan bila diisi, selain itu %fee asisten × harga setelah
+ *           diskon) pada kunjungan yang didampingi + lembur + bonus/THR − potongan.
+ *           Upah shift (24 Nov 2026): tiap shift hadir (absen lokasi / centang Jadwal) × tarif pagi/sore asisten itu
+ *           (kosong = tarif global). Lembur = menit lembur dari absen pulang. Bulan tanpa data kehadiran memakai cara
+ *           lama: jam hadir × UD per jam dan jam lembur yang diisi manual di Gaji (agar tidak terhitung ganda).
  * Admin   = gaji pokok + lembur + bonus/THR − potongan (semua jabatan selain asisten).
  */
 class Payroll
@@ -311,6 +315,8 @@ class Payroll
                 'hourly' => Settings::int('assistant_hourly_rate'),
                 'overtime' => Settings::int('assistant_overtime_rate'),
                 'percent' => Settings::float('assistant_share_percent'),
+                'morning' => Settings::int('assistant_morning_rate'),
+                'evening' => Settings::int('assistant_evening_rate'),
             ],
             self::ROLE_ADMIN => ['hourly' => 0, 'overtime' => Settings::int('admin_overtime_rate'), 'percent' => 0.0],
         ];
@@ -324,20 +330,40 @@ class Payroll
             ->get(['id', 'invoice_id', 'procedure_id', 'quantity', 'amount'])
             ->groupBy(fn (InvoiceItem $i) => $i->invoice->visit->assistant_id);
 
+        $attendances = EmployeeShiftAttendance::query()
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->whereHas('employee', fn ($q) => $q->where('clinic_id', $clinicId))
+            ->get()
+            ->groupBy('employee_id');
+
         return Employee::query()
             ->where('clinic_id', $clinicId)
             ->where(fn ($q) => $q->where('is_active', true)
                 ->orWhereIn('id', $adjustments->keys())
-                ->orWhereIn('id', $assisted->keys()))
+                ->orWhereIn('id', $assisted->keys())
+                ->orWhereIn('id', $attendances->keys()))
             ->with('primaryBranch')
             ->orderBy('name')
             ->get()
-            ->map(function (Employee $e) use ($adjustments, $hours, $rates, $assisted) {
+            ->map(function (Employee $e) use ($adjustments, $hours, $rates, $assisted, $attendances) {
                 $role = static::employeeRole($e);
                 $rate = $rates[$role];
                 $h = $hours->get($e->id);
-                $workHours = $role === self::ROLE_ASSISTANT ? (float) ($h?->work_hours ?? 0) : 0.0;
-                $overtimeHours = (float) ($h?->overtime_hours ?? 0);
+                $present = $role === self::ROLE_ASSISTANT ? ($attendances->get($e->id) ?? collect()) : collect();
+                $fromAttendance = $present->isNotEmpty();
+
+                $rateMorning = $e->morning_shift_rate ?? ($rate['morning'] ?? 0);
+                $rateEvening = $e->evening_shift_rate ?? ($rate['evening'] ?? 0);
+                $morning = $present->where('shift', 1)->count();
+                $evening = $present->where('shift', 2)->count();
+
+                if ($fromAttendance) {
+                    $workHours = round($present->sum(fn (EmployeeShiftAttendance $a) => $a->workedMinutes()) / 60, 2);
+                    $overtimeHours = round($present->sum('overtime_minutes') / 60, 2);
+                } else {
+                    $workHours = $role === self::ROLE_ASSISTANT ? (float) ($h?->work_hours ?? 0) : 0.0;
+                    $overtimeHours = (float) ($h?->overtime_hours ?? 0);
+                }
 
                 $items = $role === self::ROLE_ASSISTANT ? ($assisted->get($e->id) ?? collect()) : collect();
                 $feeOf = fn (InvoiceItem $i) => $i->procedure?->assistant_fee_amount !== null
@@ -350,7 +376,8 @@ class Payroll
                 $adj = $adjustments->get($e->id, collect());
                 [$bonus, $deduction] = static::sumAdjustments($adj);
                 $base = (int) $e->base_salary;
-                $ud = (int) round($workHours * $rate['hourly']);
+                $shiftPay = $morning * $rateMorning + $evening * $rateEvening;
+                $ud = $fromAttendance ? $shiftPay : (int) round($workHours * $rate['hourly']);
                 $overtime = (int) round($overtimeHours * $rate['overtime']);
                 $assistantShare = (int) array_sum($assistantBranches);
 
@@ -360,6 +387,11 @@ class Payroll
                     'base' => $base,
                     'hours' => $workHours,
                     'ud' => $ud,
+                    'from_attendance' => $fromAttendance,
+                    'shift_morning' => $morning,
+                    'shift_evening' => $evening,
+                    'rate_morning' => $rateMorning,
+                    'rate_evening' => $rateEvening,
                     'overtime_hours' => $overtimeHours,
                     'overtime' => $overtime,
                     'assisted' => (int) $items->sum(fn ($i) => static::netAmount($i)),

@@ -128,7 +128,8 @@
                     @endif
                 </dl>
 
-                @if ($invoice->status === Invoice::STATUS_UNPAID && $invoice->paid === 0)
+                {{-- Diskon diberikan dokter di pemeriksaan; di Kasir hanya Owner yang bisa mengubah. --}}
+                @if ($canDiscount && $invoice->status === Invoice::STATUS_UNPAID && $invoice->paid === 0)
                     <details class="mt-4 rounded-xl bg-mist p-3 text-sm" @if ($invoice->discount || $errors->has('pay.discount*')) open @endif>
                         <summary class="cursor-pointer font-medium">Diskon</summary>
                         <div class="mt-3 space-y-2">

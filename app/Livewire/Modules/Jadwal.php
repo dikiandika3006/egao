@@ -10,6 +10,9 @@ use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\DoctorSchedule;
 use App\Models\DoctorShiftAttendance;
+use App\Models\Employee;
+use App\Models\EmployeeSchedule;
+use App\Models\EmployeeShiftAttendance;
 use App\Models\ScheduleOverride;
 use App\Support\BranchContext;
 use Carbon\Carbon;
@@ -22,7 +25,8 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * 06 Jadwal dokter (FR-JDW-01 … 11): kisi mingguan lintas cabang, jadwal rutin, pindah sementara & libur.
+ * 06 Jadwal dokter (FR-JDW-01 … 11): kisi mingguan lintas cabang, jadwal rutin, pindah sementara & libur,
+ * tukar jadwal dua dokter untuk satu tanggal (drag sel), serta tab Asisten: jadwal rutin + centang hadir per shift.
  */
 class Jadwal extends Component
 {
@@ -45,6 +49,16 @@ class Jadwal extends Component
     public array $routine = [];
 
     public array $override = [];
+
+    /** Tab kisi: dokter | asisten. */
+    #[Url(as: 'tim', except: 'dokter')]
+    public string $team = 'dokter';
+
+    /** Tukar jadwal yang menunggu konfirmasi: from, to, date, move_appointments. */
+    public array $swap = [];
+
+    /** Modal hari asisten: employee_id, date. */
+    public array $assistantDay = [];
 
     public function mount(): void
     {
@@ -349,10 +363,227 @@ class Jadwal extends Component
         $this->toast('Kembali ke jadwal rutin.');
     }
 
+    // ---- Tukar jadwal dua dokter untuk satu tanggal (drag sel / tombol di modal hari) -------------
+
+    public function prepareSwap(int $fromDoctorId, int $toDoctorId, string $date, BranchContext $context): void
+    {
+        abort_unless($this->canEdit($context), 403);
+        $this->resetValidation();
+        [$from, $to, $day] = $this->swapPair($fromDoctorId, $toDoctorId, $date);
+        $this->swap = [
+            'from' => $from->id, 'to' => $to->id, 'date' => $day->toDateString(), 'move_appointments' => true,
+            'from_name' => $from->name, 'to_name' => $to->name,
+            'from_slot' => $from->scheduleOn($day)['hours'] ?? null, 'to_slot' => $to->scheduleOn($day)['hours'] ?? null,
+        ];
+        $this->form = 'swap';
+    }
+
+    public function confirmSwap(BranchContext $context): void
+    {
+        abort_unless($this->canEdit($context) && $this->form === 'swap', 403);
+        [$a, $b, $day] = $this->swapPair((int) ($this->swap['from'] ?? 0), (int) ($this->swap['to'] ?? 0), (string) ($this->swap['date'] ?? ''));
+        $slotA = $a->scheduleOn($day);
+        $slotB = $b->scheduleOn($day);
+        $move = (bool) ($this->swap['move_appointments'] ?? false);
+        $moved = 0;
+
+        DB::transaction(function () use ($a, $b, $day, $slotA, $slotB, $move, &$moved) {
+            // A memakai slot B, B memakai slot A; yang menerima "tidak ada jadwal" menjadi libur hari itu.
+            foreach ([[$a, $slotB, $b], [$b, $slotA, $a]] as [$doctor, $slot, $partner]) {
+                ScheduleOverride::updateOrCreate(
+                    ['doctor_id' => $doctor->id, 'date' => $day->toDateString()],
+                    $slot
+                        ? ['type' => ScheduleOverride::TYPE_MOVE, 'branch_id' => $slot['branch_id'],
+                            'starts_at' => substr($slot['starts_at'], 0, 5), 'ends_at' => substr($slot['ends_at'], 0, 5),
+                            'note' => 'Tukar jadwal dengan '.$partner->name]
+                        : ['type' => ScheduleOverride::TYPE_OFF, 'branch_id' => null, 'starts_at' => null, 'ends_at' => null,
+                            'note' => 'Tukar jadwal dengan '.$partner->name],
+                );
+            }
+
+            if ($move) {
+                $pending = fn (Doctor $d, ?array $slot) => $slot
+                    ? Appointment::where('doctor_id', $d->id)->whereDate('date', $day)->where('branch_id', $slot['branch_id'])
+                        ->where('status', Appointment::SCHEDULED)->pluck('id')
+                    : collect();
+                $idsA = $pending($a, $slotA);
+                $idsB = $pending($b, $slotB);
+                $moved = Appointment::whereIn('id', $idsA)->update(['doctor_id' => $b->id])
+                    + Appointment::whereIn('id', $idsB)->update(['doctor_id' => $a->id]);
+            }
+        });
+
+        AuditLog::record('jadwal.tukar', $a, ['tanggal' => $day->toDateString(), 'dengan' => $b->id, 'janji_dipindah' => $moved]);
+        $this->closeForm();
+        $this->toast("Jadwal {$a->name} dan {$b->name} ditukar untuk ".$day->translatedFormat('j M').($moved ? "; {$moved} janji temu ikut dipindah." : '.'));
+    }
+
+    /** @return array{0:Doctor, 1:Doctor, 2:Carbon} */
+    private function swapPair(int $fromId, int $toId, string $date): array
+    {
+        $day = rescue(fn () => Carbon::parse($date)->startOfDay(), null, false);
+        if (! $day || $fromId === $toId) {
+            throw ValidationException::withMessages(['swap' => 'Pilih dua dokter berbeda pada tanggal yang sama.']);
+        }
+        if ($day->lt(today())) {
+            throw ValidationException::withMessages(['swap' => 'Jadwal tanggal yang sudah lewat tidak bisa ditukar.']);
+        }
+        $doctors = Doctor::where('clinic_id', $this->clinicId())->where('is_active', true)->whereIn('id', [$fromId, $toId])
+            ->with(['schedules', 'overrides' => fn ($q) => $q->whereDate('date', $day)])->get()->keyBy('id');
+        abort_unless($doctors->count() === 2, 404);
+        [$from, $to] = [$doctors->get($fromId), $doctors->get($toId)];
+        if (! $from->scheduleOn($day) && ! $to->scheduleOn($day)) {
+            throw ValidationException::withMessages(['swap' => 'Kedua dokter tidak punya jadwal pada tanggal ini.']);
+        }
+
+        return [$from, $to, $day];
+    }
+
+    // ---- Jadwal asisten: rutin + centang hadir per shift ----------------------------------------
+
+    private function assistants()
+    {
+        return Employee::where('clinic_id', $this->clinicId())->where('is_active', true)->where('position', 'Asisten dokter');
+    }
+
+    public function newAssistantRoutine(?int $employeeId = null, ?int $day = null): void
+    {
+        $context = app(BranchContext::class);
+        abort_unless($this->canEdit($context), 403);
+        $this->resetValidation();
+        $this->editingId = null;
+        $this->routine = [
+            'employee_id' => $employeeId, 'day_of_week' => $day ?? 1,
+            'branch_id' => $context->id() ?? $context->options()->first()?->id,
+            'starts_at' => '10:00', 'ends_at' => '13:00', 'valid_from' => '', 'valid_until' => '', 'note' => '',
+        ];
+        $this->form = 'assistant-routine';
+    }
+
+    public function editAssistantRoutine(int $id, BranchContext $context): void
+    {
+        abort_unless($this->canEdit($context), 403);
+        $s = $this->assistantScheduleQuery()->findOrFail($id);
+        $this->resetValidation();
+        $this->editingId = $s->id;
+        $this->routine = [
+            'employee_id' => $s->employee_id, 'day_of_week' => $s->day_of_week, 'branch_id' => $s->branch_id,
+            'starts_at' => substr($s->starts_at, 0, 5), 'ends_at' => substr($s->ends_at, 0, 5),
+            'valid_from' => $s->valid_from?->toDateString() ?? '', 'valid_until' => $s->valid_until?->toDateString() ?? '',
+            'note' => (string) $s->note,
+        ];
+        $this->form = 'assistant-routine';
+    }
+
+    public function saveAssistantRoutine(BranchContext $context): void
+    {
+        abort_unless($this->canEdit($context) && $this->form === 'assistant-routine', 403);
+
+        $data = $this->validate([
+            'routine.employee_id' => ['required', Rule::exists('employees', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
+            'routine.branch_id' => ['required', Rule::in($context->options()->pluck('id')->all())],
+            'routine.day_of_week' => ['required', 'integer', 'between:1,7'],
+            'routine.starts_at' => ['required', 'date_format:H:i'],
+            'routine.ends_at' => ['required', 'date_format:H:i', 'after:routine.starts_at'],
+            'routine.valid_from' => ['nullable', 'date'],
+            'routine.valid_until' => ['nullable', 'date', 'after_or_equal:routine.valid_from'],
+            'routine.note' => ['nullable', 'string', 'max:255'],
+        ], attributes: [
+            'routine.employee_id' => 'asisten', 'routine.branch_id' => 'cabang', 'routine.ends_at' => 'jam selesai',
+            'routine.starts_at' => 'jam mulai', 'routine.valid_until' => 'berlaku sampai',
+        ])['routine'];
+
+        $data['valid_from'] = $data['valid_from'] ?: null;
+        $data['valid_until'] = $data['valid_until'] ?: null;
+        $data['note'] = $data['note'] ?: null;
+
+        $from = $data['valid_from'] ? Carbon::parse($data['valid_from']) : null;
+        $until = $data['valid_until'] ? Carbon::parse($data['valid_until']) : null;
+        $clash = EmployeeSchedule::with('branch')->where('employee_id', $data['employee_id'])->where('day_of_week', $data['day_of_week'])
+            ->when($this->editingId, fn ($q) => $q->whereKeyNot($this->editingId))
+            ->where('starts_at', '<', $data['ends_at'])->where('ends_at', '>', $data['starts_at'])->get()
+            ->first(fn (EmployeeSchedule $s) => (! $until || ! $s->valid_from || $s->valid_from->lte($until))
+                && (! $from || ! $s->valid_until || $s->valid_until->gte($from)));
+        if ($clash) {
+            throw ValidationException::withMessages([
+                'routine.starts_at' => "Bentrok dengan jadwal {$clash->branch->shortName()} ".substr($clash->starts_at, 0, 5).'–'.substr($clash->ends_at, 0, 5).' di hari yang sama.',
+            ]);
+        }
+
+        $schedule = $this->editingId ? $this->assistantScheduleQuery()->findOrFail($this->editingId) : new EmployeeSchedule;
+        $schedule->fill($data)->save();
+
+        AuditLog::record($this->editingId ? 'schedule.assistant.updated' : 'schedule.assistant.created', $schedule, $data);
+        $this->closeForm();
+        $this->toast('Jadwal asisten disimpan.');
+    }
+
+    public function deleteAssistantRoutine(int $id, BranchContext $context): void
+    {
+        abort_unless($this->canEdit($context), 403);
+        $schedule = $this->assistantScheduleQuery()->findOrFail($id);
+        AuditLog::record('schedule.assistant.deleted', $schedule, $schedule->only(['employee_id', 'branch_id', 'day_of_week', 'starts_at', 'ends_at']));
+        $schedule->delete();
+        $this->closeForm();
+        $this->toast('Jadwal asisten dihapus.');
+    }
+
+    private function assistantScheduleQuery()
+    {
+        return EmployeeSchedule::query()->whereHas('employee', fn ($q) => $q->where('clinic_id', $this->clinicId()));
+    }
+
+    public function openAssistantDay(int $employeeId, string $date, BranchContext $context): void
+    {
+        abort_unless($context->is(Role::Owner), 403, 'Hanya Owner yang menandai kehadiran shift.');
+        $employee = $this->assistants()->findOrFail($employeeId);
+        $this->assistantDay = ['employee_id' => $employee->id, 'name' => $employee->name, 'date' => Carbon::parse($date)->toDateString()];
+        $this->attendance = $this->assistantShifts($employee->id, $this->assistantDay['date']);
+        $this->resetValidation();
+        $this->form = 'assistant-day';
+    }
+
+    private function assistantShifts(int $employeeId, string $date): array
+    {
+        return EmployeeShiftAttendance::where('employee_id', $employeeId)->whereDate('date', $date)->orderBy('shift')->pluck('shift')->map(fn ($s) => (int) $s)->all();
+    }
+
+    public function toggleAssistantAttendance(int $shift, BranchContext $context): void
+    {
+        abort_unless($context->is(Role::Owner) && $this->form === 'assistant-day', 403, 'Hanya Owner yang menandai kehadiran shift.');
+        abort_unless(in_array($shift, [1, 2], true), 422);
+
+        $employee = $this->assistants()->findOrFail((int) $this->assistantDay['employee_id']);
+        $date = Carbon::parse($this->assistantDay['date'])->startOfDay();
+        if ($date->isFuture()) {
+            $this->addError('attendance', 'Kehadiran hanya bisa ditandai untuk hari ini atau sebelumnya.');
+
+            return;
+        }
+
+        $existing = EmployeeShiftAttendance::where('employee_id', $employee->id)->whereDate('date', $date)->where('shift', $shift)->first();
+        if ($existing) {
+            AuditLog::record('jadwal.hadir_asisten.dihapus', $existing, $existing->only(['date', 'shift', 'check_in_at', 'check_out_at', 'source']));
+            $existing->delete();
+        } else {
+            $branchId = $employee->schedules()->get()->first(fn (EmployeeSchedule $s) => $s->appliesOn($date))?->branch_id
+                ?? $context->id() ?? $employee->primary_branch_id ?? $context->options()->first()?->id;
+            $row = EmployeeShiftAttendance::create([
+                'employee_id' => $employee->id, 'branch_id' => $branchId, 'date' => $date->toDateString(),
+                'shift' => $shift, 'source' => EmployeeShiftAttendance::SOURCE_MANUAL, 'recorded_by' => auth()->id(),
+            ]);
+            AuditLog::record('jadwal.hadir_asisten', $row, ['tanggal' => $date->toDateString(), 'shift' => $shift]);
+        }
+
+        $this->attendance = $this->assistantShifts($employee->id, $date->toDateString());
+    }
+
     public function closeForm(): void
     {
         $this->form = null;
         $this->editingId = null;
+        $this->swap = [];
+        $this->assistantDay = [];
         $this->resetValidation();
     }
 
@@ -408,8 +639,33 @@ class Jadwal extends Component
             fn ($row) => ($row['cells'][$i]['schedule']['branch_id'] ?? null) === $b->id
         )->count()));
 
+        $assistantGrid = collect();
+        if ($this->team === 'asisten') {
+            $assistants = $this->assistants()->with(['primaryBranch', 'schedules' => fn ($q) => $q->with('branch')->orderBy('day_of_week')->orderBy('starts_at')])
+                ->orderBy('name')->get();
+            $presentA = EmployeeShiftAttendance::whereIn('employee_id', $assistants->pluck('id'))
+                ->whereBetween('date', [$start->toDateString(), $end->toDateString()])->get()
+                ->groupBy(fn ($a) => $a->employee_id.':'.$a->date->toDateString())
+                ->map(fn ($g) => $g->pluck('shift')->sort()->values()->all());
+            $assistantGrid = $assistants->map(fn (Employee $e) => [
+                'employee' => $e,
+                'cells' => $days->map(function (Carbon $day) use ($e, $branches, $presentA) {
+                    $sessions = $e->schedules->filter(fn (EmployeeSchedule $s) => $s->appliesOn($day))->values();
+
+                    return [
+                        'date' => $day,
+                        'sessions' => $sessions,
+                        'branch' => $sessions->isNotEmpty() ? ($branches->get($sessions->first()->branch_id) ?? $sessions->first()->branch) : null,
+                        'present' => $presentA->get($e->id.':'.$day->toDateString(), []),
+                    ];
+                }),
+            ]);
+        }
+
         return $this->page('jadwal', 'livewire.modules.jadwal', [
             'context' => $context,
+            'assistantGrid' => $assistantGrid,
+            'swapTargets' => $this->form === 'override' ? $doctors->where('id', '!=', (int) ($this->override['doctor_id'] ?? 0))->values() : collect(),
             'days' => $days,
             'grid' => $grid,
             'groups' => $this->groupByBranch($grid, $branches),

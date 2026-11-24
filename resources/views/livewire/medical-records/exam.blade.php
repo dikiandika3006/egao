@@ -348,16 +348,22 @@
                         @php
                             $opt = $this->procedureOptions->get($p['procedure_id']);
                             $standard = $this->standardPrice($p['procedure_id']);
+                            $maxPrice = $this->maxPrice($p['procedure_id']);
                             $price = $this->priceOf($p);
+                            $mayLower = ! empty($p['is_incomplete']) || $opt?->allow_lower_price;
+                            $outOfRange = $price < $standard || $price > ($maxPrice ?? $standard);
                         @endphp
                         <li wire:key="p{{ $i }}-{{ $p['procedure_id'] }}" class="-mx-2 flex items-start justify-between gap-3 rounded-lg px-2 py-1.5"
                             x-data="{ editPrice: false }"
                             x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
                             <div class="min-w-0">
                                 <p>{{ $opt?->name ?? ($p['name'] ?? 'Tindakan') }}</p>
-                                @if ($p['quantity'] > 1 || $p['tooth'] || $price !== $standard)
+                                @if ($p['quantity'] > 1 || $p['tooth'] || $price !== $standard || $maxPrice)
                                     <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
-                                        @if ($price !== $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
+                                        @if ($maxPrice)
+                                            <span @class(['ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold', 'bg-amber-soft text-amber-ink' => $outOfRange, 'bg-canvas text-muted' => ! $outOfRange])>tarif {{ Format::rupiah($standard) }} – {{ Format::rupiah($maxPrice) }}</span>
+                                        @elseif ($price !== $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
+                                        @if (! empty($p['is_incomplete']))<span class="ml-1 rounded bg-rose-soft px-1.5 py-0.5 text-[10px] font-semibold text-rose-ink">tidak selesai</span>@endif
                                     </p>
                                 @endif
                                 @if ($opt?->price_locked)
@@ -371,24 +377,32 @@
                                 @if ($billing && $this->canEditPrice && ! $opt?->price_locked)
                                     <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 block text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
                                     <div x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2">
-                                        <input type="number" min="{{ $opt?->allow_lower_price ? 0 : $standard }}" step="1000" inputmode="numeric"
+                                        <input type="number" min="{{ $mayLower ? 0 : $standard }}" step="1000" inputmode="numeric"
                                             wire:model.blur="procedures.{{ $i }}.unit_price" placeholder="{{ $standard }}"
                                             class="input h-9 w-36 text-sm" aria-label="Harga {{ $opt?->name }}">
                                         <button type="button" x-on:click="editPrice = false" class="text-xs text-muted hover:underline">Selesai</button>
                                     </div>
+                                    <label x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2 text-xs">
+                                        <input type="checkbox" wire:model.live="procedures.{{ $i }}.is_incomplete" class="size-4 rounded accent-brand-600">
+                                        Tidak selesai (boleh di bawah tarif minimal, wajib alasan)
+                                    </label>
                                     <p x-show="editPrice" x-cloak class="mt-1 text-[11px] text-muted">
-                                        @if ($opt?->allow_lower_price)
-                                            Harga standar {{ Format::rupiah($standard) }}. Boleh lebih rendah (mis. cabut tidak selesai) dengan alasan. Kosongkan untuk kembali ke standar.
+                                        @if ($maxPrice)
+                                            Tarif {{ Format::rupiah($standard) }} – {{ Format::rupiah($maxPrice) }}. Di atas {{ Format::rupiah($maxPrice) }} tetap boleh, tercatat di audit.
                                         @else
-                                            Minimal harga standar {{ Format::rupiah($standard) }}. Kosongkan untuk kembali ke standar.
+                                            Tarif {{ Format::rupiah($standard) }}.
                                         @endif
+                                        @if ($mayLower)
+                                            Boleh lebih rendah dengan alasan.
+                                        @endif
+                                        Kosongkan untuk kembali ke tarif minimal.
                                     </p>
                                     <x-error for="procedures.{{ $i }}.unit_price" />
                                 @endif
                                 @if ($price < $standard)
                                     @if ($billing && $this->canEditPrice)
                                         <input type="text" maxlength="255" wire:model.blur="procedures.{{ $i }}.price_reason"
-                                            placeholder="Alasan harga di bawah standar (wajib)" class="input mt-1.5 h-9 w-full text-sm"
+                                            placeholder="Alasan harga di bawah tarif minimal (wajib)" class="input mt-1.5 h-9 w-full text-sm"
                                             aria-label="Alasan harga {{ $opt?->name }}">
                                     @elseif (! empty($p['price_reason']))
                                         <p class="mt-1 text-[11px] text-muted">Alasan: {{ $p['price_reason'] }}</p>
@@ -488,9 +502,28 @@
                     </div>
                 @endif
 
+                {{-- Diskon tagihan: diberikan dokter penanggung jawab (atau Owner), bukan Admin di Kasir. --}}
+                @if ($this->canGiveDiscount)
+                    <details class="mt-4 rounded-xl bg-mist p-3 text-sm" @if ($discount || $errors->has('discount') || $errors->has('discountReason')) open @endif>
+                        <summary class="cursor-pointer font-medium text-brand-700">Diskon{{ $discount ? ' · '.Format::rupiah($discount) : '' }}</summary>
+                        <div class="mt-3 space-y-2">
+                            <x-money model="discount" live placeholder="0" />
+                            <x-error for="discount" />
+                            <input type="text" wire:model.blur="discountReason" maxlength="255" class="input" placeholder="Alasan diskon (wajib bila ada diskon)">
+                            <x-error for="discountReason" />
+                            <p class="text-xs text-muted">Maksimal {{ Format::rupiah($this->maxDiscount) }}. Bagi hasil dihitung dari harga setelah diskon.</p>
+                        </div>
+                    </details>
+                @elseif ($discount)
+                    <div class="mt-4 flex justify-between text-sm">
+                        <span class="text-muted">Diskon dokter{{ $discountReason ? ' ('.$discountReason.')' : '' }}</span>
+                        <span>−{{ Format::rupiah($discount) }}</span>
+                    </div>
+                @endif
+
                 <div class="mt-5 border-t border-line pt-5">
                     <p class="text-sm text-muted">Total sementara</p>
-                    <p class="mt-2 text-[32px] font-semibold tracking-tight text-brand-600">{{ Format::rupiah($this->total) }}</p>
+                    <p class="mt-2 text-[32px] font-semibold tracking-tight text-brand-600">{{ Format::rupiah(max(0, $this->total - (int) $discount)) }}</p>
                 </div>
             </section>
 
@@ -697,7 +730,7 @@
 
                 <ul class="mt-4 space-y-1.5 text-sm">
                     <li class="text-brand-600">✓ Keluhan, {{ count($diagnoses) }} diagnosis, {{ count($procedures) }} tindakan{{ $rxCount ? ", {$rxCount} obat" : '' }}</li>
-                    <li class="text-brand-600">✓ Total {{ Format::rupiah($this->total) }}</li>
+                    <li class="text-brand-600">✓ Total {{ Format::rupiah(max(0, $this->total - (int) $discount)) }}{{ $discount ? ' (diskon '.Format::rupiah($discount).')' : '' }}</li>
                 </ul>
 
                 <div class="mt-4 space-y-3">

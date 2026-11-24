@@ -69,19 +69,25 @@ class Kasir extends Component
         $this->selected = null;
     }
 
-    /** Owner tanpa batas; Admin dibatasi persentase di Pengaturan → Aplikasi. */
-    private function maxDiscount(Invoice $invoice): int
+    /**
+     * Diskon diberikan dokter di pemeriksaan (ExamService). Di Kasir hanya Owner yang boleh memberi/mengubah diskon;
+     * Admin/Asisten hanya mencatat pembayaran & mencetak kwitansi.
+     */
+    private function canDiscount(): bool
     {
-        if (app(BranchContext::class)->is(Role::Owner)) {
-            return (int) $invoice->subtotal;
-        }
-
-        return (int) floor($invoice->subtotal * (int) Settings::get('admin_max_discount_percent') / 100);
+        return app(BranchContext::class)->is(Role::Owner);
     }
 
-    /** FR-KSR-03: diskon wajib beralasan, hanya sebelum ada pembayaran. */
+    /** Owner tanpa batas. */
+    private function maxDiscount(Invoice $invoice): int
+    {
+        return (int) $invoice->subtotal;
+    }
+
+    /** FR-KSR-03: diskon wajib beralasan, hanya sebelum ada pembayaran. Khusus Owner. */
     public function applyDiscount(): void
     {
+        abort_unless($this->canDiscount(), 403);
         $invoice = $this->query()->findOrFail($this->selected);
         abort_unless($invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID, 422);
 
@@ -348,6 +354,7 @@ class Kasir extends Component
             'methods' => Settings::paymentMethods(),
             'allMethods' => Payment::METHODS,
             'maxDiscount' => $invoice ? $this->maxDiscount($invoice) : 0,
+            'canDiscount' => $this->canDiscount(),
             'directPatient' => $this->showDirectSale && ($this->direct['patient_id'] ?? null) ? \App\Models\Patient::where('clinic_id', $this->clinicId())->find($this->direct['patient_id']) : null,
             'directResults' => $this->showDirectSale && mb_strlen(trim($this->directSearch)) >= 2 ? \App\Models\Patient::where('clinic_id', $this->clinicId())->search($this->directSearch)->limit(6)->get() : collect(),
             'goodsOptions' => $invoice && $invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID

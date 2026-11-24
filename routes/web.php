@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function () {
             'rekam-medis' => MedicalRecords\Index::class,
             'kasir' => Modules\Kasir::class,
             'jadwal' => Modules\Jadwal::class,
+            'absensi' => Modules\Absensi::class,
             'dokter' => Modules\Dokter::class,
             'laporan' => Modules\Laporan::class,
             'pengeluaran' => Modules\Pengeluaran::class,

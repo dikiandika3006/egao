@@ -98,9 +98,19 @@ it('melunasi tagihan, menyelesaikan kunjungan, dan menerbitkan kwitansi', functi
         ->assertOk()->assertHeader('content-type', 'application/pdf');
 });
 
-it('mewajibkan alasan untuk diskon', function () {
+it('diskon di kasir khusus owner dan wajib beralasan', function () {
     moduleLogin('admin', 'admin', $this->batu->id);
     $invoice = Invoice::where('branch_id', $this->batu->id)->where('status', Invoice::STATUS_UNPAID)->firstOrFail();
+
+    Livewire::test(Kasir::class)
+        ->call('open', $invoice->id)
+        ->assertDontSee('Terapkan diskon')
+        ->set('pay.discount', 50_000)
+        ->set('pay.discount_reason', 'Pasien lama')
+        ->call('applyDiscount')
+        ->assertForbidden();
+
+    moduleLogin('owner', 'owner', $this->batu->id);
 
     Livewire::test(Kasir::class)
         ->call('open', $invoice->id)

@@ -173,7 +173,9 @@
                             </td>
                             <td class="text-[13px]">{{ $e->primaryBranch?->shortName() ?? '—' }}</td>
                             <td class="text-right">@rupiah($row['base'] + $row['ud'])
-                                @if ($row['hours'] > 0)<span class="block text-[11px] text-muted">{{ $pct($row['hours']) }} jam</span>@endif
+                                @if (! empty($row['from_attendance']))
+                                    <span class="block text-[11px] text-muted">{{ $row['shift_morning'] }} pagi · {{ $row['shift_evening'] }} sore</span>
+                                @elseif ($row['hours'] > 0)<span class="block text-[11px] text-muted">{{ $pct($row['hours']) }} jam</span>@endif
                             </td>
                             <td @class(['text-right', 'text-muted' => $row['assistant_share'] === 0])>@if ($row['role'] === 'asisten') @rupiah($row['assistant_share']) @else — @endif</td>
                             <td @class(['text-right', 'text-muted' => $row['overtime'] === 0])>@rupiah($row['overtime'])
@@ -195,11 +197,16 @@
                                                 <p class="text-[13px]">{{ $row['assisted_count'] }} tindakan didampingi (@rupiah($row['assisted']) setelah diskon) → fee asisten <b class="text-brand-600">@rupiah($row['assistant_share'])</b>
                                                     <span class="block text-[11px] text-muted">{{ $pct($row['assistant_percent']) }}% per tindakan, kecuali tindakan bernominal tetap (mis. pasang behel/gigi palsu). Asisten pendamping dipilih di Kasir.</span></p>
                                             @endif
+                                            @if (! empty($row['from_attendance']))
+                                                <p class="text-[13px]">Upah shift dari absensi: {{ $row['shift_morning'] }} × pagi @rupiah($row['rate_morning']) + {{ $row['shift_evening'] }} × sore @rupiah($row['rate_evening']) = <b class="text-brand-600">@rupiah($row['ud'])</b>
+                                                    <span class="block text-[11px] text-muted">Jam kerja {{ $pct($row['hours']) }} jam, lembur {{ $pct($row['overtime_hours']) }} jam (dari absen pulang). Koreksi di menu Absensi.</span></p>
+                                            @else
                                             @include('livewire.modules.partials.payroll-hours', [
                                                 'showWork' => $row['role'] === 'asisten', 'showOvertime' => true,
                                                 'hourlyRate' => $rates['assistant_hourly'],
                                                 'overtimeRate' => $row['role'] === 'asisten' ? $rates['assistant_overtime'] : $rates['admin_overtime'],
                                             ])
+                                            @endif
                                         </div>
                                         @include('livewire.modules.partials.payroll-adjustments', ['adjustments' => $row['adjustments']])
                                     </div>
@@ -252,6 +259,19 @@
                             <label class="label">Tanggal masuk</label>
                             <input type="date" wire:model="employee.joined_at" class="input">
                         </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3" x-show="$wire.employee.position === 'Asisten dokter'" x-cloak>
+                        <div>
+                            <label class="label">Upah shift pagi</label>
+                            <x-money model="employee.morning_shift_rate" placeholder="Ikut global" />
+                            @error('employee.morning_shift_rate') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="label">Upah shift sore</label>
+                            <x-money model="employee.evening_shift_rate" placeholder="Ikut global" />
+                            @error('employee.evening_shift_rate') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                        </div>
+                        <p class="col-span-2 text-[11px] text-muted">Kosong = ikut upah shift di Pengaturan → Gaji & bagi hasil.</p>
                     </div>
                     <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" wire:model="employee.is_active" class="size-4 accent-brand-600"> Aktif

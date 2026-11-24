@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceItem extends Model
 {
-    protected $fillable = ['invoice_id', 'procedure_id', 'item_id', 'doctor_id', 'name', 'tooth', 'quantity', 'unit_price', 'standard_price', 'price_reason', 'material_cost', 'is_admin_fee', 'amount'];
+    protected $fillable = ['invoice_id', 'procedure_id', 'item_id', 'doctor_id', 'name', 'tooth', 'quantity', 'unit_price', 'standard_price', 'price_reason', 'is_incomplete', 'material_cost', 'is_admin_fee', 'amount'];
 
     protected function casts(): array
     {
-        return ['is_admin_fee' => 'boolean', 'material_cost' => 'integer'];
+        return ['is_admin_fee' => 'boolean', 'is_incomplete' => 'boolean', 'material_cost' => 'integer'];
     }
 
     /** Harga tindakan diturunkan di bawah standar (mis. cabut tidak selesai), wajib beralasan. */

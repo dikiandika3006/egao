@@ -81,7 +81,14 @@
     @if (($row['sitting'] ?? 0) > 0)
         <tr><td>Uang duduk ({{ $row['sitting_shifts'] }} shift, kotor di bawah ambang)</td><td class="r">{{ Format::rupiah($row['sitting']) }}</td></tr>
     @endif
-    @if ($row['ud'] - ($row['sitting'] ?? 0) > 0)
+    @if (! empty($row['from_attendance']))
+        @if ($row['shift_morning'] > 0)
+            <tr><td>Upah shift pagi ({{ $row['shift_morning'] }} × {{ Format::rupiah($row['rate_morning']) }})</td><td class="r">{{ Format::rupiah($row['shift_morning'] * $row['rate_morning']) }}</td></tr>
+        @endif
+        @if ($row['shift_evening'] > 0)
+            <tr><td>Upah shift sore ({{ $row['shift_evening'] }} × {{ Format::rupiah($row['rate_evening']) }})</td><td class="r">{{ Format::rupiah($row['shift_evening'] * $row['rate_evening']) }}</td></tr>
+        @endif
+    @elseif ($row['ud'] - ($row['sitting'] ?? 0) > 0)
         <tr><td>Uang duduk ({{ $pct($row['hours']) }} jam)</td><td class="r">{{ Format::rupiah($row['ud'] - ($row['sitting'] ?? 0)) }}</td></tr>
     @endif
     @if (! $isDoctor && $row['role'] === 'asisten')

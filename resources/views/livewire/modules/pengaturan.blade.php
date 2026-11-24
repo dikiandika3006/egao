@@ -101,8 +101,19 @@
                         <section class="card p-5">
                             <p class="eyebrow">Asisten</p>
                             <div class="mt-3 space-y-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="label">Upah shift pagi</label>
+                                        <x-money model="shares.roles.assistant_morning_rate" placeholder="15.000" />
+                                    </div>
+                                    <div>
+                                        <label class="label">Upah shift sore</label>
+                                        <x-money model="shares.roles.assistant_evening_rate" placeholder="20.000" />
+                                    </div>
+                                </div>
+                                <p class="text-[11px] text-muted">Per shift hadir (absen lokasi atau centang di Jadwal). Tarif khusus per asisten diisi di Gaji → Karyawan.</p>
                                 <div>
-                                    <label class="label">Uang duduk per jam</label>
+                                    <label class="label">Uang duduk per jam <span class="font-normal text-muted">(cara lama, hanya bulan tanpa data absensi)</span></label>
                                     <x-money model="shares.roles.assistant_hourly_rate" placeholder="0" />
                                 </div>
                                 <div>
@@ -114,8 +125,8 @@
                                     <x-error for="shares.roles.assistant_share_percent" />
                                 </div>
                                 <div>
-                                    <label class="label">Lembur per jam</label>
-                                    <x-money model="shares.roles.assistant_overtime_rate" placeholder="0" />
+                                    <label class="label">Lembur per jam <span class="font-normal text-muted">(jam lembur dari absen pulang)</span></label>
+                                    <x-money model="shares.roles.assistant_overtime_rate" placeholder="5.000" />
                                 </div>
                                 <p class="text-[11px] text-muted">Fee nominal per tindakan (mis. pasang behel/gigi palsu Rp8.000) diatur di Master data › Tindakan.</p>
                             </div>
@@ -306,10 +317,10 @@
                                 <x-error for="app.payment_methods" />
                             </div>
                             <div>
-                                <label class="label">Batas diskon Admin (% dari subtotal)</label>
+                                <label class="label">Batas diskon dokter (% dari subtotal)</label>
                                 <input type="number" min="0" max="100" wire:model="app.admin_max_discount_percent" class="input">
                                 <x-error for="app.admin_max_discount_percent" />
-                                <p class="mt-1 text-xs text-muted">Owner tidak dibatasi. 0 = Admin tidak boleh memberi diskon.</p>
+                                <p class="mt-1 text-xs text-muted">Diskon diberikan dokter saat pemeriksaan. Owner tidak dibatasi; Admin/Asisten tidak bisa memberi diskon. 0 = dokter tidak boleh memberi diskon.</p>
                             </div>
                         </div>
                     </section>
@@ -363,7 +374,13 @@
                                     <td class="font-medium">{{ $p->name }}</td>
                                     <td class="text-[13px] text-muted">{{ $p->category ?: '—' }}</td>
                                     @foreach ($branches as $b)
-                                        <td class="text-right">{{ ($price = $p->priceFor($b->id)) !== null ? Format::rupiah($price) : '—' }}</td>
+                                        <td class="text-right">
+                                            @if ($range = $p->rangeFor($b->id))
+                                                {{ Format::rupiah($range[0]) }}@if ($range[1])<span class="text-muted"> – {{ Format::rupiah($range[1]) }}</span>@endif
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
                                     @endforeach
                                     <td class="text-right text-[13px]">{{ $p->share_percent !== null ? rtrim(rtrim($p->share_percent, '0'), '.').'%' : 'Ikut dokter' }}</td>
                                     <td class="pr-5 text-right">@if ($canEdit)<button type="button" wire:click="editProcedure({{ $p->id }})" class="link-arrow">Ubah</button>@endif</td>
@@ -545,6 +562,23 @@
                 <div class="sm:col-span-2"><label class="label">Nama cabang</label><input type="text" wire:model="data.name" class="input"><x-error for="data.name" /></div>
                 <div class="sm:col-span-2"><label class="label">Alamat</label><textarea wire:model="data.address" rows="2" class="input py-2.5"></textarea></div>
                 <div class="sm:col-span-2"><label class="label">Telepon</label><input type="text" wire:model="data.phone" class="input"></div>
+                <div class="sm:col-span-2 rounded-xl border border-line p-3" x-data="{ msg: '' }">
+                    <p class="text-sm font-semibold">Lokasi absensi</p>
+                    <p class="mt-0.5 text-[11px] text-muted">Dokter & asisten hanya bisa absen bila berada dalam radius ini dari titik klinik. Isi dengan berdiri di klinik lalu tekan tombol di bawah.</p>
+                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                        <div><label class="label">Latitude</label><input type="text" inputmode="decimal" wire:model="data.latitude" class="input" placeholder="-7.8671"><x-error for="data.latitude" /></div>
+                        <div><label class="label">Longitude</label><input type="text" inputmode="decimal" wire:model="data.longitude" class="input" placeholder="112.5239"><x-error for="data.longitude" /></div>
+                        <div><label class="label">Radius (meter)</label><input type="number" min="20" max="2000" wire:model="data.attendance_radius_m" class="input"><x-error for="data.attendance_radius_m" /></div>
+                    </div>
+                    <button type="button" class="btn-soft mt-3 min-h-9 px-3 text-xs"
+                        x-on:click="if (! navigator.geolocation) { msg = 'Browser tidak mendukung lokasi.'; return }
+                            msg = 'Mengambil lokasi…';
+                            navigator.geolocation.getCurrentPosition(
+                                p => { $wire.set('data.latitude', p.coords.latitude.toFixed(7)); $wire.set('data.longitude', p.coords.longitude.toFixed(7)); msg = 'Lokasi terisi (akurasi ±' + Math.round(p.coords.accuracy) + ' m).' },
+                                e => { msg = 'Gagal mengambil lokasi: ' + e.message + (location.protocol !== 'https:' ? ' (lokasi butuh HTTPS)' : '') },
+                                { enableHighAccuracy: true, timeout: 15000 })">Pakai lokasi saya sekarang</button>
+                    <p x-show="msg" x-text="msg" class="mt-1.5 text-[11px] text-muted"></p>
+                </div>
                 <div class="sm:col-span-2">
                     <p class="label">Jam kerja</p>
                     <p class="mb-2 text-xs text-muted">Sesi 2 untuk jam setelah istirahat (kosongkan bila tanpa istirahat). Janji di luar jam ini hanya diberi peringatan.</p>
@@ -589,7 +623,8 @@
                 <div><label class="label">Kategori</label><input type="text" wire:model="data.category" class="input" placeholder="mis. Konservasi"></div>
                 <div class="sm:col-span-2"><label class="label">Nama tindakan</label><input type="text" wire:model="data.name" class="input"><x-error for="data.name" /></div>
                 @foreach ($branches as $b)
-                    <div><label class="label">Tarif {{ $b->shortName() }} (Rp)</label><x-money model="data.prices.{{ $b->id }}" placeholder="Kosong = tidak tersedia" /><x-error for="data.prices.{{ $b->id }}" /></div>
+                    <div><label class="label">Tarif {{ $b->shortName() }} minimal (Rp)</label><x-money model="data.prices.{{ $b->id }}" placeholder="Kosong = tidak tersedia" /><x-error for="data.prices.{{ $b->id }}" /></div>
+                    <div><label class="label">Tarif {{ $b->shortName() }} maksimal (Rp) <span class="font-normal text-muted">kosong = satu harga</span></label><x-money model="data.max_prices.{{ $b->id }}" placeholder="Opsional" /><x-error for="data.max_prices.{{ $b->id }}" /></div>
                 @endforeach
                 <div class="sm:col-span-2"><label class="label">Bagi hasil khusus (%) <span class="font-normal text-muted">kosong = ikut dokter/global</span></label><input type="number" step="0.01" wire:model="data.share_percent" class="input"><x-error for="data.share_percent" /></div>
                 @if ($isOwner)

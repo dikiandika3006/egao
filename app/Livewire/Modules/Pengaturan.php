@@ -410,6 +410,10 @@ class Pengaturan extends Component
         $this->editingId = $b->id;
         $this->data = $b->only(['name', 'address', 'phone', 'receipt_start_number', 'receipt_footer']) + [
             'is_active' => $b->is_active,
+            // Titik absensi berbasis lokasi (kosong = absen lokasi belum bisa di cabang ini).
+            'latitude' => $b->latitude !== null ? (string) $b->latitude : '',
+            'longitude' => $b->longitude !== null ? (string) $b->longitude : '',
+            'attendance_radius_m' => (string) $b->attendance_radius_m,
             // Jam kerja per hari: tutup + sesi 1 (wajib bila buka) + sesi 2 (opsional, mis. setelah istirahat).
             'hours' => collect($b->weeklyHours())->map(fn (array $s) => [
                 'closed' => $s === [],
@@ -430,13 +434,21 @@ class Pengaturan extends Component
             'data.receipt_start_number' => ['required', 'integer', 'min:1'],
             'data.receipt_footer' => ['nullable', 'string', 'max:255'],
             'data.is_active' => ['boolean'],
+            'data.latitude' => ['nullable', 'required_with:data.longitude', 'numeric', 'between:-90,90'],
+            'data.longitude' => ['nullable', 'required_with:data.latitude', 'numeric', 'between:-180,180'],
+            'data.attendance_radius_m' => ['required', 'integer', 'min:20', 'max:2000'],
             'data.hours' => ['required', 'array'],
             'data.hours.*.closed' => ['boolean'],
             'data.hours.*.s1_start' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s1_end' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_start' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_end' => ['nullable', 'date_format:H:i'],
-        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi'])['data'];
+        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi', 'data.latitude' => 'latitude', 'data.longitude' => 'longitude',
+            'data.attendance_radius_m' => 'radius absensi'])['data'];
+
+        $v['latitude'] = ($v['latitude'] ?? '') === '' ? null : (float) $v['latitude'];
+        $v['longitude'] = ($v['longitude'] ?? '') === '' ? null : (float) $v['longitude'];
+        $v['attendance_radius_m'] = (int) $v['attendance_radius_m'];
 
         $hours = $this->parseHours($v['hours']);
         unset($v['hours']);
@@ -517,6 +529,8 @@ class Pengaturan extends Component
             // Resep bahan: takaran per 1 tindakan (boleh pecahan), diisi Owner bertahap.
             'materials' => $p ? $p->materials()->get()->map(fn ($m) => ['item_id' => (string) $m->item_id, 'quantity' => rtrim(rtrim(number_format($m->quantity, 4, '.', ''), '0'), '.')])->all() : [],
             'prices' => $this->branches()->mapWithKeys(fn ($b) => [$b->id => $p?->priceFor($b->id)])->all(),
+            // Tarif range: batas atas opsional (kosong = satu harga).
+            'max_prices' => $this->branches()->mapWithKeys(fn ($b) => [$b->id => $p?->rangeFor($b->id)[1] ?? null])->all(),
         ];
         $this->resetValidation();
         $this->form = 'procedure';
@@ -541,8 +555,26 @@ class Pengaturan extends Component
             'data.materials.*.quantity' => ['required', 'numeric', 'gt:0', 'max:1000'],
             'data.prices' => ['array'],
             'data.prices.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
-        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif', 'data.fee_from_procedure_id' => 'dasar fee ikut tindakan',
+            'data.max_prices' => ['array'],
+            'data.max_prices.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
+        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif', 'data.max_prices.*' => 'tarif maksimal', 'data.fee_from_procedure_id' => 'dasar fee ikut tindakan',
             'data.assistant_fee_amount' => 'fee asisten nominal', 'data.materials.*.item_id' => 'bahan', 'data.materials.*.quantity' => 'takaran'])['data'];
+
+        // Tarif range: maksimal harus lebih besar dari minimal dan hanya bila tarif minimal diisi.
+        foreach ($v['max_prices'] ?? [] as $branchId => $max) {
+            if ($max === null || $max === '') {
+                continue;
+            }
+            $min = $v['prices'][$branchId] ?? null;
+            if ($min === null || $min === '') {
+                $this->addError("data.max_prices.{$branchId}", 'Isi tarif minimal dulu.');
+            } elseif ((int) $max < (int) $min) {
+                $this->addError("data.max_prices.{$branchId}", 'Tarif maksimal tidak boleh lebih kecil dari minimal.');
+            }
+        }
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
 
         // Aturan fee memengaruhi gaji dokter: hanya Owner yang boleh mengubah.
         $canSetFeeRule = $this->isOwner();
@@ -579,7 +611,9 @@ class Pengaturan extends Component
                 if ($price === null || $price === '') {
                     $p->prices()->where('branch_id', $branchId)->delete();
                 } else {
-                    $p->prices()->updateOrCreate(['branch_id' => $branchId], ['price' => (int) $price]);
+                    $max = $v['max_prices'][$branchId] ?? null;
+                    $max = $max === null || $max === '' || (int) $max === (int) $price ? null : (int) $max;
+                    $p->prices()->updateOrCreate(['branch_id' => $branchId], ['price' => (int) $price, 'max_price' => $max]);
                 }
             }
 

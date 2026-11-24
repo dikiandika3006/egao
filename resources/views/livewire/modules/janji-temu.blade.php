@@ -144,6 +144,15 @@
                             </p>
                         @endif
                         @if ($a->note)<p class="mt-1 text-[12px] text-muted italic">{{ $a->note }}</p>@endif
+                        @if ($a->status_reason && in_array($a->status, [Appointment::CANCELLED, Appointment::NO_SHOW], true))
+                            <p class="mt-1 text-[12px] text-rose-ink">Alasan: {{ $a->status_reason }}</p>
+                        @endif
+                        @if ($a->reschedules->isNotEmpty())
+                            @php $last = $a->reschedules->first(); @endphp
+                            <p class="mt-1 text-[12px] text-muted" title="Terakhir dari {{ $last->from_date->translatedFormat('j M Y') }}{{ $last->from_time ? ' '.Format::jam($last->from_time) : '' }}">
+                                Dijadwal ulang {{ $a->reschedules->count() }}× · {{ $last->reason }}
+                            </p>
+                        @endif
                         @if (in_array($a->id, $outsideHours, true))
                             <p class="mt-1.5 inline-flex rounded bg-amber-soft px-2 py-0.5 text-[11px] font-semibold text-amber-ink">Di luar jam kerja {{ $a->branch->shortName() }} ({{ $a->branch->hoursLabel($a->date) }})</p>
                         @endif
@@ -162,19 +171,24 @@
                                 {{-- Konfirmasi via WhatsApp: membuka WA dengan pesan terisi, admin tinggal kirim --}}
                                 <a href="{{ $wa }}" target="_blank" rel="noopener" class="btn-ghost min-h-10 px-3 text-[13px] text-brand-600" title="Kirim pengingat via WhatsApp">Kirim WA</a>
                             @endif
-                            <button type="button" wire:click="edit({{ $a->id }})" class="btn-ghost min-h-10 px-3 text-[13px]">Ubah</button>
+                            <button type="button" wire:click="edit({{ $a->id }})" class="btn-ghost min-h-10 px-3 text-[13px]">Jadwal ulang</button>
                             <div x-data="{ open: false }" class="relative" @click.outside="open = false">
                                 <button type="button" @click="open = !open" class="btn-ghost min-h-10 px-3 text-[13px]" aria-label="Lainnya">⋯</button>
                                 <div x-cloak x-show="open" class="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-line bg-white p-1 shadow-lg">
                                     @unless ($a->date->isFuture())
-                                        <button type="button" wire:click="setStatus({{ $a->id }}, 'tidak_datang')" class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm hover:bg-mist">Tidak datang</button>
+                                        <button type="button" wire:click="askStatus({{ $a->id }}, 'tidak_datang')" @click="open = false" class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm hover:bg-mist">Tidak datang</button>
                                     @endunless
-                                    <button type="button" wire:click="setStatus({{ $a->id }}, 'batal')" wire:confirm="Batalkan janji ini?" class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-rose-ink hover:bg-rose-soft">Batalkan</button>
+                                    <button type="button" wire:click="askStatus({{ $a->id }}, 'batal')" @click="open = false" class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-rose-ink hover:bg-rose-soft">Batalkan</button>
                                 </div>
                             </div>
                         </div>
-                    @elseif ($canWrite && in_array($a->status, [Appointment::CANCELLED, Appointment::NO_SHOW], true) && ! $a->date->isPast() || ($canWrite && $a->date->isToday() && in_array($a->status, [Appointment::CANCELLED, Appointment::NO_SHOW], true)))
-                        <button type="button" wire:click="setStatus({{ $a->id }}, 'terjadwal')" class="btn-ghost min-h-10 px-3 text-[13px]">Pulihkan</button>
+                    @elseif ($canWrite && in_array($a->status, [Appointment::CANCELLED, Appointment::NO_SHOW], true))
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" wire:click="edit({{ $a->id }})" class="btn-soft min-h-10 px-3 text-[13px]">Jadwal ulang</button>
+                            @unless ($a->date->isPast() && ! $a->date->isToday())
+                                <button type="button" wire:click="setStatus({{ $a->id }}, 'terjadwal')" class="btn-ghost min-h-10 px-3 text-[13px]">Pulihkan</button>
+                            @endunless
+                        </div>
                     @endif
                 </li>
             @empty
@@ -188,8 +202,12 @@
     @if ($showForm)
         <div class="fixed inset-0 z-50 flex items-end justify-center bg-brand-800/40 p-4 sm:items-center">
             <form wire:submit="save" class="card max-h-[92dvh] w-full max-w-lg overflow-y-auto p-6">
-                <h3 class="text-lg font-semibold">{{ $editingId ? 'Ubah janji temu' : 'Buat janji temu' }}</h3>
-                <p class="mt-1 text-xs text-muted">{{ $context->label() }}</p>
+                <h3 class="text-lg font-semibold">{{ $editingId ? 'Jadwal ulang janji temu' : 'Buat janji temu' }}</h3>
+                @if ($editing)
+                    <p class="mt-1 text-xs text-muted">
+                        Jadwal sekarang: {{ $editing->date->translatedFormat('D, j M Y') }}{{ $editing->time ? ' · '.Format::jam($editing->time) : '' }} · {{ $editing->branch->shortName() }} · {{ $editing->statusLabel() }}
+                    </p>
+                @endif
 
                 <div class="mt-5 space-y-4">
                     <div>
@@ -210,13 +228,22 @@
                                     @endforeach
                                 </ul>
                             @elseif (mb_strlen(trim($patientSearch)) >= 2)
-                                <p class="mt-1 text-xs text-muted">Pasien tidak ditemukan. Daftarkan dulu di menu Data pasien.</p>
+                                <p class="mt-1 text-xs text-muted">Pasien tidak ditemukan. <a href="{{ route('pasien', ['baru' => 1]) }}" wire:navigate class="text-brand-600 underline">Daftarkan pasien baru</a>, lalu buat janjinya lagi.</p>
                             @endif
                         @endif
                         <x-error for="form.patient_id" />
                     </div>
 
-                    @unless ($editingId)<x-branch-pick :context="$context" />@endunless
+                    <div>
+                        <label class="label">Cabang</label>
+                        <select wire:model.live="form.branch_id" class="input">
+                            <option value="">Pilih cabang…</option>
+                            @foreach ($branches as $b)
+                                <option value="{{ $b->id }}">{{ $b->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-error for="form.branch_id" />
+                    </div>
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
@@ -254,7 +281,7 @@
                         @if ($formBranch)
                             <p class="mt-1 text-xs text-muted">Jam kerja {{ $formBranch->shortName() }}: <span class="font-medium text-brand-700">{{ $formBranch->hoursLabel(\Carbon\Carbon::parse($form['date'] ?: today())) }}</span></p>
                         @endif
-                        @if ($context->isAll() && ! $editingId && ! $branchPick)
+                        @if (! $formBranch)
                             <p class="mt-2 text-xs text-muted">Pilih cabang dulu untuk melihat jadwal dokter.</p>
                         @else
                             <ul class="mt-2 space-y-2 text-[13px]">
@@ -285,11 +312,66 @@
                         <label class="label">Catatan</label>
                         <input type="text" wire:model="form.note" maxlength="255" class="input" placeholder="Opsional">
                     </div>
+
+                    @if ($editing)
+                        <div>
+                            <label class="label">Alasan jadwal ulang</label>
+                            <input type="text" wire:model="form.reason" maxlength="255" class="input" placeholder="Wajib bila tanggal, jam, cabang, atau dokter berubah">
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                @foreach ($reasons as $r)
+                                    <button type="button" wire:click="$set('form.reason', @js($r))" class="pill bg-mist text-[12px] hover:bg-leaf-100">{{ $r }}</button>
+                                @endforeach
+                            </div>
+                            <x-error for="form.reason" />
+                        </div>
+
+                        @if ($editing->reschedules->isNotEmpty())
+                            <div class="rounded-xl bg-canvas p-3">
+                                <p class="text-xs font-semibold text-muted uppercase">Riwayat jadwal ulang</p>
+                                <ul class="mt-2 space-y-1.5 text-[12px]">
+                                    @foreach ($editing->reschedules as $r)
+                                        <li>
+                                            <span class="text-muted">{{ $r->created_at->translatedFormat('j M') }} ·</span>
+                                            dari {{ $r->from_date->translatedFormat('j M Y') }}{{ $r->from_time ? ' '.Format::jam($r->from_time) : '' }} ({{ $r->fromBranch?->shortName() }})
+                                            — {{ $r->reason }}
+                                            @if ($r->user)<span class="text-muted">· {{ $r->user->name }}</span>@endif
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+                    @endif
                 </div>
 
                 <div class="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
                     <button type="submit" class="btn-primary flex-1">Simpan</button>
                     <button type="button" wire:click="$set('showForm', false)" class="btn-ghost">Batal</button>
+                </div>
+            </form>
+        </div>
+    @endif
+
+    {{-- Alasan batal / tidak datang (opsional) --}}
+    @if ($statusForm['id'])
+        <div class="fixed inset-0 z-50 flex items-end justify-center bg-brand-800/40 p-4 sm:items-center">
+            <form wire:submit="confirmStatus" class="card w-full max-w-md p-6">
+                <h3 class="text-lg font-semibold">{{ $statusForm['status'] === Appointment::CANCELLED ? 'Batalkan janji' : 'Tandai tidak datang' }}</h3>
+                <p class="mt-1 text-xs text-muted">Pasien bisa dijadwal ulang kapan saja lewat tombol "Jadwal ulang".</p>
+                <div class="mt-4">
+                    <label class="label">Alasan (opsional)</label>
+                    <input type="text" wire:model="statusForm.reason" maxlength="255" class="input" placeholder="Mis. pasien sakit">
+                    <div class="mt-2 flex flex-wrap gap-1.5">
+                        @foreach ($reasons as $r)
+                            <button type="button" wire:click="$set('statusForm.reason', @js($r))" class="pill bg-mist text-[12px] hover:bg-leaf-100">{{ $r }}</button>
+                        @endforeach
+                    </div>
+                    <x-error for="statusForm.reason" />
+                </div>
+                <div class="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
+                    <button type="submit" class="btn-primary flex-1">
+                        {{ $statusForm['status'] === Appointment::CANCELLED ? 'Batalkan janji' : 'Simpan' }}
+                    </button>
+                    <button type="button" wire:click="closeStatus" class="btn-ghost">Kembali</button>
                 </div>
             </form>
         </div>

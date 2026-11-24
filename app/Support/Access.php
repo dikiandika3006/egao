@@ -36,6 +36,7 @@ class Access
         'pasien' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
         'rekam-medis' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
         'jadwal' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
+        'absensi' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
     ];
 
     /** Peran yang izinnya bisa diatur (Owner selalu penuh). */

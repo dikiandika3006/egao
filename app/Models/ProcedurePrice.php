@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProcedurePrice extends Model
 {
-    protected $fillable = ['procedure_id', 'branch_id', 'price'];
+    protected $fillable = ['procedure_id', 'branch_id', 'price', 'max_price'];
 
     public function procedure(): BelongsTo
     {

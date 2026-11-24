@@ -5,13 +5,13 @@ namespace App\Livewire\Modules;
 use App\Enums\Role;
 use App\Enums\VisitStatus;
 use App\Livewire\Concerns\ModulePage;
-use App\Livewire\Concerns\PicksBranch;
 use App\Models\Appointment;
+use App\Models\AppointmentReschedule;
 use App\Models\AuditLog;
-use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Visit;
+use App\Support\AppointmentRules;
 use App\Support\BranchContext;
 use App\Support\Settings;
 use Carbon\Carbon;
@@ -23,18 +23,22 @@ use Livewire\Component;
 
 /**
  * Janji temu & kontrol (permintaan klien poin 1: "jadwal harian pasien").
- * - Admin mencatat janji untuk tanggal mendatang.
+ * - Admin mencatat janji untuk tanggal mendatang, di cabang mana pun milik klinik.
+ * - Jadwal ulang: ganti tanggal/jam/cabang/dokter dengan alasan, riwayat tersimpan (appointment_reschedules).
  * - Rencana evaluasi dokter di rekam medis otomatis menjadi janji "kontrol" (ExamService::syncFollowUp).
  * - Hari-H: tombol "Datang" langsung membuat nomor antrean.
  */
 class JanjiTemu extends Component
 {
-    use ModulePage, PicksBranch;
+    use ModulePage;
 
     public const MENU = 'janji';
 
     /** Boleh tanpa izin Edit (lihat ModulePage). */
-    public const READ_ACTIONS = ['shiftDay', 'goToday', 'setView', 'shiftMonth'];
+    public const READ_ACTIONS = ['shiftDay', 'goToday', 'setView', 'shiftMonth', 'closeStatus'];
+
+    /** Pilihan cepat alasan batal / tidak datang / jadwal ulang. */
+    public const REASONS = ['Tidak bisa dihubungi', 'Pasien sakit', 'Minta jadwal lain', 'Dokter berhalangan'];
 
     #[Url(as: 'tanggal', except: '')]
     public string $date = '';
@@ -50,6 +54,9 @@ class JanjiTemu extends Component
     public array $form = [];
 
     public string $patientSearch = '';
+
+    /** Modal alasan batal / tidak datang: ['id' => ?int, 'status' => string, 'reason' => string]. */
+    public array $statusForm = ['id' => null, 'status' => '', 'reason' => ''];
 
     public function mount(): void
     {
@@ -92,7 +99,10 @@ class JanjiTemu extends Component
 
     private function resetForm(): void
     {
-        $this->form = ['patient_id' => null, 'date' => $this->day()->toDateString(), 'time' => '', 'doctor_id' => '', 'purpose' => '', 'note' => ''];
+        $this->form = [
+            'patient_id' => null, 'branch_id' => (string) (app(BranchContext::class)->id() ?? ''),
+            'date' => $this->day()->toDateString(), 'time' => '', 'doctor_id' => '', 'purpose' => '', 'note' => '', 'reason' => '',
+        ];
         $this->editingId = null;
         $this->patientSearch = '';
     }
@@ -105,19 +115,28 @@ class JanjiTemu extends Component
         $this->showForm = true;
     }
 
+    /** Jadwal ulang: janji terjadwal, tidak datang, atau batal (tanggal berapa pun). Janji yang sudah datang tidak bisa. */
     public function edit(int $id): void
     {
         abort_unless($this->canWrite(), 403);
         $a = $this->query()->findOrFail($id);
-        abort_unless($a->status === Appointment::SCHEDULED, 422);
+        abort_unless($this->reschedulable($a), 422);
 
         $this->editingId = $a->id;
         $this->form = [
-            'patient_id' => $a->patient_id, 'date' => $a->date->toDateString(), 'time' => $a->time ? substr($a->time, 0, 5) : '',
-            'doctor_id' => (string) $a->doctor_id, 'purpose' => (string) $a->purpose, 'note' => (string) $a->note,
+            'patient_id' => $a->patient_id, 'branch_id' => (string) $a->branch_id,
+            // Janji yang tanggalnya sudah lewat: usulkan hari ini sebagai tanggal baru.
+            'date' => ($a->date->isPast() && ! $a->date->isToday() ? today() : $a->date)->toDateString(),
+            'time' => $a->time ? substr($a->time, 0, 5) : '',
+            'doctor_id' => (string) $a->doctor_id, 'purpose' => (string) $a->purpose, 'note' => (string) $a->note, 'reason' => '',
         ];
         $this->resetErrorBag();
         $this->showForm = true;
+    }
+
+    private function reschedulable(Appointment $a): bool
+    {
+        return in_array($a->status, [Appointment::SCHEDULED, Appointment::NO_SHOW, Appointment::CANCELLED], true);
     }
 
     public function pickPatient(int $id): void
@@ -132,35 +151,90 @@ class JanjiTemu extends Component
 
         $data = $this->validate([
             'form.patient_id' => ['required', Rule::exists('patients', 'id')->where('clinic_id', $this->clinicId())],
+            // Semua cabang aktif klinik boleh dipilih (pasien dialihkan ke cabang lain), bukan hanya cabang akses pengguna.
+            'form.branch_id' => ['required', Rule::exists('branches', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
             'form.date' => ['required', 'date', 'after_or_equal:today'],
             'form.time' => ['nullable', 'date_format:H:i'],
             'form.doctor_id' => ['nullable', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())],
             'form.purpose' => ['nullable', 'string', 'max:255'],
             'form.note' => ['nullable', 'string', 'max:255'],
-        ], ['form.date.after_or_equal' => 'Tanggal tidak boleh sebelum hari ini.'], [
-            'form.patient_id' => 'pasien', 'form.date' => 'tanggal', 'form.time' => 'jam', 'form.doctor_id' => 'dokter',
+            'form.reason' => ['nullable', 'string', 'max:255'],
+        ], [
+            'form.date.after_or_equal' => 'Tanggal tidak boleh sebelum hari ini.',
+            'form.branch_id.required' => 'Pilih cabang terlebih dulu.',
+        ], [
+            'form.patient_id' => 'pasien', 'form.branch_id' => 'cabang', 'form.date' => 'tanggal', 'form.time' => 'jam',
+            'form.doctor_id' => 'dokter', 'form.reason' => 'alasan',
         ])['form'];
+
+        $branchId = (int) $data['branch_id'];
+        $doctorId = filled($data['doctor_id']) ? (int) $data['doctor_id'] : null;
+        $time = filled($data['time']) ? $data['time'] : null;
 
         $appointment = $this->editingId
             ? $this->query()->findOrFail($this->editingId)
             : new Appointment([
-                'clinic_id' => $this->clinicId(), 'branch_id' => $this->targetBranch($context),
+                'clinic_id' => $this->clinicId(), 'patient_id' => (int) $data['patient_id'],
                 'source' => 'manual', 'status' => Appointment::SCHEDULED, 'created_by' => auth()->id(),
             ]);
 
-        $this->rejectDoubleBooking($data, $appointment->id);
+        if ($this->editingId) {
+            abort_unless($this->reschedulable($appointment), 422);
+        }
 
-        $appointment->fill([
-            'patient_id' => (int) $data['patient_id'], 'date' => $data['date'], 'time' => $data['time'] ?: null,
-            'doctor_id' => $data['doctor_id'] ?: null, 'purpose' => $data['purpose'] ?: null, 'note' => $data['note'] ?: null,
-        ])->save();
+        // Jadwal ulang = tanggal/jam/cabang/dokter berubah, atau janji batal/tidak datang dihidupkan lagi → wajib alasan.
+        $moved = $this->editingId && (
+            $appointment->date->toDateString() !== $data['date']
+            || ($appointment->time ? substr($appointment->time, 0, 5) : null) !== $time
+            || (int) $appointment->branch_id !== $branchId
+            || ($appointment->doctor_id ? (int) $appointment->doctor_id : null) !== $doctorId
+            || $appointment->status !== Appointment::SCHEDULED
+        );
+        $reason = trim((string) $data['reason']);
 
-        AuditLog::record($this->editingId ? 'janji.updated' : 'janji.created', $appointment, $appointment->only(['date', 'time', 'doctor_id']));
+        if ($moved && $reason === '') {
+            throw ValidationException::withMessages(['form.reason' => 'Isi alasan jadwal ulang.']);
+        }
 
+        AppointmentRules::rejectDoubleBooking($this->clinicId(), $doctorId, $data['date'], $time, $appointment->id);
+
+        $before = $appointment->exists ? $appointment->only(['status', 'date', 'time', 'branch_id', 'doctor_id']) : null;
+
+        DB::transaction(function () use ($appointment, $data, $branchId, $doctorId, $time, $moved, $reason, $before) {
+            $appointment->fill([
+                'branch_id' => $branchId, 'date' => $data['date'], 'time' => $time, 'doctor_id' => $doctorId,
+                'purpose' => $data['purpose'] ?: null, 'note' => $data['note'] ?: null,
+                'status' => Appointment::SCHEDULED, 'status_reason' => null,
+            ])->save();
+
+            if ($moved) {
+                AppointmentReschedule::create([
+                    'appointment_id' => $appointment->id, 'from_status' => $before['status'],
+                    'from_date' => $before['date'], 'from_time' => $before['time'],
+                    'from_branch_id' => $before['branch_id'], 'from_doctor_id' => $before['doctor_id'],
+                    'to_date' => $data['date'], 'to_time' => $time, 'to_branch_id' => $branchId, 'to_doctor_id' => $doctorId,
+                    'reason' => $reason, 'user_id' => auth()->id(),
+                ]);
+            }
+        });
+
+        if ($moved) {
+            AuditLog::record('janji.dijadwal_ulang', $appointment, [
+                'sebelum' => ['status' => $before['status'], 'date' => $before['date']->toDateString(), 'time' => $before['time'], 'branch_id' => $before['branch_id'], 'doctor_id' => $before['doctor_id']],
+                'sesudah' => ['date' => $data['date'], 'time' => $time, 'branch_id' => $branchId, 'doctor_id' => $doctorId],
+                'alasan' => $reason,
+            ]);
+        } else {
+            AuditLog::record($this->editingId ? 'janji.updated' : 'janji.created', $appointment, $appointment->only(['date', 'time', 'branch_id', 'doctor_id']));
+        }
+
+        $appointment->load('branch');
         $this->date = $appointment->date->toDateString();
         $this->showForm = false;
-        $warning = $this->hoursWarning($appointment->loadMissing('branch')->branch, $appointment->date, $appointment->time);
-        $this->toast('Janji temu tersimpan.'.($warning ? ' Perhatian: '.str_replace(' Janji tetap bisa disimpan.', '', $warning) : ''));
+        $warning = AppointmentRules::hoursWarning($appointment->branch, $appointment->date, $appointment->time);
+        $away = $appointment->branch_id !== app(BranchContext::class)->id() && ! app(BranchContext::class)->isAll()
+            ? " Janji ada di {$appointment->branch->shortName()}." : '';
+        $this->toast(($moved ? 'Janji dijadwal ulang.' : 'Janji temu tersimpan.').$away.($warning ? ' Perhatian: '.str_replace(' Janji tetap bisa disimpan.', '', $warning) : ''));
     }
 
     /** Pasien datang → buat kunjungan & nomor antrean hari ini. */
@@ -174,7 +248,7 @@ class JanjiTemu extends Component
             throw ValidationException::withMessages(['checkin' => 'Pasien hanya bisa dimasukkan ke antrean pada hari janjinya. Ubah tanggal janji bila datang lebih awal.']);
         }
 
-        $doctorId = $a->doctor_id ?? $this->doctorOnDuty($a->branch_id, today())?->id;
+        $doctorId = $a->doctor_id ?? AppointmentRules::doctorsOn($this->clinicId(), $a->branch_id, today())->first()?->id;
         if (! $doctorId) {
             throw ValidationException::withMessages(['checkin' => 'Belum ada dokter bertugas di cabang ini hari ini. Pilih dokter di janji temu.']);
         }
@@ -203,75 +277,48 @@ class JanjiTemu extends Component
         $this->toast("{$a->patient->name} masuk antrean nomor {$visit->queueLabel()}.");
     }
 
-    public function setStatus(int $id, string $status): void
+    /** Buka modal alasan untuk Batal / Tidak datang. */
+    public function askStatus(int $id, string $status): void
+    {
+        abort_unless($this->canWrite(), 403);
+        abort_unless(in_array($status, [Appointment::CANCELLED, Appointment::NO_SHOW], true), 422);
+        $a = $this->query()->findOrFail($id);
+        abort_unless($a->status === Appointment::SCHEDULED, 422);
+
+        $this->resetErrorBag();
+        $this->statusForm = ['id' => $a->id, 'status' => $status, 'reason' => ''];
+    }
+
+    public function closeStatus(): void
+    {
+        $this->statusForm = ['id' => null, 'status' => '', 'reason' => ''];
+    }
+
+    public function confirmStatus(): void
+    {
+        abort_unless($this->statusForm['id'], 422);
+        $this->validate(['statusForm.reason' => ['nullable', 'string', 'max:255']], attributes: ['statusForm.reason' => 'alasan']);
+
+        $this->setStatus((int) $this->statusForm['id'], (string) $this->statusForm['status'], trim((string) $this->statusForm['reason']) ?: null);
+        $this->closeStatus();
+    }
+
+    /** Ubah status janji. Pulihkan (terjadwal) mengosongkan alasan. */
+    public function setStatus(int $id, string $status, ?string $reason = null): void
     {
         abort_unless($this->canWrite(), 403);
         abort_unless(in_array($status, [Appointment::CANCELLED, Appointment::NO_SHOW, Appointment::SCHEDULED], true), 422);
 
         $a = $this->query()->findOrFail($id);
         abort_if($a->status === Appointment::ARRIVED, 422);
-        $a->update(['status' => $status]);
-        AuditLog::record('janji.status', $a, ['status' => $status]);
-    }
+        $reason = $status === Appointment::SCHEDULED ? null : ($reason !== null ? mb_substr($reason, 0, 255) : null);
 
-    /** Satu dokter tidak boleh punya dua janji berdekatan (< 30 menit) di tanggal yang sama. */
-    public const SLOT_MINUTES = 30;
+        $a->update(['status' => $status, 'status_reason' => $reason]);
+        AuditLog::record('janji.status', $a, ['status' => $status, 'alasan' => $reason]);
 
-    private function rejectDoubleBooking(array $data, ?int $ignoreId): void
-    {
-        if (blank($data['doctor_id']) || blank($data['time'])) {
-            return;
+        if ($status !== Appointment::SCHEDULED) {
+            $this->toast($status === Appointment::CANCELLED ? 'Janji dibatalkan.' : 'Ditandai tidak datang.');
         }
-
-        $time = Carbon::parse($data['date'].' '.$data['time']);
-
-        $clash = Appointment::where('clinic_id', $this->clinicId())
-            ->where('doctor_id', (int) $data['doctor_id'])
-            ->whereDate('date', $data['date'])
-            ->where('status', Appointment::SCHEDULED)
-            ->whereNotNull('time')
-            ->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))
-            ->with('patient')
-            ->get()
-            ->first(fn (Appointment $a) => abs(Carbon::parse($data['date'].' '.$a->time)->diffInMinutes($time)) < self::SLOT_MINUTES);
-
-        if ($clash) {
-            throw ValidationException::withMessages([
-                'form.time' => sprintf('Dokter ini sudah ada janji jam %s (%s). Pilih jam lain, beri jarak minimal %d menit.',
-                    substr($clash->time, 0, 5), $clash->patient->name, self::SLOT_MINUTES),
-            ]);
-        }
-    }
-
-    /** Peringatan jam kerja cabang (null = aman). Janji tetap boleh disimpan. */
-    private function hoursWarning(Branch $branch, Carbon $date, ?string $time): ?string
-    {
-        $day = $date->translatedFormat('l');
-
-        if (! $branch->hoursOn($date)) {
-            return "{$branch->shortName()} tutup di hari {$day}. Janji tetap bisa disimpan.";
-        }
-
-        if (filled($time) && preg_match('/^\d{2}:\d{2}/', $time) && ! $branch->isOpenAt($date, $time)) {
-            return sprintf('Jam %s di luar jam kerja %s (%s: %s). Janji tetap bisa disimpan.',
-                str_replace(':', '.', substr($time, 0, 5)), $branch->shortName(), $day, $branch->hoursLabel($date));
-        }
-
-        return null;
-    }
-
-    private function doctorOnDuty(int $branchId, Carbon $date): ?Doctor
-    {
-        return $this->doctorsOn($branchId, $date)->first();
-    }
-
-    private function doctorsOn(int $branchId, Carbon $date)
-    {
-        return Doctor::where('clinic_id', $this->clinicId())->where('is_active', true)
-            ->with(['schedules', 'overrides' => fn ($q) => $q->whereDate('date', $date)])
-            ->orderBy('name')->get()
-            ->filter(fn (Doctor $d) => ($d->scheduleOn($date)['branch_id'] ?? null) === $branchId)
-            ->values();
     }
 
     private function query()
@@ -289,7 +336,7 @@ class JanjiTemu extends Component
         $weekStart = $day->copy()->startOfWeek();
 
         $appointments = $this->query()->whereDate('date', $day)
-            ->with(['patient', 'doctor', 'branch', 'visit'])
+            ->with(['patient', 'doctor', 'branch', 'visit', 'reschedules'])
             ->orderByRaw('time IS NULL')->orderBy('time')->orderBy('id')
             ->get();
 
@@ -318,13 +365,15 @@ class JanjiTemu extends Component
             }
         }
 
+        $branches = AppointmentRules::branches($this->clinicId());
         $formDate = rescue(fn () => Carbon::parse($this->form['date'] ?? $day), $day, false);
-        $branchId = $this->editingId ? $this->query()->whereKey($this->editingId)->value('branch_id') : $this->formBranchId($context);
+        $branchId = (int) ($this->form['branch_id'] ?? 0) ?: null;
+        $branchId = $branches->contains('id', $branchId) ? $branchId : null;
 
         // Panel di form: dokter bertugas di tanggal & cabang itu + jam yang sudah terisi (untuk menjawab pasien via WA).
         $dayPlan = collect();
+        $onDuty = $this->showForm && $branchId ? AppointmentRules::doctorsOn($this->clinicId(), $branchId, $formDate) : collect();
         if ($this->showForm && $branchId) {
-            $onDuty = $this->doctorsOn($branchId, $formDate);
             $booked = Appointment::where('clinic_id', $this->clinicId())->whereDate('date', $formDate)
                 ->where('status', Appointment::SCHEDULED)->whereNotNull('doctor_id')
                 ->when($this->editingId, fn ($q) => $q->whereKeyNot($this->editingId))
@@ -337,12 +386,12 @@ class JanjiTemu extends Component
         }
 
         // Jam kerja cabang di tanggal form + peringatan bila jam janji di luar jam kerja (tidak memblokir simpan).
-        $formBranch = $this->showForm && $branchId ? Branch::where('clinic_id', $this->clinicId())->find($branchId) : null;
-        $hoursWarning = $formBranch ? $this->hoursWarning($formBranch, $formDate, $this->form['time'] ?? '') : null;
+        $formBranch = $this->showForm && $branchId ? $branches->firstWhere('id', $branchId) : null;
+        $hoursWarning = $formBranch ? AppointmentRules::hoursWarning($formBranch, $formDate, $this->form['time'] ?? '') : null;
 
         // Janji pada hari terpilih yang dokternya tidak bertugas di cabang itu (izin/libur/pindah) → perlu dikabari.
         $dutyByBranch = $appointments->pluck('branch_id')->unique()
-            ->mapWithKeys(fn ($bid) => [$bid => $this->doctorsOn($bid, $day)->pluck('id')->all()]);
+            ->mapWithKeys(fn ($bid) => [$bid => AppointmentRules::doctorsOn($this->clinicId(), $bid, $day)->pluck('id')->all()]);
         $doctorAway = $appointments
             ->filter(fn (Appointment $a) => $a->status === Appointment::SCHEDULED && $a->doctor_id
                 && ! in_array($a->doctor_id, $dutyByBranch[$a->branch_id] ?? [], true))
@@ -351,8 +400,12 @@ class JanjiTemu extends Component
         // Janji terjadwal pada hari terpilih yang jatuh di luar jam kerja cabang (hanya penanda).
         $outsideHours = $appointments
             ->filter(fn (Appointment $a) => $a->status === Appointment::SCHEDULED
-                && $this->hoursWarning($a->branch, $a->date, $a->time) !== null)
+                && AppointmentRules::hoursWarning($a->branch, $a->date, $a->time) !== null)
             ->pluck('id')->all();
+
+        $editing = $this->showForm && $this->editingId
+            ? $this->query()->with(['reschedules.fromBranch', 'reschedules.user'])->find($this->editingId)
+            : null;
 
         return $this->page('janji', 'livewire.modules.janji-temu', [
             'context' => $context,
@@ -364,13 +417,16 @@ class JanjiTemu extends Component
                 ->whereBetween('date', [today()->addDay()->toDateString(), today()->addDays(7)->toDateString()])->count(),
             'canWrite' => $this->canWrite(),
             'gcalEnabled' => Settings::bool('gcal_enabled'),
+            'branches' => $branches,
             'doctors' => Doctor::where('clinic_id', $this->clinicId())->where('is_active', true)->orderBy('name')->get(),
-            'onDutyIds' => $branchId ? $this->doctorsOn($branchId, $formDate)->pluck('id')->all() : [],
+            'onDutyIds' => $onDuty->pluck('id')->all(),
             'dayPlan' => $dayPlan,
             'formBranch' => $formBranch,
             'hoursWarning' => $hoursWarning,
             'doctorAway' => $doctorAway,
             'outsideHours' => $outsideHours,
+            'editing' => $editing,
+            'reasons' => self::REASONS,
             'selectedPatient' => ($this->form['patient_id'] ?? null) ? Patient::find($this->form['patient_id']) : null,
             'patientResults' => mb_strlen(trim($this->patientSearch)) >= 2
                 ? Patient::where('clinic_id', $this->clinicId())->search($this->patientSearch)->limit(6)->get()

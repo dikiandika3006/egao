@@ -97,7 +97,7 @@ class Faq
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana aturan gaji dokter, asisten, dan admin?',
-            'a' => 'Atur di menu Master data › Tarif gaji & bagi hasil (tiga kartu: Dokter, Asisten, Admin & staf lain). Dokter: gaji pokok + uang duduk per shift + fee tindakan (tarif global/per dokter, mis. 35%). Fee dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas; cicilan/piutang ditanggung klinik), dari harga setelah diskon, dipotong "Biaya modal" (mis. kawat/bracket Rp50.000 pasien luar), biaya bahan resep tindakan, dan biaya lab. Asisten (jabatan "Asisten dokter"): gaji pokok + UD per jam + fee per tindakan yang ia dampingi (2% atau nominal tetap per tindakan, mis. pasang behel/gigi palsu Rp8.000) + lembur per jam. Admin & jabatan lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang di menu Gaji. Nominal yang dibiarkan 0 tidak dipakai.',
+            'a' => 'Atur di menu Master data › Tarif gaji & bagi hasil (tiga kartu: Dokter, Asisten, Admin & staf lain). Dokter: gaji pokok + uang duduk per shift + fee tindakan (tarif global/per dokter, mis. 35%). Fee dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas; cicilan/piutang ditanggung klinik), dari harga setelah diskon, dipotong "Biaya modal" (mis. kawat/bracket Rp50.000 pasien luar), biaya bahan resep tindakan, dan biaya lab. Asisten (jabatan "Asisten dokter"): gaji pokok + upah per shift hadir (Pagi/Sore, dari Absensi) + fee per tindakan yang ia dampingi (2% atau nominal tetap per tindakan, mis. pasang behel/gigi palsu Rp8.000) + lembur per jam. Admin & jabatan lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang di menu Gaji. Nominal yang dibiarkan 0 tidak dipakai.',
             'where' => 'Master data › Tarif gaji & bagi hasil',
             'roles' => 'Owner',
             'tags' => 'ud uang duduk per jam per shift fee asisten lembur admin biaya modal lab behel xray 35% 2% thr bonus akhir tahun target omzet diskon bahan piutang cicilan',
@@ -202,6 +202,22 @@ class Faq
         ],
 
         // ── Pasien, antrean & janji ──────────────────────────────────
+        [
+            'group' => 'Pasien, antrean & janji',
+            'q' => 'Pasien minta ganti jadwal atau tidak jadi datang',
+            'a' => 'Di Janji temu tekan "Jadwal ulang" pada janji pasien. Tanggal, jam, cabang (semua cabang klinik, misalnya pindah dari Batu ke Malang), dan dokter bisa diganti; alasan wajib diisi bila salah satunya berubah. Riwayat jadwal lama tersimpan dan tampil "Dijadwal ulang n×" di daftar. Pasien tidak jadi datang: menu ⋯ › Batalkan atau Tidak datang, alasan boleh diisi. Janji yang Batal/Tidak datang tetap bisa dijadwal ulang kapan saja, termasuk yang tanggalnya sudah lewat. Janji yang dipindah ke cabang lain hilang dari daftar cabang asal dan muncul di cabang tujuan; Google Calendar ikut diperbarui.',
+            'where' => 'Janji temu',
+            'roles' => 'Owner, Admin, Asisten',
+            'tags' => 'jadwal ulang reschedule ganti jadwal pindah cabang batal tidak datang alasan riwayat',
+        ],
+        [
+            'group' => 'Pasien, antrean & janji',
+            'q' => 'Pasien datang tanpa janji tapi harus dialihkan ke cabang atau hari lain',
+            'a' => 'Pasien tanpa janji tetap didaftarkan lewat Antrean › Daftarkan kunjungan. Bila antrean penuh atau dokter tidak praktik, tekan "Alihkan" pada pasien yang menunggu, lalu pilih cabang tujuan, tanggal, jam/dokter (opsional), dan alasannya. Antrean hari ini dibatalkan dan diganti janji temu di cabang/tanggal tujuan. Saat pasien tiba, cabang tujuan menekan "Datang → antrean" di Janji temu. Kunjungan yang dialihkan tampil di tab Tidak hadir dengan keterangan "Dialihkan ke …" dan tidak bisa dimasukkan lagi.',
+            'where' => 'Antrean · Janji temu',
+            'roles' => 'Owner, Admin, Asisten',
+            'tags' => 'walk-in tanpa janji alihkan pindah cabang antrean penuh dokter tidak praktik hari lain',
+        ],
         [
             'group' => 'Pasien, antrean & janji',
             'q' => 'Di mana mengatur jam kerja cabang?',
@@ -343,10 +359,10 @@ class Faq
         [
             'group' => 'Rekam medis',
             'q' => 'Bisakah harga tindakan diubah saat pemeriksaan?',
-            'a' => 'Bisa, khusus Dokter dan Owner. Di bagian Tindakan & tagihan tekan "Ubah harga" pada tindakan, lalu isi harga baru. Umumnya harga hanya boleh sama atau lebih tinggi dari harga standar cabang (potongan harga lewat diskon di Kasir). Pengecualian: tindakan yang ditandai Owner "Harga boleh di bawah standar" (mis. cabut tidak selesai) boleh lebih rendah dengan alasan wajib; kunjungan lanjutan ditagih sebagai tindakan baru. Tindakan bertarif terkunci (mis. Analisis kasus) tidak bisa diubah harganya. Kosongkan isian untuk kembali ke harga standar. Tindakan yang dinaikkan diberi label "standar Rp …", tercatat di jejak audit, dan bagi hasil dokter dihitung dari harga yang sudah dinaikkan. Admin tidak bisa mengubah harga, tetapi kenaikan dari dokter tetap terjaga saat Admin menyimpan.',
+            'a' => 'Bisa, khusus Dokter dan Owner. Di bagian Tindakan & tagihan tekan "Ubah harga" pada tindakan, lalu isi harga baru. Tarif bisa berupa range (mis. Rp200.000 – Rp350.000): harga bebas di dalam range; di atas batas maksimal tetap boleh tetapi tercatat di jejak audit. Di bawah tarif minimal hanya boleh bila dicentang "Tidak selesai" dan alasan diisi (mis. cabut tidak selesai), atau tindakan ditandai Owner "Harga boleh di bawah standar"; kunjungan lanjutan ditagih sebagai tindakan baru. Potongan harga lain lewat diskon di Kasir. Tindakan bertarif terkunci (mis. Analisis kasus) tidak bisa diubah harganya. Kosongkan isian untuk kembali ke harga standar. Tindakan yang dinaikkan diberi label "standar Rp …", tercatat di jejak audit, dan bagi hasil dokter dihitung dari harga yang sudah dinaikkan. Admin tidak bisa mengubah harga, tetapi kenaikan dari dokter tetap terjaga saat Admin menyimpan.',
             'where' => 'Rekam medis › Tindakan & tagihan',
             'roles' => 'Dokter, Owner',
-            'tags' => 'harga tindakan ubah naik turun edit tarif standar bagi hasil cabut tidak selesai terkunci analisis kasus',
+            'tags' => 'harga tindakan ubah naik turun edit tarif standar range minimal maksimal bagi hasil cabut tidak selesai terkunci analisis kasus',
         ],
 
         // ── Kasir ────────────────────────────────────────────────────
@@ -377,10 +393,10 @@ class Faq
         [
             'group' => 'Kasir & pembayaran',
             'q' => 'Bagaimana memberi diskon?',
-            'a' => 'Di Kasir, buka tagihan lalu isi diskon beserta alasannya. Diskon hanya bisa sebelum ada pembayaran. Batas diskon Admin diatur Owner di Pengaturan › Aplikasi.',
-            'where' => 'Kasir · Pengaturan › Aplikasi',
-            'roles' => 'Owner, Admin',
-            'tags' => 'diskon potongan harga promo maksimal',
+            'a' => 'Diskon diberikan dokter penanggung jawab saat pemeriksaan: di kartu total, buka "Diskon", isi nominal dan alasannya, lalu kirim ke kasir. Batas diskon dokter (% dari subtotal) diatur Owner di Pengaturan › Aplikasi. Admin/Asisten tidak bisa memberi atau mengubah diskon, baik di pemeriksaan maupun di Kasir; mereka mencatat pembayaran dan mencetak kwitansi. Owner tetap bisa memberi diskon di Kasir tanpa batas, selama belum ada pembayaran. Bagi hasil dokter dihitung dari harga setelah diskon.',
+            'where' => 'Rekam medis › Periksa · Kasir · Pengaturan › Aplikasi',
+            'roles' => 'Dokter, Owner',
+            'tags' => 'diskon potongan harga promo maksimal dokter kasir admin',
         ],
         [
             'group' => 'Kasir & pembayaran',
@@ -563,6 +579,56 @@ class Faq
             'where' => '—',
             'roles' => 'Owner',
             'tags' => 'update perbarui deploy server hostinger github versi baru',
+        ],
+
+        // ── Tarif range, tukar jadwal, absensi & gaji asisten (24 Nov 2026) ──
+        [
+            'group' => 'Akun & pengaturan',
+            'q' => 'Membuat tarif tindakan berupa range (min–maks)',
+            'a' => 'Buka Master data › Tindakan & tarif, ubah tindakan, lalu isi "Tarif minimal" dan "Tarif maksimal" per cabang. Kosongkan tarif maksimal bila tindakan hanya punya satu harga. Saat pemeriksaan, harga awal = tarif minimal; dokter boleh mengubahnya di dalam range, atau lebih tinggi dari maksimal (tercatat di audit). Di bawah minimal hanya dengan centang "Tidak selesai" + alasan. Bagi hasil dihitung dari harga yang ditagih. Tagihan lama tidak berubah.',
+            'where' => 'Master data › Tindakan & tarif',
+            'roles' => 'Owner, Admin',
+            'tags' => 'tarif range rentang minimal maksimal harga tindakan tidak selesai',
+        ],
+        [
+            'group' => 'Dokter & jadwal',
+            'q' => 'Menukar jadwal dua dokter untuk satu hari',
+            'a' => 'Di Jadwal dokter, seret (drag) sel seorang dokter ke sel dokter lain pada tanggal yang sama, lalu konfirmasi. Di ponsel, klik sel dokter › bagian "Tukar jadwal hari ini dengan dokter lain" › pilih dokter › Tukar. Masing-masing memakai cabang & jam dokter satunya; yang menerima "tidak ada jadwal" menjadi libur hari itu. Centang "Pindahkan janji temu" agar janji pasien ikut ditukar. Hanya untuk tanggal itu (hari ini atau ke depan); jadwal rutin tidak berubah. Batalkan dengan "Kembalikan ke rutin" di sel masing-masing dokter.',
+            'where' => 'Jadwal dokter',
+            'roles' => 'Owner, Admin',
+            'tags' => 'tukar jadwal drag seret ganti dokter swap tanggal janji temu',
+        ],
+        [
+            'group' => 'Dokter & jadwal',
+            'q' => 'Jadwal asisten dan centang hadir asisten',
+            'a' => 'Buka Jadwal dokter › tab "Asisten". Tambah jadwal rutin per asisten (satu baris per sesi; shift pagi & sore = dua baris di hari yang sama). Jam selesai jadwal dipakai sebagai patokan lembur. Owner bisa klik sel asisten untuk mencentang hadir Shift Pagi/Sore, misalnya bila asisten lupa absen. Asisten yang muncul adalah karyawan aktif berjabatan "Asisten dokter" di Gaji › Karyawan.',
+            'where' => 'Jadwal dokter › Asisten',
+            'roles' => 'Owner, Admin (centang hadir: Owner)',
+            'tags' => 'jadwal asisten shift pagi sore hadir centang',
+        ],
+        [
+            'group' => 'Dokter & jadwal',
+            'q' => 'Absensi berbasis lokasi (dokter & asisten)',
+            'a' => 'Owner mengisi titik lokasi tiap cabang sekali di Pengaturan › Cabang (berdiri di klinik, tekan "Pakai lokasi saya sekarang", atur radius, mis. 100 m). Dokter/asisten membuka menu Absensi di HP, memilih cabang tempat bertugas, lalu menekan "Absen masuk" dan "Absen pulang" untuk Shift Pagi atau Sore, dan mengizinkan akses lokasi. Absen ditolak bila di luar radius, sinyal GPS kurang akurat (> 150 m), atau di luar jam shift (masuk paling cepat 60 menit sebelum shift). Akun harus terhubung ke data dokter/karyawan. Absen dokter otomatis menjadi tanda hadir shift (dasar uang duduk). Lokasi butuh koneksi HTTPS. GPS bisa dipalsukan aplikasi tertentu, jadi Owner tetap memeriksa rekap.',
+            'where' => 'Absensi · Pengaturan › Cabang',
+            'roles' => 'Dokter, Asisten (pengaturan: Owner)',
+            'tags' => 'absensi absen lokasi gps radius hadir masuk pulang jam kerja shift',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
+            'q' => 'Gaji asisten: upah shift, lembur, dan fee',
+            'a' => 'Asisten = gaji pokok + upah per shift hadir (bawaan Shift Pagi Rp15.000, Shift Sore Rp20.000; bisa diatur per asisten di Gaji › Karyawan, kosong = ikut Master data › Tarif gaji & bagi hasil) + lembur Rp5.000 per jam + fee 2% dari tindakan yang didampingi (atau nominal tetap untuk tindakan khusus) + bonus − potongan. Kehadiran diambil dari Absensi (absen lokasi atau centang Owner). Lembur = absen pulang yang melewati akhir jadwal asisten, dihitung per jam penuh, dan bisa dikoreksi Owner di Absensi. Bulan tanpa data absensi tetap memakai cara lama (jam hadir & jam lembur yang diisi manual di Gaji).',
+            'where' => 'Gaji & bagi hasil · Absensi',
+            'roles' => 'Owner',
+            'tags' => 'gaji asisten upah shift pagi sore lembur 5000 fee 2% absensi',
+        ],
+        [
+            'group' => 'Dokter & jadwal',
+            'q' => 'Mengoreksi atau menambah absensi',
+            'a' => 'Owner membuka Absensi › Rekap bulan › "Koreksi" pada baris untuk mengubah jam masuk/pulang, jam lembur (asisten), dan catatan, atau menghapusnya. "+ Absensi manual" untuk orang yang lupa absen atau HP-nya bermasalah. Semua koreksi tercatat di jejak audit. Admin bisa melihat rekap tanpa mengubah.',
+            'where' => 'Absensi',
+            'roles' => 'Owner',
+            'tags' => 'koreksi absensi manual lupa absen hapus lembur',
         ],
     ];
 

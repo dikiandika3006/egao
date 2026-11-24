@@ -53,9 +53,8 @@ it('owner menyimpan pengaturan aplikasi', function () {
         ->and(Settings::idleHours())->toBe(4);
 });
 
-it('kasir memakai metode aktif, batas diskon admin, dan prefix kwitansi', function () {
+it('kasir memakai metode aktif dan prefix kwitansi', function () {
     Settings::set('payment_methods', 'tunai');
-    Settings::set('admin_max_discount_percent', '10');
     Settings::set('receipt_prefix', 'EGD');
 
     settingsLogin('admin', 'admin', $this->batu->id);
@@ -63,11 +62,6 @@ it('kasir memakai metode aktif, batas diskon admin, dan prefix kwitansi', functi
 
     Livewire::test(Kasir::class)
         ->call('open', $invoice->id)
-        ->set('pay.discount', (int) ceil($invoice->subtotal * 0.2))
-        ->set('pay.discount_reason', 'Coba')
-        ->call('applyDiscount')
-        ->assertHasErrors('pay.discount')
-        ->set('pay.discount', 0)
         ->set('pay.method', 'qris')
         ->call('submitPayment')
         ->assertHasErrors('pay.method')

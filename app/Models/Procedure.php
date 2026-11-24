@@ -40,8 +40,25 @@ class Procedure extends Model
         return $this->belongsTo(self::class, 'fee_from_procedure_id');
     }
 
+    /** Tarif minimal/standar cabang (null = belum ada tarif). */
     public function priceFor(int $branchId): ?int
     {
         return $this->prices->firstWhere('branch_id', $branchId)?->price;
+    }
+
+    /**
+     * Tarif range cabang: [min, max]. max null = satu harga (tidak berupa range).
+     *
+     * @return array{0:int, 1:?int}|null
+     */
+    public function rangeFor(int $branchId): ?array
+    {
+        $row = $this->prices->firstWhere('branch_id', $branchId);
+        if (! $row) {
+            return null;
+        }
+        $max = $row->max_price !== null && (int) $row->max_price > (int) $row->price ? (int) $row->max_price : null;
+
+        return [(int) $row->price, $max];
     }
 }

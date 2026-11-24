@@ -197,6 +197,13 @@ class Jadwal extends Component
     {
         abort_unless($this->canEdit($context), 403);
 
+        // Mode Libur/izin: kolom cabang & jam tersembunyi — kosongkan agar sisa isian lama tidak menggagalkan validasi diam-diam.
+        if (($this->override['type'] ?? null) === ScheduleOverride::TYPE_OFF) {
+            $this->override['branch_id'] = null;
+            $this->override['starts_at'] = '';
+            $this->override['ends_at'] = '';
+        }
+
         $data = $this->validate([
             'override.doctor_id' => ['required', Rule::exists('doctors', 'id')->where('clinic_id', $this->clinicId())->where('is_active', true)],
             'override.date' => ['required', 'date'],

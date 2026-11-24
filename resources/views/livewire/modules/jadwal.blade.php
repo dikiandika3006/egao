@@ -252,7 +252,13 @@
                 <div class="sm:col-span-2">
                     <label class="label">Alasan / catatan</label>
                     <input type="text" wire:model="override.note" class="input" placeholder="mis. Malang penuh, cuti">
+                    <x-error for="override.note" />
                 </div>
+                {{-- Pesan untuk isian yang tidak punya tempat di formulir (dokter, tanggal, dll.) agar Simpan tidak gagal diam-diam. --}}
+                @php $lain = collect($errors->getMessages())->except(['override.branch_id', 'override.ends_at', 'override.substitute_id', 'override.note'])->filter(fn ($m, $k) => str_starts_with($k, 'override.'))->flatten(); @endphp
+                @if ($lain->isNotEmpty())
+                    <p class="sm:col-span-2 rounded-lg bg-rose-soft px-4 py-3 text-sm text-rose-ink">{{ $lain->implode(' ') }}</p>
+                @endif
                 <div class="flex flex-wrap justify-between gap-2 sm:col-span-2">
                     @if ($editingId)
                         <button type="button" wire:click="deleteOverride" class="btn-ghost">Kembalikan ke rutin</button>

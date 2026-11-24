@@ -97,10 +97,10 @@ class Faq
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana aturan gaji dokter, asisten, dan admin?',
-            'a' => 'Atur di menu Master data › Tarif gaji & bagi hasil (tiga kartu: Dokter, Asisten, Admin & staf lain). Dokter: gaji pokok + uang duduk (UD) per jam + fee tindakan (tarif global, mis. 35%). Fee dihitung setelah harga tindakan dipotong "Biaya modal" (isi di tabel Per tindakan, mis. alat behel atau x-ray) dan biaya order lab dokter itu di bulan tersebut. Asisten (jabatan "Asisten dokter"): gaji pokok + UD per jam + fee % dari tindakan lunas yang ia dampingi + lembur per jam. Admin & jabatan lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang di menu Gaji. Nominal yang dibiarkan 0 tidak dipakai.',
+            'a' => 'Atur di menu Master data › Tarif gaji & bagi hasil (tiga kartu: Dokter, Asisten, Admin & staf lain). Dokter: gaji pokok + uang duduk per shift + fee tindakan (tarif global/per dokter, mis. 35%). Fee dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas; cicilan/piutang ditanggung klinik), dari harga setelah diskon, dipotong "Biaya modal" (mis. kawat/bracket Rp50.000 pasien luar), biaya bahan resep tindakan, dan biaya lab. Asisten (jabatan "Asisten dokter"): gaji pokok + UD per jam + fee per tindakan yang ia dampingi (2% atau nominal tetap per tindakan, mis. pasang behel/gigi palsu Rp8.000) + lembur per jam. Admin & jabatan lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang di menu Gaji. Nominal yang dibiarkan 0 tidak dipakai.',
             'where' => 'Master data › Tarif gaji & bagi hasil',
             'roles' => 'Owner',
-            'tags' => 'ud uang duduk per jam fee asisten lembur admin biaya modal lab behel xray 35% 2% thr bonus akhir tahun target omzet',
+            'tags' => 'ud uang duduk per jam per shift fee asisten lembur admin biaya modal lab behel xray 35% 2% thr bonus akhir tahun target omzet diskon bahan piutang cicilan',
         ],
         [
             'group' => 'Gaji & bagi hasil',
@@ -109,6 +109,22 @@ class Faq
             'where' => 'Master data › Tindakan & tarif',
             'roles' => 'Owner',
             'tags' => 'gigi palsu gigi tiruan gtsl gtl gtj insersi cetak dp behel ortho pasang analisis kasus lab 10% 35% fee bertahap',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
+            'q' => 'Bagaimana uang duduk dokter per shift dihitung?',
+            'a' => 'Owner menandai kehadiran dokter di Jadwal dokter: klik sel hari itu, lalu tekan "Shift 1" dan/atau "Shift 2" (hanya untuk hari ini atau sebelumnya). Untuk tiap shift hadir, dijumlahkan kotor tindakan dokter itu di shift tersebut (sebelum diskon dan potongan; obat dan biaya admin tidak dihitung). Bila kurang dari ambang (bawaan Rp100.000), dokter mendapat uang duduk (bawaan Rp40.000) dan fee tindakan shift itu 0. Bila sama atau lebih dari ambang, uang duduk hangus dan dokter mendapat fee %. Contoh: 1 kontrol Rp35.000 → uang duduk Rp40.000; 3 konsultasi Rp105.000 → 35% = Rp36.750. Dua shift dihitung terpisah; tindakan masuk shift menurut jam diperiksa dibanding jam mulai sesi ke-2 di jadwal rutin (bila tidak ada sesi ke-2, batasnya pukul 14.00). Hari tanpa tanda hadir dihitung fee biasa. Nominal & ambang diatur di Master data › Tarif gaji & bagi hasil; uang duduk dibayar di gaji bulanan.',
+            'where' => 'Jadwal dokter · Gaji & bagi hasil',
+            'roles' => 'Owner',
+            'tags' => 'uang duduk ud shift hadir kehadiran jaga 40rb 100rb ambang hangus 35%',
+        ],
+        [
+            'group' => 'Gaji & bagi hasil',
+            'q' => 'Bagaimana mengisi resep bahan per tindakan (komposit, ampul, spuit)?',
+            'a' => 'Buka Master data › Tindakan & tarif, ubah tindakan, lalu di "Resep bahan per 1 tindakan" tekan "+ Bahan", pilih barang dari Stok, dan isi takaran. Takaran boleh pecahan: 1 tube komposit untuk 20 pasien = 0,05; 1 ampul = 1. Biaya bahan (takaran × harga pokok rata-rata) dipotong dari harga sebelum bagi hasil dokter. Stok berkurang otomatis setiap pemakaian genap 1 satuan (pecahan disimpan sebagai saldo), saat tagihan dikirim ke kasir; kembali bila tagihan dibatalkan. Stok boleh menjadi minus agar pemeriksaan tidak terhambat, jadi rutin catat pembelian. Tindakan yang belum diisi resepnya tidak dipotong bahan; resep boleh dilengkapi bertahap.',
+            'where' => 'Master data › Tindakan & tarif',
+            'roles' => 'Owner',
+            'tags' => 'bahan resep komposit ampul anestesi spuit takaran pecahan pemakaian stok otomatis biaya bahan',
         ],
         [
             'group' => 'Gaji & bagi hasil',
@@ -121,7 +137,7 @@ class Faq
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana memilih asisten pendamping supaya fee asisten terhitung?',
-            'a' => 'Di Kasir, buka tagihan kunjungan pasien. Di bawah nama dokter ada pilihan "Asisten"; pilih asisten yang mendampingi. Pilihan ini bisa diubah sebelum atau sesudah lunas dan tercatat di jejak audit. Fee asisten dihitung dari tindakan pada tagihan yang sudah lunas. Hanya karyawan berjabatan "Asisten dokter" yang muncul di pilihan.',
+            'a' => 'Di Kasir, buka tagihan kunjungan pasien. Di bawah nama dokter ada pilihan "Asisten"; pilih asisten yang mendampingi. Pilihan ini bisa diubah sebelum atau sesudah lunas dan tercatat di jejak audit. Fee asisten dihitung dari tindakan pada tagihan yang sudah dikirim ke kasir (tidak menunggu lunas). Hanya karyawan berjabatan "Asisten dokter" yang muncul di pilihan.',
             'where' => 'Kasir',
             'roles' => 'Admin, Owner',
             'tags' => 'asisten pendamping fee asisten kasir dampingi',
@@ -327,13 +343,29 @@ class Faq
         [
             'group' => 'Rekam medis',
             'q' => 'Bisakah harga tindakan diubah saat pemeriksaan?',
-            'a' => 'Bisa, khusus Dokter dan Owner. Di bagian Tindakan & tagihan tekan "Ubah harga" pada tindakan, lalu isi harga baru. Harga hanya boleh sama atau lebih tinggi dari harga standar cabang; lebih rendah ditolak (potongan harga dilakukan lewat diskon di Kasir). Kosongkan isian untuk kembali ke harga standar. Tindakan yang dinaikkan diberi label "standar Rp …", tercatat di jejak audit, dan bagi hasil dokter dihitung dari harga yang sudah dinaikkan. Admin tidak bisa mengubah harga, tetapi kenaikan dari dokter tetap terjaga saat Admin menyimpan.',
+            'a' => 'Bisa, khusus Dokter dan Owner. Di bagian Tindakan & tagihan tekan "Ubah harga" pada tindakan, lalu isi harga baru. Umumnya harga hanya boleh sama atau lebih tinggi dari harga standar cabang (potongan harga lewat diskon di Kasir). Pengecualian: tindakan yang ditandai Owner "Harga boleh di bawah standar" (mis. cabut tidak selesai) boleh lebih rendah dengan alasan wajib; kunjungan lanjutan ditagih sebagai tindakan baru. Tindakan bertarif terkunci (mis. Analisis kasus) tidak bisa diubah harganya. Kosongkan isian untuk kembali ke harga standar. Tindakan yang dinaikkan diberi label "standar Rp …", tercatat di jejak audit, dan bagi hasil dokter dihitung dari harga yang sudah dinaikkan. Admin tidak bisa mengubah harga, tetapi kenaikan dari dokter tetap terjaga saat Admin menyimpan.',
             'where' => 'Rekam medis › Tindakan & tagihan',
             'roles' => 'Dokter, Owner',
-            'tags' => 'harga tindakan ubah naik edit tarif standar bagi hasil',
+            'tags' => 'harga tindakan ubah naik turun edit tarif standar bagi hasil cabut tidak selesai terkunci analisis kasus',
         ],
 
         // ── Kasir ────────────────────────────────────────────────────
+        [
+            'group' => 'Kasir',
+            'q' => 'Kapan biaya admin & kartu ditagih?',
+            'a' => 'Sekali per pasien, otomatis di tagihan pertamanya (bawaan Rp5.000, untuk pendaftaran dan cetak kartu). Kunjungan berikutnya tidak ditagih lagi. Biaya admin tidak masuk bagi hasil dokter. Untuk pasien lama yang ternyata sudah pernah membayar, tekan ✕ pada baris "Biaya admin & kartu" di Kasir sebelum ada pembayaran; biaya admin tidak muncul lagi di tagihan itu. Nominal diatur di Master data › Tarif gaji & bagi hasil (0 = tidak dipakai).',
+            'where' => 'Kasir',
+            'roles' => 'Admin, Owner',
+            'tags' => 'biaya admin administrasi kartu pendaftaran 5000 pasien baru',
+        ],
+        [
+            'group' => 'Kasir',
+            'q' => 'Di mana melihat piutang / cicilan pasien?',
+            'a' => 'Di Kasir, tab "Piutang": tagihan belum lunas atau bayar sebagian dari hari sebelumnya, lengkap dengan tanggal, umur (hari), yang sudah dibayar, dan total piutang. Pembayaran berikutnya dicatat dari tagihan yang sama. Fee dokter tidak menunggu pelunasan. Total piutang juga tampil di Laporan.',
+            'where' => 'Kasir › Piutang',
+            'roles' => 'Admin, Owner',
+            'tags' => 'piutang cicilan bayar sebagian kurang hutang pasien behel',
+        ],
         [
             'group' => 'Kasir & pembayaran',
             'q' => 'Bagaimana menerima pembayaran dan mencetak kwitansi?',

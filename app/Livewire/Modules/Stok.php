@@ -117,7 +117,7 @@ class Stok extends Component
 
     private function resetItem(): void
     {
-        $this->itemForm = ['code' => '', 'name' => '', 'category' => 'obat', 'unit' => 'tablet', 'buy_price' => null, 'sell_price' => null, 'sellable' => true, 'min_stock' => 0, 'is_active' => true];
+        $this->itemForm = ['code' => '', 'name' => '', 'category' => 'obat', 'unit' => 'tablet', 'buy_price' => null, 'sell_price' => null, 'margin_percent' => '', 'sellable' => true, 'min_stock' => 0, 'is_active' => true];
         $this->editingId = null;
     }
 
@@ -135,6 +135,7 @@ class Stok extends Component
         $this->itemForm = [
             'code' => $i->code, 'name' => $i->name, 'category' => $i->category, 'unit' => $i->unit,
             'buy_price' => (int) $i->buy_price, 'sell_price' => $i->sell_price !== null ? (int) $i->sell_price : null,
+            'margin_percent' => $i->margin_percent !== null ? (string) (float) $i->margin_percent : '',
             'sellable' => $i->sell_price !== null, 'min_stock' => $i->min_stock, 'is_active' => $i->is_active,
         ];
         $this->resetErrorBag();
@@ -150,24 +151,40 @@ class Stok extends Component
             'itemForm.unit' => ['required', 'string', 'max:20'],
             'itemForm.buy_price' => ['nullable', 'integer', 'min:0'],
             'itemForm.sellable' => ['boolean'],
+            'itemForm.margin_percent' => ['nullable', 'numeric', 'between:0,1000'],
             'itemForm.sell_price' => [Rule::requiredIf((bool) $this->itemForm['sellable']), 'nullable', 'integer', 'min:0'],
             'itemForm.min_stock' => ['required', 'integer', 'min:0', 'max:100000'],
             'itemForm.is_active' => ['boolean'],
         ], attributes: [
             'itemForm.code' => 'kode', 'itemForm.name' => 'nama', 'itemForm.unit' => 'satuan', 'itemForm.buy_price' => 'harga beli',
-            'itemForm.sell_price' => 'harga jual', 'itemForm.min_stock' => 'stok minimum',
+            'itemForm.sell_price' => 'harga jual', 'itemForm.min_stock' => 'stok minimum', 'itemForm.margin_percent' => 'margin',
         ])['itemForm'];
 
         $item = $this->editingId ? $this->items()->findOrFail($this->editingId) : new Item(['clinic_id' => $this->clinicId()]);
         $item->fill([
             'code' => strtoupper($data['code']), 'name' => $data['name'], 'category' => $data['category'], 'unit' => $data['unit'],
             'buy_price' => (int) ($data['buy_price'] ?? 0), 'sell_price' => $data['sellable'] ? (int) $data['sell_price'] : null,
+            'margin_percent' => ($data['margin_percent'] ?? '') === '' ? null : $data['margin_percent'],
             'min_stock' => (int) $data['min_stock'], 'is_active' => (bool) $data['is_active'],
         ])->save();
 
         AuditLog::record($this->editingId ? 'stok.barang.updated' : 'stok.barang.created', $item, $item->only(['code', 'sell_price', 'buy_price']));
         $this->showItemForm = false;
         $this->toast('Barang tersimpan.');
+    }
+
+    /** Saran harga jual = harga beli × (1 + margin barang, atau margin bawaan), dibulatkan ke atas Rp500. */
+    public static function suggestedPrice(int $buyPrice, ?float $margin): int
+    {
+        $margin ??= \App\Support\Settings::float('default_margin_percent');
+
+        return (int) (ceil($buyPrice * (1 + $margin / 100) / 500) * 500);
+    }
+
+    public function applySuggestedPrice(): void
+    {
+        $margin = ($this->itemForm['margin_percent'] ?? '') === '' ? null : (float) str_replace(',', '.', (string) $this->itemForm['margin_percent']);
+        $this->itemForm['sell_price'] = static::suggestedPrice((int) ($this->itemForm['buy_price'] ?? 0), $margin);
     }
 
     // ── Pembelian ───────────────────────────────────────────────────

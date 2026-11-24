@@ -7,7 +7,7 @@
     <div class="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
         <section class="card overflow-hidden">
             <div class="flex gap-8 border-b border-line px-5 pt-4 text-sm">
-                @foreach (['tagihan' => 'Menunggu pembayaran ('.$pending->count().')', 'lunas' => 'Lunas hari ini ('.$paidToday->count().')'] as $key => $label)
+                @foreach (['tagihan' => 'Menunggu pembayaran ('.$pending->count().')', 'piutang' => 'Piutang ('.$receivables->count().')', 'lunas' => 'Lunas hari ini ('.$paidToday->count().')'] as $key => $label)
                     <button type="button" wire:click="$set('tab', '{{ $key }}')" @class([
                         '-mb-px border-b-2 pb-3',
                         'border-leaf-500 font-semibold text-brand-600' => $tab === $key,
@@ -16,13 +16,14 @@
                 @endforeach
             </div>
             <ul class="divide-y divide-line">
-                @forelse ($tab === 'lunas' ? $paidToday : $pending as $inv)
+                @forelse (match ($tab) { 'lunas' => $paidToday, 'piutang' => $receivables, default => $pending } as $inv)
                     <li wire:key="i-{{ $inv->id }}">
                         <button type="button" wire:click="open({{ $inv->id }})" @class(['flex w-full flex-wrap items-center gap-3 px-5 py-4 text-left hover:bg-mist', 'bg-leaf-50' => $invoice?->id === $inv->id])>
                             <div class="min-w-0 flex-1">
                                 <p class="font-semibold">{{ $inv->payerName() }}@if ($inv->isDirectSale()) <span class="ml-1 rounded bg-orange-soft px-1.5 py-0.5 text-[10px] font-semibold text-orange-ink">Penjualan langsung</span>@endif</p>
                                 <p class="mt-0.5 text-[12px] text-muted">{{ $inv->payerPatient()?->rmCode() ?? 'Tanpa RM' }}@if ($context->isAll()) · {{ $inv->branch->shortName() }}@endif
-                                    @if ($tab === 'lunas') · {{ $inv->paid_at->format('H.i') }} · {{ $inv->receipts->first()?->code }}@endif</p>
+                                    @if ($tab === 'lunas') · {{ $inv->paid_at->format('H.i') }} · {{ $inv->receipts->first()?->code }}@endif
+                                    @if ($tab === 'piutang') · {{ $inv->created_at->translatedFormat('j M Y') }} · {{ (int) $inv->created_at->startOfDay()->diffInDays(today()) }} hari · dibayar @rupiah($inv->paid)@endif</p>
                             </div>
                             <div class="text-right">
                                 <p class="font-semibold">@rupiah($tab === 'lunas' ? $inv->total : $inv->outstanding())</p>
@@ -31,9 +32,12 @@
                         </button>
                     </li>
                 @empty
-                    <li class="py-14 text-center text-sm text-muted">{{ $tab === 'lunas' ? 'Belum ada pembayaran lunas hari ini.' : 'Tidak ada tagihan yang menunggu.' }}</li>
+                    <li class="py-14 text-center text-sm text-muted">{{ match ($tab) { 'lunas' => 'Belum ada pembayaran lunas hari ini.', 'piutang' => 'Tidak ada piutang.', default => 'Tidak ada tagihan yang menunggu.' } }}</li>
                 @endforelse
             </ul>
+            @if ($tab === 'piutang' && $receivables->isNotEmpty())
+                <p class="flex justify-between border-t border-line px-5 py-3 text-sm"><span class="text-muted">Total piutang</span><b>@rupiah($receivables->sum(fn ($i) => $i->outstanding()))</b></p>
+            @endif
             @if ($tab === 'lunas' && $paidToday->isNotEmpty())
                 <p class="flex justify-between border-t border-line px-5 py-3 text-sm"><span class="text-muted">Total lunas hari ini</span><b>@rupiah($totalToday)</b></p>
             @endif
@@ -74,9 +78,13 @@
                 <ul class="mt-4 divide-y divide-line text-sm">
                     @foreach ($invoice->items as $i)
                         <li class="flex justify-between gap-3 py-2.5">
-                            <span>{{ $i->name }}@if ($i->tooth) <span class="text-xs text-muted">gigi {{ $i->tooth }}</span>@endif @if ($i->quantity > 1)<span class="text-xs text-muted">×{{ $i->quantity }}</span>@endif</span>
+                            <span>{{ $i->name }}@if ($i->tooth) <span class="text-xs text-muted">gigi {{ $i->tooth }}</span>@endif @if ($i->quantity > 1)<span class="text-xs text-muted">×{{ $i->quantity }}</span>@endif
+                                @if ($i->isLowered())<span class="block text-[11px] text-amber-ink">Di bawah standar @rupiah($i->standard_price){{ $i->price_reason ? ' — '.$i->price_reason : '' }}</span>@endif</span>
                             <span class="flex items-center gap-2">
                                 @rupiah($i->amount)
+                                @if ($i->is_admin_fee && $canEdit && $invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID)
+                                    <button type="button" wire:click="removeAdminFee({{ $i->id }})" wire:confirm="Hapus biaya admin dari tagihan ini? Biaya admin tidak akan ditagih ulang." class="text-muted hover:text-rose-ink" title="Hapus biaya admin">✕</button>
+                                @endif
                                 @if ($i->item_id && $goodsOptions->isNotEmpty())
                                     <button type="button" wire:click="removeGoods({{ $i->id }})" class="text-muted hover:text-rose-ink" title="Hapus barang">✕</button>
                                 @endif

@@ -25,10 +25,10 @@ class Invoice extends Model
 
     protected function casts(): array
     {
-        return ['paid_at' => 'datetime', 'stock_posted_at' => 'datetime'];
+        return ['paid_at' => 'datetime', 'stock_posted_at' => 'datetime', 'materials_posted' => 'array'];
     }
 
-    /** Stok obat/barang berkurang saat tagihan lunas, kembali bila tagihan lunas dibatalkan. */
+    /** Stok obat/barang berkurang saat tagihan lunas, kembali bila tagihan lunas dibatalkan; bahan resep tindakan ikut kembali saat batal. */
     protected static function booted(): void
     {
         static::updated(function (Invoice $invoice) {
@@ -40,6 +40,7 @@ class Invoice extends Model
                 app(\App\Services\StockService::class)->postSale($invoice);
             } elseif ($invoice->status === self::STATUS_VOID) {
                 app(\App\Services\StockService::class)->reverseSale($invoice);
+                app(\App\Services\StockService::class)->syncMaterials($invoice);
             }
         });
     }

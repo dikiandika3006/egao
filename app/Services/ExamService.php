@@ -16,6 +16,7 @@ use App\Models\Visit;
 use App\Services\SatuSehat\SatuSehatService;
 use App\Support\Access;
 use App\Support\BranchContext;
+use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -273,23 +274,29 @@ class ExamService
 
     /**
      * Harga standar = harga cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items.
-     * Dokter/Owner boleh mengisi unit_price ≥ standar (bagi hasil ikut harga ini). Peran lain tidak bisa mengubah harga,
-     * tetapi kenaikan yang sudah tersimpan untuk tindakan yang sama dipertahankan.
+     * Dokter/Owner boleh mengisi unit_price ≥ standar (bagi hasil ikut harga ini). Tindakan bertanda "harga boleh di bawah
+     * standar" (mis. cabut tidak selesai) boleh lebih rendah asal beralasan. Tindakan bertarif terkunci selalu harga standar.
+     * Peran lain tidak bisa mengubah harga, tetapi harga yang sudah tersimpan untuk tindakan yang sama dipertahankan.
+     * Biaya bahan resep dibekukan per baris (material_cost); biaya admin ditagih sekali di tagihan pertama pasien.
      */
     private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = []): Invoice
     {
         $ids = collect($procedures)->pluck('procedure_id')->unique();
-        $master = Procedure::with('prices')->whereIn('id', $ids)->get()->keyBy('id');
+        $master = Procedure::with(['prices', 'materials.item'])->whereIn('id', $ids)->get()->keyBy('id');
         $canRaise = $this->canRaisePrice();
+        $stock = app(StockService::class);
 
         // Harga yang sudah tersimpan per tindakan (antrian sesuai urutan) untuk dipertahankan saat Admin menyimpan.
-        $saved = InvoiceItem::whereHas('invoice', fn ($q) => $q->where('visit_id', $visit->id))
-            ->whereNotNull('procedure_id')->orderBy('id')->get(['procedure_id', 'unit_price'])
-            ->groupBy('procedure_id')->map(fn ($g) => $g->pluck('unit_price')->map(fn ($v) => (int) $v)->all())->all();
+        $existing = InvoiceItem::whereHas('invoice', fn ($q) => $q->where('visit_id', $visit->id))->orderBy('id')
+            ->get(['procedure_id', 'unit_price', 'price_reason', 'is_admin_fee']);
+        $saved = $existing->whereNotNull('procedure_id')->groupBy('procedure_id')
+            ->map(fn ($g) => $g->map(fn ($i) => ['price' => (int) $i->unit_price, 'reason' => $i->price_reason])->values()->all())
+            ->all();
 
         $raised = [];
+        $lowered = [];
 
-        $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, &$saved, &$raised) {
+        $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, $stock, &$saved, &$raised, &$lowered) {
             $procedure = $master->get((int) $p['procedure_id']);
             $standard = $procedure?->priceFor($visit->branch_id);
 
@@ -298,17 +305,34 @@ class ExamService
             }
 
             $requested = filled($p['unit_price'] ?? null) ? (int) $p['unit_price'] : null;
+            $reason = $this->clean($p['price_reason'] ?? null, 255);
             $previous = ! empty($saved[$procedure->id]) ? array_shift($saved[$procedure->id]) : null;
 
-            if ($canRaise && $requested !== null) {
-                if ($requested < $standard) {
+            if ($procedure->price_locked) {
+                $price = $standard;
+            } elseif ($canRaise && $requested !== null) {
+                if ($requested < $standard && ! $procedure->allow_lower_price) {
                     throw ValidationException::withMessages([
                         'procedures' => "Harga {$procedure->name} tidak boleh di bawah harga standar Rp ".number_format($standard, 0, ',', '.').'.',
                     ]);
                 }
-                $price = $requested;
+                $price = max(0, $requested);
+            } elseif ($previous !== null && ($previous['price'] >= $standard || $procedure->allow_lower_price)) {
+                $price = $previous['price'];
+                $reason ??= $previous['reason'];
             } else {
-                $price = ($previous !== null && $previous >= $standard) ? $previous : $standard;
+                $price = $standard;
+            }
+
+            if ($price < $standard) {
+                if (! $reason) {
+                    throw ValidationException::withMessages([
+                        'procedures' => "Tuliskan alasan harga {$procedure->name} di bawah standar (mis. cabut tidak selesai).",
+                    ]);
+                }
+                $lowered[] = ['tindakan' => $procedure->name, 'standar' => $standard, 'harga' => $price, 'alasan' => $reason];
+            } else {
+                $reason = null;
             }
 
             if ($price > $standard) {
@@ -316,6 +340,9 @@ class ExamService
             }
 
             $qty = max(1, min(99, (int) ($p['quantity'] ?? 1)));
+            $material = (int) round($procedure->materials->sum(
+                fn ($m) => $m->item ? $m->quantity * $stock->unitCost($m->item, $visit->branch_id) : 0
+            ) * $qty);
 
             return [
                 'procedure_id' => $procedure->id,
@@ -325,13 +352,14 @@ class ExamService
                 'quantity' => $qty,
                 'unit_price' => $price,
                 'standard_price' => $standard,
+                'price_reason' => $reason,
+                'material_cost' => $material,
                 'amount' => $price * $qty,
             ];
         });
 
         // Obat resep dari stok klinik ikut ditagihkan (tanpa doctor_id → tidak masuk bagi hasil).
         $goods = Item::whereIn('id', collect($prescriptions)->pluck('item_id')->filter())->whereNotNull('sell_price')->get()->keyBy('id');
-        $stock = app(StockService::class);
         foreach ($prescriptions as $p) {
             $item = filled($p['item_id'] ?? null) ? $goods->get((int) $p['item_id']) : null;
             if (! $item) {
@@ -347,9 +375,22 @@ class ExamService
             ]);
         }
 
+        $invoice = Invoice::firstOrNew(['visit_id' => $visit->id]);
+
+        // Biaya admin & kartu: sekali per pasien. Ditambahkan selama tagihan masih baru/draf; setelah dikirim ke kasir
+        // hanya dipertahankan (bila Kasir menghapusnya, tidak muncul lagi).
+        $adminFee = Settings::int('admin_fee');
+        $hadAdmin = $existing->contains('is_admin_fee', true);
+        $fresh = ! $invoice->exists || $invoice->status === Invoice::STATUS_DRAFT;
+        if ($adminFee > 0 && ($hadAdmin || ($fresh && ! $this->patientHasAdminFee($visit->patient_id, $invoice->id)))) {
+            $items->push([
+                'doctor_id' => null, 'name' => self::ADMIN_FEE_NAME, 'tooth' => null, 'is_admin_fee' => true,
+                'quantity' => 1, 'unit_price' => $adminFee, 'amount' => $adminFee,
+            ]);
+        }
+
         $total = (int) $items->sum('amount');
 
-        $invoice = Invoice::firstOrNew(['visit_id' => $visit->id]);
         $invoice->fill([
             'branch_id' => $visit->branch_id,
             'subtotal' => $total,
@@ -360,11 +401,31 @@ class ExamService
         $invoice->items()->delete();
         $invoice->items()->createMany($items->all());
 
-        if ($raised && $status !== Invoice::STATUS_DRAFT) {
-            AuditLog::record('tindakan.harga_dinaikkan', $invoice, ['tindakan' => $raised]);
+        // Bahan resep tindakan: stok dipotong (pecahan dikumpulkan) sejak tagihan dikirim ke kasir.
+        $stock->syncMaterials($invoice);
+
+        if ($status !== Invoice::STATUS_DRAFT) {
+            if ($raised) {
+                AuditLog::record('tindakan.harga_dinaikkan', $invoice, ['tindakan' => $raised]);
+            }
+            if ($lowered) {
+                AuditLog::record('tindakan.harga_diturunkan', $invoice, ['tindakan' => $lowered]);
+            }
         }
 
         return $invoice;
+    }
+
+    public const ADMIN_FEE_NAME = 'Biaya admin & kartu';
+
+    /** Pasien sudah pernah ditagih biaya admin (tagihan lain yang tidak batal). */
+    private function patientHasAdminFee(int $patientId, ?int $exceptInvoiceId): bool
+    {
+        return InvoiceItem::where('is_admin_fee', true)
+            ->whereHas('invoice', fn ($q) => $q->where('status', '!=', Invoice::STATUS_VOID)
+                ->when($exceptInvoiceId, fn ($q) => $q->whereKeyNot($exceptInvoiceId))
+                ->where(fn ($q) => $q->where('patient_id', $patientId)->orWhereHas('visit', fn ($v) => $v->where('patient_id', $patientId))))
+            ->exists();
     }
 
     private function snapshot(MedicalRecord $record, string $reason): void

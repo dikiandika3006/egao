@@ -153,8 +153,9 @@ class Exam extends Component
         // Hanya baris tindakan; item obat/barang (procedure_id null) dimuat lewat resep, bukan sebagai tindakan.
         $this->procedures = $visit->invoice?->items->whereNotNull('procedure_id')->values()->map(fn ($i) => [
             'procedure_id' => $i->procedure_id, 'tooth' => $i->tooth, 'quantity' => $i->quantity, 'name' => $i->name,
-            // Harga dinaikkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
-            'unit_price' => $i->isRaised() ? (int) $i->unit_price : null,
+            // Harga dinaikkan/diturunkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
+            'unit_price' => $i->isRaised() || $i->isLowered() ? (int) $i->unit_price : null,
+            'price_reason' => $i->price_reason,
         ])->all() ?? [];
 
         $this->prescriptions = $visit->prescriptions->map->only(['item_id', 'drug_name', 'dose', 'quantity', 'item_quantity'])->all();
@@ -310,8 +311,13 @@ class Exam extends Component
     public function priceOf(array $p): int
     {
         $standard = $this->standardPrice($p['procedure_id'] ?? null);
+        $procedure = $this->procedureOptions->get($p['procedure_id'] ?? null);
 
-        return filled($p['unit_price'] ?? null) ? max($standard, (int) $p['unit_price']) : $standard;
+        if (! filled($p['unit_price'] ?? null) || $procedure?->price_locked) {
+            return $standard;
+        }
+
+        return $procedure?->allow_lower_price ? max(0, (int) $p['unit_price']) : max($standard, (int) $p['unit_price']);
     }
 
     /** Hanya Dokter & Owner yang boleh menaikkan harga tindakan (≥ harga standar). */
@@ -321,11 +327,18 @@ class Exam extends Component
         return $this->canEditBilling && app(ExamService::class)->canRaisePrice();
     }
 
-    /** Ubah harga tindakan: kosong/sama dengan standar = harga standar; di bawah standar ditolak. */
+    /** Ubah harga tindakan: kosong/sama dengan standar = harga standar; di bawah standar hanya untuk tindakan berizin (wajib alasan). */
     public function updatedProcedures($value, string $key): void
     {
         [$index, $field] = array_pad(explode('.', $key), 2, null);
-        if ($field !== 'unit_price' || ! isset($this->procedures[$index])) {
+        if (! isset($this->procedures[$index]) || ! in_array($field, ['unit_price', 'price_reason'], true)) {
+            return;
+        }
+
+        if ($field === 'price_reason') {
+            $this->procedures[$index]['price_reason'] = mb_substr(trim((string) $value), 0, 255) ?: null;
+            $this->resetErrorBag("procedures.{$index}.price_reason");
+
             return;
         }
 
@@ -336,10 +349,16 @@ class Exam extends Component
 
         $price = (int) preg_replace('/\D/', '', (string) $value);
         $standard = $this->standardPrice($this->procedures[$index]['procedure_id']);
+        $procedure = $this->procedureOptions->get($this->procedures[$index]['procedure_id']);
         $this->resetErrorBag("procedures.{$index}.unit_price");
 
-        if ($value === null || $value === '' || $price === $standard) {
+        if ($procedure?->price_locked) {
             $this->procedures[$index]['unit_price'] = null;
+            $this->addError("procedures.{$index}.unit_price", 'Tarif tindakan ini terkunci, tidak bisa diubah.');
+        } elseif ($value === null || $value === '' || $price === $standard) {
+            $this->procedures[$index]['unit_price'] = null;
+        } elseif ($price < $standard && $procedure?->allow_lower_price) {
+            $this->procedures[$index]['unit_price'] = $price;
         } elseif ($price < $standard) {
             $this->procedures[$index]['unit_price'] = null;
             $this->addError("procedures.{$index}.unit_price", 'Tidak boleh di bawah harga standar '.Format::rupiah($standard).'.');

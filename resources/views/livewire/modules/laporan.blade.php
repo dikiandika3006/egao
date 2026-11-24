@@ -39,6 +39,7 @@
         <div class="card p-4 lg:p-5">
             <p class="text-[13px] text-muted">Kunjungan selesai</p>
             <p class="mt-3 text-[20px] font-semibold tracking-tight lg:text-[26px]">{{ $r['visits'] }}</p>
+            @if ($r['receivable'] > 0)<p class="mt-1 text-[12px] text-muted">Piutang saat ini <b class="text-amber-ink">@rupiah($r['receivable'])</b> · lihat Kasir › Piutang</p>@endif
         </div>
     </div>
 

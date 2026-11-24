@@ -10,11 +10,11 @@ class Item extends Model
 {
     public const CATEGORIES = ['obat' => 'Obat', 'bahan' => 'Bahan', 'alat' => 'Alat'];
 
-    protected $fillable = ['clinic_id', 'code', 'name', 'category', 'unit', 'buy_price', 'sell_price', 'min_stock', 'is_active'];
+    protected $fillable = ['clinic_id', 'code', 'name', 'category', 'unit', 'buy_price', 'sell_price', 'margin_percent', 'min_stock', 'is_active'];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return ['is_active' => 'boolean', 'margin_percent' => 'decimal:2'];
     }
 
     public function stocks(): HasMany

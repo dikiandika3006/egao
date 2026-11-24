@@ -46,21 +46,22 @@
 </table>
 
 @if ($isDoctor)
-    <div class="sec">Rincian tindakan lunas (lintas cabang)</div>
+    <div class="sec">Rincian tindakan (lintas cabang)</div>
     @if ($row['lines']->isEmpty())
-        <p class="muted">Belum ada tindakan lunas pada periode ini.</p>
+        <p class="muted">Belum ada tindakan pada periode ini.</p>
     @else
         <table class="lines">
-            <tr><th>Tanggal</th><th>Cabang</th><th>Tindakan</th><th class="r">Kotor</th><th class="r">Biaya modal</th><th class="r">Tarif</th><th class="r">Fee</th></tr>
+            <tr><th>Tanggal</th><th>Cabang</th><th>Tindakan</th><th class="r">Kotor</th><th class="r">Diskon</th><th class="r">Modal + bahan</th><th class="r">Tarif</th><th class="r">Fee</th></tr>
             @foreach ($row['lines'] as $l)
                 <tr>
-                    <td>{{ $l['paid_at']?->format('d/m') }}</td>
+                    <td>{{ $l['date']?->format('d/m') }}{{ $l['shift'] ? ' S'.$l['shift'] : '' }}</td>
                     <td>{{ $branches->get($l['branch_id'])?->shortName() }}</td>
                     <td>{{ $l['name'] }}{{ $l['quantity'] > 1 ? ' ×'.$l['quantity'] : '' }}@if ($l['carry'] > 0)<br><span class="muted">+ tahap awal (cetak/DP) {{ Format::rupiah($l['carry']) }}</span>@endif</td>
                     <td class="r">{{ Format::rupiah($l['gross']) }}</td>
+                    <td class="r">{{ $l['discount'] ? '−'.Format::rupiah($l['discount']) : '—' }}</td>
                     <td class="r">{{ $l['cost'] ? '−'.Format::rupiah($l['cost']) : '—' }}</td>
                     <td class="r">{{ $pct($l['percent']) }}%</td>
-                    <td class="r">{{ Format::rupiah($l['share']) }}</td>
+                    <td class="r">{{ $l['sitting'] ? 'UD' : Format::rupiah($l['share']) }}</td>
                 </tr>
             @endforeach
         </table>
@@ -74,14 +75,17 @@
         @if ($row['lab'] > 0)
             <tr><td class="muted">Potongan order lab (biaya lab {{ Format::rupiah($row['lab']) }} × fee)</td><td class="r muted">−{{ Format::rupiah($row['lab_deduction']) }}</td></tr>
         @endif
-        <tr><td>Fee tindakan (setelah biaya modal & lab)</td><td class="r">{{ Format::rupiah($row['share']) }}</td></tr>
+        <tr><td>Fee tindakan (setelah diskon, biaya modal, bahan & lab)</td><td class="r">{{ Format::rupiah($row['share']) }}</td></tr>
     @endif
     <tr><td>Gaji pokok</td><td class="r">{{ Format::rupiah($row['base']) }}</td></tr>
-    @if ($row['ud'] > 0)
-        <tr><td>Uang duduk ({{ $pct($row['hours']) }} jam)</td><td class="r">{{ Format::rupiah($row['ud']) }}</td></tr>
+    @if (($row['sitting'] ?? 0) > 0)
+        <tr><td>Uang duduk ({{ $row['sitting_shifts'] }} shift, kotor di bawah ambang)</td><td class="r">{{ Format::rupiah($row['sitting']) }}</td></tr>
+    @endif
+    @if ($row['ud'] - ($row['sitting'] ?? 0) > 0)
+        <tr><td>Uang duduk ({{ $pct($row['hours']) }} jam)</td><td class="r">{{ Format::rupiah($row['ud'] - ($row['sitting'] ?? 0)) }}</td></tr>
     @endif
     @if (! $isDoctor && $row['role'] === 'asisten')
-        <tr><td>Fee asisten ({{ $pct($row['assistant_percent']) }}% × {{ Format::rupiah($row['assisted']) }})</td><td class="r">{{ Format::rupiah($row['assistant_share']) }}</td></tr>
+        <tr><td>Fee asisten ({{ $row['assisted_count'] }} tindakan didampingi)</td><td class="r">{{ Format::rupiah($row['assistant_share']) }}</td></tr>
     @endif
     @if (! $isDoctor && $row['overtime'] > 0)
         <tr><td>Lembur ({{ $pct($row['overtime_hours']) }} jam)</td><td class="r">{{ Format::rupiah($row['overtime']) }}</td></tr>

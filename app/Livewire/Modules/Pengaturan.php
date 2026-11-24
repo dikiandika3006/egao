@@ -10,6 +10,7 @@ use App\Models\Clinic;
 use App\Models\Doctor;
 use App\Models\DoctorProcedureShare;
 use App\Models\ExpenseCategory;
+use App\Models\Item;
 use App\Models\Procedure;
 use App\Models\User;
 use App\Services\ProcedureImportService;
@@ -167,7 +168,8 @@ class Pengaturan extends Component
                 ->mapWithKeys(fn (Procedure $p) => [$p->id => (int) $p->cost_amount ?: null])->all(),
             // Komponen gaji per peran: dokter, asisten, admin.
             'roles' => collect(Settings::PAYROLL_AMOUNT_KEYS)->mapWithKeys(fn ($k) => [$k => Settings::int($k) ?: null])->all()
-                + ['assistant_share_percent' => static::pct(Settings::float('assistant_share_percent'))],
+                + ['assistant_share_percent' => static::pct(Settings::float('assistant_share_percent')),
+                    'default_margin_percent' => static::pct(Settings::float('default_margin_percent'))],
         ];
     }
 
@@ -183,10 +185,12 @@ class Pengaturan extends Component
             $this->shares['procedures'][$id] = static::normalizePct($value);
         }
         $this->shares['roles']['assistant_share_percent'] = static::normalizePct($this->shares['roles']['assistant_share_percent'] ?? null);
+        $this->shares['roles']['default_margin_percent'] = static::normalizePct($this->shares['roles']['default_margin_percent'] ?? null);
 
         $this->validate([
             'shares.global' => ['required', 'numeric', 'between:0,100'],
             'shares.roles.assistant_share_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'shares.roles.default_margin_percent' => ['nullable', 'numeric', 'between:0,1000'],
             'shares.roles.*' => ['nullable', 'numeric', 'min:0', 'max:100000000000'],
             'shares.costs.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
             'shares.doctors.*.base_salary' => ['nullable', 'integer', 'min:0'],
@@ -195,7 +199,7 @@ class Pengaturan extends Component
         ], attributes: [
             'shares.global' => 'tarif global', 'shares.doctors.*.share_percent' => 'bagi hasil dokter',
             'shares.doctors.*.base_salary' => 'gaji pokok', 'shares.procedures.*' => 'bagi hasil tindakan',
-            'shares.roles.assistant_share_percent' => 'fee asisten', 'shares.roles.*' => 'nominal gaji', 'shares.costs.*' => 'biaya modal',
+            'shares.roles.assistant_share_percent' => 'fee asisten', 'shares.roles.default_margin_percent' => 'margin obat', 'shares.roles.*' => 'nominal gaji', 'shares.costs.*' => 'biaya modal',
         ]);
 
         DB::transaction(function () {
@@ -204,6 +208,7 @@ class Pengaturan extends Component
                 Settings::set($key, (string) (int) ($this->shares['roles'][$key] ?? 0));
             }
             Settings::set('assistant_share_percent', static::pct((float) ($this->shares['roles']['assistant_share_percent'] ?: 0)));
+            Settings::set('default_margin_percent', static::pct((float) ($this->shares['roles']['default_margin_percent'] ?: 0)));
 
             $costs = Procedure::where('clinic_id', $this->clinicId())->get()->keyBy('id');
             foreach ($this->shares['costs'] ?? [] as $id => $value) {
@@ -506,6 +511,11 @@ class Pengaturan extends Component
             'is_active' => $p->is_active ?? true,
             'fee_from_procedure_id' => (string) $p?->fee_from_procedure_id,
             'fee_minus_lab' => (bool) $p?->fee_minus_lab,
+            'price_locked' => (bool) $p?->price_locked,
+            'allow_lower_price' => (bool) $p?->allow_lower_price,
+            'assistant_fee_amount' => $p?->assistant_fee_amount,
+            // Resep bahan: takaran per 1 tindakan (boleh pecahan), diisi Owner bertahap.
+            'materials' => $p ? $p->materials()->get()->map(fn ($m) => ['item_id' => (string) $m->item_id, 'quantity' => rtrim(rtrim(number_format($m->quantity, 4, '.', ''), '0'), '.')])->all() : [],
             'prices' => $this->branches()->mapWithKeys(fn ($b) => [$b->id => $p?->priceFor($b->id)])->all(),
         ];
         $this->resetValidation();
@@ -523,9 +533,16 @@ class Pengaturan extends Component
             // Aturan fee bertahap (gigi palsu/behel): tindakan tahap awal milik klinik ini, bukan dirinya sendiri.
             'data.fee_from_procedure_id' => ['nullable', Rule::exists('procedures', 'id')->where('clinic_id', $this->clinicId()), Rule::notIn(array_filter([$this->editingId]))],
             'data.fee_minus_lab' => ['boolean'],
+            'data.price_locked' => ['boolean'],
+            'data.allow_lower_price' => ['boolean'],
+            'data.assistant_fee_amount' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
+            'data.materials' => ['array', 'max:30'],
+            'data.materials.*.item_id' => ['required', 'distinct', Rule::exists('items', 'id')->where('clinic_id', $this->clinicId())],
+            'data.materials.*.quantity' => ['required', 'numeric', 'gt:0', 'max:1000'],
             'data.prices' => ['array'],
             'data.prices.*' => ['nullable', 'integer', 'min:0', 'max:1000000000'],
-        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif', 'data.fee_from_procedure_id' => 'dasar fee ikut tindakan'])['data'];
+        ], attributes: ['data.code' => 'kode', 'data.name' => 'nama tindakan', 'data.prices.*' => 'tarif', 'data.fee_from_procedure_id' => 'dasar fee ikut tindakan',
+            'data.assistant_fee_amount' => 'fee asisten nominal', 'data.materials.*.item_id' => 'bahan', 'data.materials.*.quantity' => 'takaran'])['data'];
 
         // Aturan fee memengaruhi gaji dokter: hanya Owner yang boleh mengubah.
         $canSetFeeRule = $this->isOwner();
@@ -539,9 +556,21 @@ class Pengaturan extends Component
                 'share_percent' => $v['share_percent'] === '' ? null : $v['share_percent'], 'is_active' => $v['is_active'],
             ]);
             if ($canSetFeeRule) {
-                $p->fill(['fee_from_procedure_id' => ($v['fee_from_procedure_id'] ?? '') ?: null, 'fee_minus_lab' => (bool) ($v['fee_minus_lab'] ?? false)]);
+                $p->fill([
+                    'fee_from_procedure_id' => ($v['fee_from_procedure_id'] ?? '') ?: null, 'fee_minus_lab' => (bool) ($v['fee_minus_lab'] ?? false),
+                    'price_locked' => (bool) ($v['price_locked'] ?? false), 'allow_lower_price' => (bool) ($v['allow_lower_price'] ?? false),
+                    'assistant_fee_amount' => ($v['assistant_fee_amount'] ?? '') === '' ? null : (int) $v['assistant_fee_amount'],
+                ]);
             }
             $p->save();
+
+            if ($canSetFeeRule) {
+                $keep = collect($v['materials'] ?? [])->mapWithKeys(fn ($m) => [(int) $m['item_id'] => round((float) $m['quantity'], 4)]);
+                $p->materials()->whereNotIn('item_id', $keep->keys())->delete();
+                foreach ($keep as $itemId => $qty) {
+                    $p->materials()->updateOrCreate(['item_id' => $itemId], ['quantity' => $qty]);
+                }
+            }
 
             foreach ($v['prices'] ?? [] as $branchId => $price) {
                 if (! $branchIds->contains((int) $branchId)) {
@@ -561,6 +590,20 @@ class Pengaturan extends Component
         AuditLog::record($this->editingId ? 'procedure.updated' : 'procedure.created', $p, $v);
         $this->closeForm();
         $this->toast('Tindakan & tarif disimpan.');
+    }
+
+    /** Baris resep bahan di formulir tindakan (disimpan bersama tindakan). */
+    public function addMaterialRow(): void
+    {
+        abort_unless($this->isOwner() && $this->form === 'procedure', 403);
+        $this->data['materials'][] = ['item_id' => '', 'quantity' => ''];
+    }
+
+    public function removeMaterialRow(int $index): void
+    {
+        abort_unless($this->isOwner() && $this->form === 'procedure', 403);
+        unset($this->data['materials'][$index]);
+        $this->data['materials'] = array_values($this->data['materials']);
     }
 
     private function authorizeProcedureImport(): void
@@ -780,6 +823,9 @@ class Pengaturan extends Component
                 // Pilihan "dasar fee ikut tindakan" di formulir butuh semua tindakan, bukan hanya halaman aktif.
                 'procedureOptions' => $this->form === 'procedure'
                     ? Procedure::where('clinic_id', $this->clinicId())->orderBy('name')->get(['id', 'name'])
+                    : collect(),
+                'materialOptions' => $this->form === 'procedure'
+                    ? Item::where('clinic_id', $this->clinicId())->where('is_active', true)->orderByRaw("category = 'bahan' desc")->orderBy('name')->get(['id', 'name', 'unit', 'category'])
                     : collect(),
             ],
             'hak-akses' => ['accessRoles' => Access::roles(), 'accessMenus' => Access::menus()],

@@ -100,8 +100,11 @@ class About
         [
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
-                'Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan, dan tidak boleh di bawah harga standar cabang. Potongan harga hanya lewat diskon Kasir.',
-                'Bagi hasil dokter dihitung dari harga tindakan yang tercatat di tagihan (termasuk bila dinaikkan). Kenaikan harga tercatat di jejak audit.',
+                'Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan, dan tidak boleh di bawah harga standar cabang, kecuali tindakan bertanda "harga boleh di bawah standar" (mis. cabut tidak selesai) dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
+                'Biaya admin & kartu ditagih sekali per pasien di tagihan pertamanya dan tidak masuk bagi hasil.',
+                'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
+                'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
+                'Bahan resep tindakan memotong stok tiap genap 1 satuan; pecahan disimpan sebagai saldo pemakaian.',
                 'Jam kerja diatur per cabang per hari (bisa dua sesi dengan istirahat). Janji di luar jam kerja hanya diberi peringatan, tidak ditolak.',
             ],
         ],
@@ -111,6 +114,10 @@ class About
         [
             'date' => '24 November 2026',
             'changes' => [
+                'Aturan Owner bagi hasil & gaji: fee dokter dan asisten dihitung dari tindakan menurut tanggal kunjungan (tidak lagi menunggu lunas), dari harga setelah diskon, dipotong biaya modal, bahan resep, dan lab. Perhitungan ulang bulan lama bisa berbeda dari slip yang sudah dibayar.',
+                'Uang duduk dokter per shift: tandai hadir Shift 1/2 di Jadwal dokter; kotor shift < Rp100.000 → uang duduk Rp40.000 (fee shift itu 0), selain itu fee %.',
+                'Master data › Tindakan: resep bahan per tindakan (takaran pecahan, stok otomatis), tarif terkunci (mis. Analisis kasus), harga boleh di bawah standar dengan alasan (mis. cabut tidak selesai), dan fee asisten nominal (mis. pasang behel/gigi palsu Rp8.000).',
+                'Kasir: biaya admin & kartu Rp5.000 otomatis sekali per pasien; tab Piutang untuk tagihan cicilan/belum lunas; total piutang di Laporan. Stok: margin dan saran harga jual obat/produk.',
                 'Rekam medis › Pemeriksaan dirapikan: konfirmasi alergi dan tindakan Rp0 kini satu jendela "Periksa sebelum kirim"; bar bawah menampilkan kelengkapan (keluhan, diagnosis, tindakan, alergi, resep) dan tanda "belum disimpan", dengan konfirmasi bila meninggalkan halaman; tekanan darah divalidasi (mis. 120/80); info alergi dan daftar temuan tidak lagi tampil dobel; obat di kartu tagihan diringkas satu baris. Diperbaiki: kolom gigi di "+ Tambah tindakan" kini terisi gigi yang dipilih di peta gigi.',
                 'Rekam medis › Pemeriksaan lebih cepat: klik kondisi di panel gigi langsung mencatat temuan; temuan menyarankan diagnosis ICD-10 (Kalkulus K03.6, Karies K02.9, Gigi hilang K08.1, Impaksi K01.1, Sisa akar K08.3, Goyang K05.3); saran tindakan memakai nomor gigi temuan bila hanya satu gigi; evaluasi ulang dipilih lewat tombol.',
             ],

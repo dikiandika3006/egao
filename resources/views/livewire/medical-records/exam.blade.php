@@ -355,26 +355,44 @@
                             x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
                             <div class="min-w-0">
                                 <p>{{ $opt?->name ?? ($p['name'] ?? 'Tindakan') }}</p>
-                                @if ($p['quantity'] > 1 || $p['tooth'] || $price > $standard)
+                                @if ($p['quantity'] > 1 || $p['tooth'] || $price !== $standard)
                                     <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
-                                        @if ($price > $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
+                                        @if ($price !== $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
                                     </p>
+                                @endif
+                                @if ($opt?->price_locked)
+                                    <p class="mt-1 text-[11px] text-muted">Tarif terkunci</p>
                                 @endif
                                 @if (! $opt)
                                     <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tidak tersedia / tanpa tarif di {{ $visit->branch->name }}</p>
                                 @elseif ($price <= 0)
                                     <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tarif Rp0 — cek Master data › Tindakan & tarif</p>
                                 @endif
-                                @if ($billing && $this->canEditPrice)
+                                @if ($billing && $this->canEditPrice && ! $opt?->price_locked)
                                     <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 block text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
                                     <div x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2">
-                                        <input type="number" min="{{ $standard }}" step="1000" inputmode="numeric"
+                                        <input type="number" min="{{ $opt?->allow_lower_price ? 0 : $standard }}" step="1000" inputmode="numeric"
                                             wire:model.blur="procedures.{{ $i }}.unit_price" placeholder="{{ $standard }}"
                                             class="input h-9 w-36 text-sm" aria-label="Harga {{ $opt?->name }}">
                                         <button type="button" x-on:click="editPrice = false" class="text-xs text-muted hover:underline">Selesai</button>
                                     </div>
-                                    <p x-show="editPrice" x-cloak class="mt-1 text-[11px] text-muted">Minimal harga standar {{ Format::rupiah($standard) }}. Kosongkan untuk kembali ke standar.</p>
+                                    <p x-show="editPrice" x-cloak class="mt-1 text-[11px] text-muted">
+                                        @if ($opt?->allow_lower_price)
+                                            Harga standar {{ Format::rupiah($standard) }}. Boleh lebih rendah (mis. cabut tidak selesai) dengan alasan. Kosongkan untuk kembali ke standar.
+                                        @else
+                                            Minimal harga standar {{ Format::rupiah($standard) }}. Kosongkan untuk kembali ke standar.
+                                        @endif
+                                    </p>
                                     <x-error for="procedures.{{ $i }}.unit_price" />
+                                @endif
+                                @if ($price < $standard)
+                                    @if ($billing && $this->canEditPrice)
+                                        <input type="text" maxlength="255" wire:model.blur="procedures.{{ $i }}.price_reason"
+                                            placeholder="Alasan harga di bawah standar (wajib)" class="input mt-1.5 h-9 w-full text-sm"
+                                            aria-label="Alasan harga {{ $opt?->name }}">
+                                    @elseif (! empty($p['price_reason']))
+                                        <p class="mt-1 text-[11px] text-muted">Alasan: {{ $p['price_reason'] }}</p>
+                                    @endif
                                 @endif
                             </div>
                             <div class="flex shrink-0 items-center gap-3">

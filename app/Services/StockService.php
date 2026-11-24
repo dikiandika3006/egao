@@ -281,4 +281,67 @@ class StockService
 
         $invoice->forceFill(['stock_posted_at' => null])->saveQuietly();
     }
+
+    /** Harga pokok satu satuan barang di cabang: HPP rata-rata, atau harga beli terakhir bila belum ada. */
+    public function unitCost(Item $item, int $branchId): int
+    {
+        $avg = (int) DB::table('item_stocks')->where(['item_id' => $item->id, 'branch_id' => $branchId])->value('avg_cost');
+
+        return $avg > 0 ? $avg : (int) $item->buy_price;
+    }
+
+    /**
+     * Pemakaian bahan resep tindakan (FR aturan Owner 24 Nov). Takaran pecahan dikumpulkan di item_usage_balances;
+     * stok baru dipotong tiap saldo genap 1 satuan. Hanya selisih terhadap yang sudah diposting tagihan ini yang diproses,
+     * jadi aman dipanggil berulang (simpan ulang pemeriksaan, batal tagihan). Stok boleh minus agar pemeriksaan tidak terhambat.
+     */
+    public function syncMaterials(Invoice $invoice): void
+    {
+        DB::transaction(function () use ($invoice) {
+            $invoice = Invoice::lockForUpdate()->find($invoice->id);
+            if (! $invoice) {
+                return;
+            }
+
+            $desired = [];
+            if (! in_array($invoice->status, [Invoice::STATUS_DRAFT, Invoice::STATUS_VOID], true)) {
+                $lines = $invoice->items()->whereNotNull('procedure_id')->with('procedure.materials')->get();
+                foreach ($lines as $line) {
+                    foreach ($line->procedure?->materials ?? [] as $m) {
+                        $desired[$m->item_id] = ($desired[$m->item_id] ?? 0) + $m->quantity * (int) $line->quantity;
+                    }
+                }
+            }
+
+            $posted = (array) ($invoice->materials_posted ?? []);
+            $itemIds = array_unique(array_merge(array_keys($desired), array_keys($posted)));
+
+            foreach ($itemIds as $itemId) {
+                $delta = round(($desired[$itemId] ?? 0) - (float) ($posted[$itemId] ?? 0), 4);
+                if ($delta != 0.0) {
+                    $this->consume((int) $itemId, $invoice->branch_id, $delta, $invoice);
+                }
+            }
+
+            $invoice->forceFill(['materials_posted' => array_map(fn ($q) => round($q, 4), $desired) ?: null])->saveQuietly();
+        });
+    }
+
+    /** Tambah (+) / kurangi (−) saldo pemakaian; potong/kembalikan stok per satuan utuh. */
+    private function consume(int $itemId, int $branchId, float $delta, Invoice $invoice): void
+    {
+        $key = ['item_id' => $itemId, 'branch_id' => $branchId];
+        DB::table('item_usage_balances')->insertOrIgnore($key + ['pending' => 0]);
+        $pending = (float) DB::table('item_usage_balances')->where($key)->lockForUpdate()->value('pending') + $delta;
+
+        $whole = $pending >= 1 ? (int) floor($pending + 1e-9) : ($pending < 0 ? (int) floor($pending) : 0);
+        if ($whole !== 0) {
+            $this->move($itemId, $branchId, -$whole, $whole > 0 ? 'pakai' : 'batal_pakai', [
+                'invoice_id' => $invoice->id, 'note' => 'Bahan tindakan tagihan #'.$invoice->id,
+            ], allowNegative: true);
+            $pending -= $whole;
+        }
+
+        DB::table('item_usage_balances')->where($key)->update(['pending' => round($pending, 4)]);
+    }
 }

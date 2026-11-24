@@ -84,6 +84,7 @@ class Report
         $procedures = InvoiceItem::query()
             ->whereHas('invoice', fn ($q) => $q->whereIn('branch_id', $branchIds)->where('status', Invoice::STATUS_PAID)->whereBetween('paid_at', [$from, $to]))
             ->whereNull('item_id')
+            ->where('is_admin_fee', false)
             ->selectRaw('name, SUM(quantity) as qty, SUM(amount) as total')
             ->groupBy('name')
             ->orderByDesc('total')
@@ -112,9 +113,14 @@ class Report
 
         $in = (int) $payments->sum('amount');
 
+        // Piutang saat ini (tagihan belum lunas/sebagian), tidak bergantung rentang tanggal.
+        $receivable = (int) Invoice::query()->whereIn('branch_id', $branchIds)
+            ->whereIn('status', [Invoice::STATUS_UNPAID, Invoice::STATUS_PARTIAL])
+            ->selectRaw('COALESCE(SUM(total - paid), 0) as s')->value('s');
+
         return [
             'from' => $from, 'to' => $to, 'branches' => $branches,
-            'in' => $in, 'out' => $outTotal, 'net' => $in - $outTotal, 'visits' => $visits,
+            'in' => $in, 'out' => $outTotal, 'net' => $in - $outTotal, 'visits' => $visits, 'receivable' => $receivable,
             'daily' => $daily,
             'perBranch' => $perBranch,
             'payments' => $payments,

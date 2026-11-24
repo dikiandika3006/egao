@@ -57,7 +57,8 @@
                             @endforeach
                             <td class="text-right text-muted">{{ $i->min_stock }}</td>
                             <td class="text-right">@rupiah($i->buy_price)</td>
-                            <td class="text-right">{!! $i->sell_price !== null ? e(\App\Support\Format::rupiah($i->sell_price)) : '<span class="text-xs text-muted">tidak dijual</span>' !!}</td>
+                            <td class="text-right">{!! $i->sell_price !== null ? e(\App\Support\Format::rupiah($i->sell_price)) : '<span class="text-xs text-muted">tidak dijual</span>' !!}
+                                @if ($i->sell_price !== null && $i->buy_price > 0)<span class="block text-[11px] text-muted">margin {{ round(($i->sell_price - $i->buy_price) * 100 / $i->buy_price) }}%</span>@endif</td>
                             <td class="pr-5 text-right">@if ($canEdit)<button type="button" wire:click="editItem({{ $i->id }})" class="link-arrow">Ubah</button>@endif</td>
                         </tr>
                     @empty
@@ -295,7 +296,10 @@
                     </div>
                     <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model.live="itemForm.sellable" class="size-4 accent-brand-600"> Dijual ke pasien</label>
                     @if ($itemForm['sellable'])
-                        <div><label class="label">Harga jual / {{ $itemForm['unit'] ?: 'satuan' }}</label><x-money model="itemForm.sell_price" /><x-error for="itemForm.sell_price" /></div>
+                        <div><label class="label">Harga jual / {{ $itemForm['unit'] ?: 'satuan' }}</label><x-money model="itemForm.sell_price" /><x-error for="itemForm.sell_price" />
+                            <button type="button" wire:click="applySuggestedPrice" class="mt-1 text-xs font-medium text-brand-600 hover:underline">Pakai saran dari margin</button></div>
+                        <div><label class="label">Margin (%) <span class="font-normal text-muted">kosong = bawaan {{ (float) \App\Support\Settings::float('default_margin_percent') }}%</span></label>
+                            <input type="text" inputmode="decimal" wire:model="itemForm.margin_percent" class="input" placeholder="mis. 30"><x-error for="itemForm.margin_percent" /></div>
                     @endif
                     <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model="itemForm.is_active" class="size-4 accent-brand-600"> Aktif</label>
                 </div>

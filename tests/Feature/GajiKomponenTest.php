@@ -114,7 +114,7 @@ it('UD dokter dihitung dari jam hadir yang diisi di menu Gaji', function () {
         ->and($row['total'])->toBe(2_025_000);
 });
 
-it('fee asisten hanya dari tindakan lunas yang ia dampingi, plus UD dan lembur', function () {
+it('fee asisten dari tindakan yang ia dampingi (termasuk belum lunas), plus UD dan lembur', function () {
     Settings::set('assistant_share_percent', '2');
     Settings::set('assistant_hourly_rate', '10000');
     Settings::set('assistant_overtime_rate', '15000');
@@ -128,11 +128,11 @@ it('fee asisten hanya dari tindakan lunas yang ia dampingi, plus UD dan lembur',
     $row = employeeRow($this->assistant);
 
     expect($row['role'])->toBe(Payroll::ROLE_ASSISTANT)
-        ->and($row['assisted'])->toBe(1_000_000)
-        ->and($row['assistant_share'])->toBe(20_000)
+        ->and($row['assisted'])->toBe(1_800_000)
+        ->and($row['assistant_share'])->toBe(36_000)
         ->and($row['ud'])->toBe(1_000_000)
         ->and($row['overtime'])->toBe(60_000)
-        ->and($row['total'])->toBe(1_000_000 + 1_000_000 + 20_000 + 60_000);
+        ->and($row['total'])->toBe(1_000_000 + 1_000_000 + 36_000 + 60_000);
 });
 
 it('admin hanya gaji pokok + lembur; jam hadir tidak menambah UD; THR dihitung bonus', function () {

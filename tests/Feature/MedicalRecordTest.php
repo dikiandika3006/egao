@@ -14,6 +14,8 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     $this->seed();
+    // Biaya admin sekali per pasien diuji di AturanOwnerFeeTest; di sini total tagihan tanpa admin.
+    \App\Support\Settings::set('admin_fee', '0');
     $this->batu = Branch::where('code', 'BTU')->first();
     $this->malang = Branch::where('code', 'MLG')->first();
 });

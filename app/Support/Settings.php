@@ -26,6 +26,13 @@ class Settings
         'assistant_overtime_rate' => '0',
         'admin_overtime_rate' => '0',
         'annual_revenue_target' => '0',
+        // Uang duduk dokter per shift hadir; hangus bila kotor tindakan shift itu ≥ ambang (dokter dapat % fee).
+        'doctor_sitting_fee' => '40000',
+        'doctor_sitting_threshold' => '100000',
+        // Biaya admin & cetak kartu, ditagih sekali per pasien (tagihan pertama).
+        'admin_fee' => '5000',
+        // Margin bawaan harga jual obat/produk (% di atas HPP).
+        'default_margin_percent' => '0',
         // SATUSEHAT (Pengaturan → SATUSEHAT). Kredensial per cabang ada di tabel branches.
         'satusehat_enabled' => '0',
         'satusehat_env' => 'sandbox',
@@ -38,6 +45,7 @@ class Settings
     /** Key setting gaji yang berupa nominal rupiah. */
     public const PAYROLL_AMOUNT_KEYS = [
         'doctor_hourly_rate', 'assistant_hourly_rate', 'assistant_overtime_rate', 'admin_overtime_rate', 'annual_revenue_target',
+        'doctor_sitting_fee', 'doctor_sitting_threshold', 'admin_fee',
     ];
 
     public static function int(string $key): int

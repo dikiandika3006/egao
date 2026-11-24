@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Models\Doctor;
 use App\Models\DoctorProcedureShare;
+use App\Models\DoctorSchedule;
+use App\Models\DoctorShiftAttendance;
 use App\Models\Employee;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -11,21 +13,29 @@ use App\Models\LabOrder;
 use App\Models\PayrollAdjustment;
 use App\Models\PayrollHour;
 use App\Models\Procedure;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
  * Perhitungan gaji & bagi hasil (FR-GJI-01 … 08), komponen per peran diatur di Pengaturan → Gaji & bagi hasil.
  *
- * Dokter  = gaji pokok + UD (jam hadir × tarif/jam) + fee − potongan lab + bonus/THR − potongan.
- *           Fee per tindakan = (harga − biaya modal × qty) × %fee, dari tagihan LUNAS dalam periode.
+ * Aturan Owner 24 Nov 2026: fee dihitung dari TINDAKAN (tagihan sudah dikirim ke kasir, tidak draf/batal) menurut tanggal
+ * kunjungan — tidak menunggu pembayaran; piutang/cicilan ditanggung klinik.
+ *
+ * Dokter  = gaji pokok + UD per jam (lama) + uang duduk per shift + fee − potongan lab + bonus/THR − potongan.
+ *           Dasar fee per baris = harga setelah diskon tagihan (dibagi proporsional) − biaya modal × qty − biaya bahan resep.
  *           Prioritas %fee: khusus dokter × tindakan → tindakan → dokter → global.
  *           Tindakan bertahap (gigi palsu, behel): bila tindakan punya "dasar ikut tindakan" (fee_from_procedure_id),
- *           pembayaran tindakan tahap awal pasien yang sama sejak tahap akhir sebelumnya ikut dasar fee (DP cetak → insersi).
+ *           tindakan tahap awal pasien yang sama sejak tahap akhir sebelumnya ikut dasar fee (DP cetak → insersi).
  *           Potongan lab = biaya lab × %fee. Bila ada tindakan bertanda "potong lab" (fee_minus_lab), lab pasien dipotong
- *           saat tindakan itu lunas (mis. insersi) memakai %fee tindakan; bila tidak ada, cara lama: order lab dokter
+ *           pada tindakan itu memakai %fee tindakan; bila tidak ada, cara lama: order lab dokter
  *           yang dikirim dalam periode (tidak batal) × %fee dokter.
- * Asisten = gaji pokok + UD + %fee asisten × tindakan lunas pada kunjungan yang didampingi + lembur + bonus/THR − potongan.
+ *           Uang duduk per shift: tiap shift yang ditandai hadir (Jadwal), bila kotor tindakan shift itu (sebelum diskon
+ *           & potongan) < ambang → dokter dapat uang duduk dan fee shift itu 0; ≥ ambang → fee normal, tanpa uang duduk.
+ * Asisten = gaji pokok + UD + fee asisten (nominal per tindakan bila diisi, selain itu %fee asisten × harga setelah diskon)
+ *           pada kunjungan yang didampingi + lembur + bonus/THR − potongan.
  * Admin   = gaji pokok + lembur + bonus/THR − potongan (semua jabatan selain asisten).
  */
 class Payroll
@@ -34,16 +44,52 @@ class Payroll
 
     public const ROLE_ADMIN = 'admin';
 
+    /** Status tagihan yang tindakannya sudah dihitung (sudah dikirim ke kasir). */
+    public const COUNTED_STATUSES = [Invoice::STATUS_UNPAID, Invoice::STATUS_PARTIAL, Invoice::STATUS_PAID];
+
+    /** Batas shift 1/2 bila jadwal dokter hari itu tidak punya dua sesi. */
+    public const DEFAULT_SHIFT_BOUNDARY = '14:00';
+
     /** Peran gaji karyawan berdasarkan jabatannya. */
     public static function employeeRole(Employee $e): string
     {
         return $e->position === 'Asisten dokter' ? self::ROLE_ASSISTANT : self::ROLE_ADMIN;
     }
 
+    /** Tagihan yang tindakannya dihitung dalam rentang tanggal kunjungan. */
+    private static function countedInvoices(Builder $q, CarbonInterface $from, CarbonInterface $to): Builder
+    {
+        return $q->whereIn('status', self::COUNTED_STATUSES)
+            ->whereHas('visit', fn ($v) => $v->whereBetween('visit_date', [$from->toDateString(), $to->toDateString()]));
+    }
+
+    /** Nominal baris setelah diskon tagihan dibagi proporsional terhadap subtotal. */
+    public static function netAmount(InvoiceItem $i): int
+    {
+        $amount = (int) $i->amount;
+        $subtotal = (int) $i->invoice?->subtotal;
+        $discount = (int) $i->invoice?->discount;
+
+        if ($discount <= 0 || $subtotal <= 0) {
+            return $amount;
+        }
+
+        return max(0, $amount - (int) round($discount * $amount / $subtotal));
+    }
+
+    /** Waktu tindakan: jam diperiksa (fallback dipanggil/daftar) pada tanggal kunjungan. */
+    private static function performedAt(InvoiceItem $i): Carbon
+    {
+        $visit = $i->invoice->visit;
+        $time = $visit->examined_at ?? $visit->called_at ?? $visit->created_at;
+
+        return $visit->visit_date->copy()->setTimeFrom($time ?? $visit->visit_date);
+    }
+
     /**
      * @return Collection<int, array{doctor:Doctor, gross:int, cost:int, lab:int, lab_deduction:int, share:int, base:int,
-     *     hours:float, ud:int, bonus:int, deduction:int, total:int, count:int,
-     *     branches:array<int,array{gross:int,share:int}>, procedures:Collection, lines:Collection}>
+     *     hours:float, ud:int, hourly_ud:int, sitting:int, sitting_shifts:int, shifts:Collection, bonus:int, deduction:int,
+     *     total:int, count:int, branches:array<int,array{gross:int,share:int}>, procedures:Collection, lines:Collection}>
      */
     public static function forMonth(int $clinicId, CarbonInterface $month): Collection
     {
@@ -51,11 +97,18 @@ class Payroll
         $end = $month->copy()->endOfMonth();
         $global = Settings::globalShare();
         $hourly = Settings::int('doctor_hourly_rate');
+        $sittingFee = Settings::int('doctor_sitting_fee');
+        $threshold = Settings::int('doctor_sitting_threshold');
 
         $items = InvoiceItem::query()
             ->whereNotNull('doctor_id')
-            ->whereHas('invoice', fn ($q) => $q->where('status', Invoice::STATUS_PAID)->whereBetween('paid_at', [$start, $end]))
-            ->with(['invoice:id,visit_id,branch_id,paid_at,patient_id', 'invoice.visit:id,patient_id', 'procedure:id,share_percent,cost_amount,fee_from_procedure_id,fee_minus_lab'])
+            ->whereNotNull('procedure_id')
+            ->whereHas('invoice', fn ($q) => static::countedInvoices($q, $start, $end))
+            ->with([
+                'invoice:id,visit_id,branch_id,patient_id,subtotal,discount',
+                'invoice.visit:id,patient_id,visit_date,examined_at,called_at,created_at',
+                'procedure:id,share_percent,cost_amount,fee_from_procedure_id,fee_minus_lab',
+            ])
             ->get();
 
         $staged = static::stagedContext($clinicId, $items, $end);
@@ -72,6 +125,14 @@ class Payroll
         $adjustments = static::adjustments($clinicId, $start, PayrollAdjustment::PAYEE_DOCTOR);
         $hours = static::hours($clinicId, $start, PayrollAdjustment::PAYEE_DOCTOR);
 
+        $attendances = DoctorShiftAttendance::query()
+            ->whereHas('doctor', fn ($q) => $q->where('clinic_id', $clinicId))
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('date')->orderBy('shift')
+            ->get()
+            ->groupBy('doctor_id');
+        $schedules = DoctorSchedule::whereIn('doctor_id', $attendances->keys())->get()->groupBy('doctor_id');
+
         // Tarif khusus dokter × tindakan, kunci "doctorId:procedureId".
         $special = DoctorProcedureShare::query()
             ->whereHas('doctor', fn ($q) => $q->where('clinic_id', $clinicId))
@@ -80,33 +141,43 @@ class Payroll
 
         return Doctor::query()
             ->where('clinic_id', $clinicId)
-            ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $items->keys()))
+            ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $items->keys())->orWhereIn('id', $attendances->keys()))
             ->orderBy('name')
             ->get()
-            ->map(function (Doctor $doctor) use ($items, $labs, $global, $hourly, $adjustments, $hours, $special, $staged) {
+            ->map(function (Doctor $doctor) use ($items, $labs, $global, $hourly, $adjustments, $hours, $special, $staged, $attendances, $schedules, $sittingFee, $threshold) {
                 $rows = ($items->get($doctor->id) ?? collect())->map(function (InvoiceItem $i) use ($doctor, $global, $special, $staged) {
                     $percent = (float) ($special[$doctor->id.':'.$i->procedure_id] ?? $i->procedure?->share_percent ?? $doctor->share_percent ?? $global);
-                    $cost = min((int) $i->amount, (int) ($i->procedure?->cost_amount ?? 0) * (int) $i->quantity);
+                    $net = static::netAmount($i);
+                    $modal = (int) ($i->procedure?->cost_amount ?? 0) * (int) $i->quantity;
+                    $cost = min($net, $modal + (int) $i->material_cost);
                     [$carry, $lab] = static::stageAmounts($i, $staged);
-                    $share = (int) round(((int) $i->amount + $carry - $cost) * $percent / 100);
+                    $share = max(0, (int) round(($net + $carry - $cost) * $percent / 100));
+                    $at = static::performedAt($i);
 
                     return [
                         'name' => $i->name,
                         'branch_id' => $i->invoice->branch_id,
-                        'paid_at' => $i->invoice->paid_at,
+                        'date' => $at,
                         'quantity' => (int) $i->quantity,
                         'gross' => (int) $i->amount,
+                        'discount' => (int) $i->amount - $net,
                         'cost' => $cost,
+                        'material' => min($cost, (int) $i->material_cost),
                         'carry' => $carry,
                         'lab' => $lab,
                         'percent' => $percent,
                         'share' => $share,
+                        'sitting' => false,
+                        'shift' => null,
                         // Potongan lab kasus ini (tidak melebihi fee barisnya).
                         'lab_cut' => min($share, (int) round($lab * $percent / 100)),
                     ];
                 });
 
-                // Potongan lab: saat tindakan "potong lab" lunas (cabang tindakan itu), atau cara lama
+                // Uang duduk per shift hadir: kotor shift < ambang → UD, fee baris shift itu dinolkan.
+                [$rows, $shifts] = static::applySitting($rows, $attendances->get($doctor->id) ?? collect(), $schedules->get($doctor->id) ?? collect(), $sittingFee, $threshold);
+
+                // Potongan lab: pada tindakan "potong lab" (cabang tindakan itu), atau cara lama
                 // %fee dokter (atau global) × order lab yang dikirim, dibebankan ke cabang order lab.
                 $doctorPercent = (float) ($doctor->share_percent ?? $global);
                 $labRows = $labs->get($doctor->id) ?? collect();
@@ -126,20 +197,28 @@ class Payroll
                 $share = max(0, (int) $rows->sum('share') - $labDeduction);
                 $base = (int) $doctor->base_salary;
                 $workHours = (float) ($hours->get($doctor->id)?->work_hours ?? 0);
-                $ud = (int) round($workHours * $hourly);
+                $hourlyUd = (int) round($workHours * $hourly);
+                $sitting = (int) $shifts->sum('sitting_fee');
+                $ud = $hourlyUd + $sitting;
                 $adj = $adjustments->get($doctor->id, collect());
                 [$bonus, $deduction] = static::sumAdjustments($adj);
 
                 return [
                     'doctor' => $doctor,
                     'gross' => (int) $rows->sum('gross'),
+                    'discount' => (int) $rows->sum('discount'),
                     'cost' => (int) $rows->sum('cost'),
+                    'material' => (int) $rows->sum('material'),
                     'lab' => $staged['lab_at_procedure'] ? (int) $rows->sum('lab') : (int) $labRows->sum('cost'),
                     'carry' => (int) $rows->sum('carry'),
                     'lab_deduction' => $labDeduction,
                     'share' => $share,
                     'base' => $base,
                     'hours' => $workHours,
+                    'hourly_ud' => $hourlyUd,
+                    'sitting' => $sitting,
+                    'sitting_shifts' => $shifts->where('sitting_fee', '>', 0)->count(),
+                    'shifts' => $shifts,
                     'ud' => $ud,
                     'bonus' => $bonus,
                     'deduction' => $deduction,
@@ -149,12 +228,68 @@ class Payroll
                     'branches' => $branches,
                     'procedures' => $rows->groupBy('name')->map(fn ($g, $name) => [
                         'name' => $name, 'count' => $g->count(), 'gross' => $g->sum('gross'), 'cost' => $g->sum('cost'), 'carry' => $g->sum('carry'),
-                        'percent' => $g->first()['percent'], 'share' => $g->sum('share'),
+                        'discount' => $g->sum('discount'), 'percent' => $g->first()['percent'], 'share' => $g->sum('share'),
                     ])->sortByDesc('gross')->values(),
                     // Rincian per tanggal & cabang untuk slip (FR-GJI-03).
-                    'lines' => $rows->sortBy('paid_at')->values(),
+                    'lines' => $rows->sortBy('date')->values(),
                 ];
             });
+    }
+
+    /**
+     * Tandai baris ke shift hadir dan hitung uang duduk per shift.
+     *
+     * @return array{0:Collection, 1:Collection<int, array{date:string, shift:int, branch_id:int, gross:int, sitting_fee:int}>}
+     */
+    private static function applySitting(Collection $rows, Collection $attendances, Collection $schedules, int $fee, int $threshold): array
+    {
+        if ($attendances->isEmpty()) {
+            return [$rows, collect()];
+        }
+
+        $byDate = $attendances->groupBy(fn ($a) => $a->date->toDateString());
+
+        // Tentukan shift tiap baris di tanggal yang punya tanda hadir.
+        $rows = $rows->map(function (array $r) use ($byDate, $schedules) {
+            $marks = $byDate->get($r['date']->toDateString());
+            if (! $marks) {
+                return $r;
+            }
+            $shiftNos = $marks->pluck('shift')->unique()->values();
+            $r['shift'] = $shiftNos->count() === 1
+                ? (int) $shiftNos->first()
+                : ($r['date']->format('H:i') >= static::shiftBoundary($schedules, $r['date']) ? 2 : 1);
+
+            return $r;
+        });
+
+        $shifts = collect();
+        foreach ($attendances as $a) {
+            $date = $a->date->toDateString();
+            $inShift = fn (array $r) => $r['shift'] === (int) $a->shift && $r['date']->toDateString() === $date;
+            $gross = (int) $rows->filter($inShift)->sum('gross');
+            $sits = $fee > 0 && $gross < $threshold;
+
+            if ($sits) {
+                $rows = $rows->map(fn (array $r) => $inShift($r) ? ['sitting' => true, 'share' => 0, 'lab_cut' => 0] + $r : $r);
+            }
+
+            $shifts->push(['date' => $date, 'shift' => (int) $a->shift, 'branch_id' => (int) $a->branch_id, 'gross' => $gross, 'sitting_fee' => $sits ? $fee : 0]);
+        }
+
+        return [$rows, $shifts];
+    }
+
+    /** Jam mulai sesi ke-2 jadwal rutin dokter pada tanggal itu; bila hanya satu sesi, pakai batas bawaan. */
+    private static function shiftBoundary(Collection $schedules, CarbonInterface $date): string
+    {
+        $sessions = $schedules->filter(fn (DoctorSchedule $s) => $s->appliesOn($date))->sortBy('starts_at')->values();
+
+        if ($sessions->count() < 2) {
+            return self::DEFAULT_SHIFT_BOUNDARY;
+        }
+
+        return substr((string) $sessions[1]->starts_at, 0, 5);
     }
 
     /**
@@ -180,14 +315,13 @@ class Payroll
             self::ROLE_ADMIN => ['hourly' => 0, 'overtime' => Settings::int('admin_overtime_rate'), 'percent' => 0.0],
         ];
 
-        // Tindakan lunas pada kunjungan yang didampingi, per asisten per cabang.
+        // Tindakan pada kunjungan yang didampingi, per asisten per cabang.
         $assisted = InvoiceItem::query()
             ->whereNotNull('procedure_id')
-            ->whereHas('invoice', fn ($q) => $q->where('status', Invoice::STATUS_PAID)
-                ->whereBetween('paid_at', [$start, $end])
+            ->whereHas('invoice', fn ($q) => static::countedInvoices($q, $start, $end)
                 ->whereHas('visit', fn ($v) => $v->whereNotNull('assistant_id')))
-            ->with('invoice:id,visit_id,branch_id', 'invoice.visit:id,assistant_id')
-            ->get(['id', 'invoice_id', 'amount'])
+            ->with('invoice:id,visit_id,branch_id,subtotal,discount', 'invoice.visit:id,assistant_id', 'procedure:id,assistant_fee_amount')
+            ->get(['id', 'invoice_id', 'procedure_id', 'quantity', 'amount'])
             ->groupBy(fn (InvoiceItem $i) => $i->invoice->visit->assistant_id);
 
         return Employee::query()
@@ -206,8 +340,11 @@ class Payroll
                 $overtimeHours = (float) ($h?->overtime_hours ?? 0);
 
                 $items = $role === self::ROLE_ASSISTANT ? ($assisted->get($e->id) ?? collect()) : collect();
+                $feeOf = fn (InvoiceItem $i) => $i->procedure?->assistant_fee_amount !== null
+                    ? (int) $i->procedure->assistant_fee_amount * (int) $i->quantity
+                    : (int) round(static::netAmount($i) * $rate['percent'] / 100);
                 $assistantBranches = $items->groupBy(fn ($i) => $i->invoice->branch_id)
-                    ->map(fn ($g) => (int) round($g->sum('amount') * $rate['percent'] / 100))
+                    ->map(fn ($g) => (int) $g->sum($feeOf))
                     ->all();
 
                 $adj = $adjustments->get($e->id, collect());
@@ -225,7 +362,8 @@ class Payroll
                     'ud' => $ud,
                     'overtime_hours' => $overtimeHours,
                     'overtime' => $overtime,
-                    'assisted' => (int) $items->sum('amount'),
+                    'assisted' => (int) $items->sum(fn ($i) => static::netAmount($i)),
+                    'assisted_count' => $items->count(),
                     'assistant_percent' => $rate['percent'],
                     'assistant_share' => $assistantShare,
                     'assistant_branches' => $assistantBranches,
@@ -251,7 +389,7 @@ class Payroll
     }
 
     /**
-     * Data pendukung tindakan bertahap: riwayat tindakan lunas & order lab pasien yang relevan.
+     * Data pendukung tindakan bertahap: riwayat tindakan & order lab pasien yang relevan.
      *
      * @return array{lab_at_procedure:bool, minus_lab_ids:array<int,int>, history:Collection, labs:Collection}
      */
@@ -273,13 +411,13 @@ class Payroll
 
         $context['history'] = InvoiceItem::query()
             ->whereIn('procedure_id', $procedureIds)
-            ->whereHas('invoice', fn ($q) => $q->where('status', Invoice::STATUS_PAID)->where('paid_at', '<=', $end)
-                ->where(fn ($q) => $q->whereIn('patient_id', $patientIds)->orWhereHas('visit', fn ($v) => $v->whereIn('patient_id', $patientIds))))
-            ->with(['invoice:id,visit_id,patient_id,paid_at', 'invoice.visit:id,patient_id'])
+            ->whereHas('invoice', fn ($q) => $q->whereIn('status', self::COUNTED_STATUSES)
+                ->whereHas('visit', fn ($v) => $v->whereIn('patient_id', $patientIds)->where('visit_date', '<=', $end->toDateString())))
+            ->with(['invoice:id,visit_id,patient_id,subtotal,discount', 'invoice.visit:id,patient_id,visit_date,examined_at,called_at,created_at'])
             ->get(['id', 'invoice_id', 'procedure_id', 'amount'])
             ->map(fn (InvoiceItem $h) => [
                 'id' => $h->id, 'procedure_id' => (int) $h->procedure_id, 'patient_id' => static::patientOf($h),
-                'at' => $h->invoice->paid_at->getTimestamp(), 'amount' => (int) $h->amount,
+                'at' => static::performedAt($h)->getTimestamp(), 'amount' => static::netAmount($h),
             ]);
 
         if ($context['lab_at_procedure']) {
@@ -302,7 +440,7 @@ class Payroll
     }
 
     /**
-     * [pembayaran tahap awal yang ikut dasar fee, biaya lab yang dipotong] untuk satu baris tindakan.
+     * [tindakan tahap awal yang ikut dasar fee, biaya lab yang dipotong] untuk satu baris tindakan.
      * Jendela = sejak tindakan akhir sebelumnya milik pasien yang sama (kasus lama tidak terhitung dua kali).
      *
      * @return array{0:int,1:int}
@@ -315,9 +453,9 @@ class Payroll
             return [0, 0];
         }
 
-        $at = $i->invoice->paid_at->getTimestamp();
+        $at = static::performedAt($i)->getTimestamp();
         $mine = $staged['history']->where('patient_id', $patientId);
-        // Baris sebelum baris ini (urut waktu lunas, lalu id) di antara tindakan tertentu.
+        // Baris sebelum baris ini (urut waktu tindakan, lalu id) di antara tindakan tertentu.
         $previous = fn (array $ids) => $mine
             ->filter(fn ($h) => in_array($h['procedure_id'], $ids, true) && ($h['at'] < $at || ($h['at'] === $at && $h['id'] < $i->id)))
             ->max('at');
@@ -334,7 +472,7 @@ class Payroll
         if ($procedure->fee_minus_lab) {
             $since = $previous($staged['minus_lab_ids']);
             $sinceDate = $since === null ? null : date('Y-m-d', $since);
-            $today = $i->invoice->paid_at->toDateString();
+            $today = date('Y-m-d', $at);
             $lab = (int) $staged['labs']
                 ->filter(fn ($l) => (int) $l->patient_id === $patientId && $l->sent_at->toDateString() <= $today
                     && ($sinceDate === null || $l->sent_at->toDateString() > $sinceDate))

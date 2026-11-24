@@ -80,10 +80,19 @@
                                         <span class="text-sm text-muted">%</span>
                                     </div>
                                     <x-error for="shares.global" />
-                                    <p class="mt-1 text-[11px] text-muted">Dihitung setelah dipotong biaya modal tindakan & biaya order lab.</p>
+                                    <p class="mt-1 text-[11px] text-muted">Dari harga setelah diskon, dipotong biaya modal, bahan resep & order lab. Dihitung saat tindakan dikirim ke kasir, tidak menunggu lunas.</p>
                                 </div>
                                 <div>
-                                    <label class="label">Uang duduk per jam</label>
+                                    <label class="label">Uang duduk per shift</label>
+                                    <x-money model="shares.roles.doctor_sitting_fee" placeholder="40000" />
+                                </div>
+                                <div>
+                                    <label class="label">Ambang kotor per shift</label>
+                                    <x-money model="shares.roles.doctor_sitting_threshold" placeholder="100000" />
+                                    <p class="mt-1 text-[11px] text-muted">Shift yang ditandai hadir di Jadwal: kotor tindakan di bawah ambang → uang duduk (fee shift itu 0); sama/lebih → fee %.</p>
+                                </div>
+                                <div>
+                                    <label class="label">Uang duduk per jam <span class="font-normal text-muted">(cara lama, kosongkan bila pakai per shift)</span></label>
                                     <x-money model="shares.roles.doctor_hourly_rate" placeholder="0" />
                                 </div>
                                 <p class="text-[11px] text-muted">Gaji pokok per dokter diisi di tabel "Per dokter" di bawah.</p>
@@ -108,6 +117,7 @@
                                     <label class="label">Lembur per jam</label>
                                     <x-money model="shares.roles.assistant_overtime_rate" placeholder="0" />
                                 </div>
+                                <p class="text-[11px] text-muted">Fee nominal per tindakan (mis. pasang behel/gigi palsu Rp8.000) diatur di Master data › Tindakan.</p>
                             </div>
                         </section>
                         <section class="card p-5">
@@ -122,6 +132,20 @@
                                     <label class="label">Target omzet tahunan (bonus akhir tahun)</label>
                                     <x-money model="shares.roles.annual_revenue_target" placeholder="0" />
                                     <p class="mt-1 text-[11px] text-muted">Berlaku untuk semua peran. Menu Gaji menampilkan apakah target tercapai. THR & bonus akhir tahun diisi per orang di menu Gaji.</p>
+                                </div>
+                                <div class="border-t border-line pt-3">
+                                    <label class="label">Biaya admin & kartu (sekali per pasien)</label>
+                                    <x-money model="shares.roles.admin_fee" placeholder="5000" />
+                                    <p class="mt-1 text-[11px] text-muted">Otomatis ditagih di tagihan pertama pasien, tidak masuk bagi hasil. 0 = tidak dipakai.</p>
+                                </div>
+                                <div>
+                                    <label class="label">Margin harga jual obat/produk</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" inputmode="decimal" wire:model="shares.roles.default_margin_percent" class="input" placeholder="0">
+                                        <span class="text-sm text-muted">%</span>
+                                    </div>
+                                    <x-error for="shares.roles.default_margin_percent" />
+                                    <p class="mt-1 text-[11px] text-muted">Saran harga jual = harga beli + margin (dibulatkan ke atas Rp500). Bisa diatur per barang di Stok.</p>
                                 </div>
                             </div>
                         </section>
@@ -580,7 +604,40 @@
                         </select>
                         <x-error for="data.fee_from_procedure_id" />
                         <p class="mt-1 text-xs text-muted">Mis. Insersi ← Cetak gigi tiruan; Pasang behel ← Cetak behel. Pembayaran tahap awal pasien yang sama ikut dihitung saat tindakan ini lunas.</p>
-                        <label class="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" wire:model="data.fee_minus_lab" class="accent-brand-600"> Potong biaya lab pasien saat tindakan ini lunas</label>
+                        <label class="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" wire:model="data.fee_minus_lab" class="accent-brand-600"> Potong biaya lab pasien pada tindakan ini</label>
+                    </div>
+                    <div class="sm:col-span-2 rounded-xl border border-line p-3">
+                        <p class="text-[13px] font-semibold">Aturan harga & fee asisten</p>
+                        <label class="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" wire:model="data.price_locked" class="accent-brand-600"> Tarif terkunci — harga tidak bisa diubah saat pemeriksaan (mis. Analisis kasus)</label>
+                        <label class="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" wire:model="data.allow_lower_price" class="accent-brand-600"> Harga boleh di bawah standar dengan alasan (mis. cabut tidak selesai)</label>
+                        <label class="label mt-3">Fee asisten nominal per tindakan (Rp) <span class="font-normal text-muted">kosong = ikut % fee asisten</span></label>
+                        <x-money model="data.assistant_fee_amount" placeholder="mis. 8000" />
+                        <x-error for="data.assistant_fee_amount" />
+                    </div>
+                    <div class="sm:col-span-2 rounded-xl border border-line p-3">
+                        <div class="flex items-center justify-between">
+                            <p class="text-[13px] font-semibold">Resep bahan per 1 tindakan</p>
+                            <button type="button" wire:click="addMaterialRow" class="text-xs font-medium text-brand-600 hover:underline">+ Bahan</button>
+                        </div>
+                        <p class="mt-1 text-xs text-muted">Takaran boleh pecahan, mis. 1 tube komposit untuk 20 pasien = 0,05. Biaya bahan dipotong sebelum bagi hasil dan stok berkurang otomatis tiap genap 1 satuan. Boleh dilengkapi bertahap.</p>
+                        @foreach ($data['materials'] ?? [] as $mi => $m)
+                            <div wire:key="mat-{{ $mi }}" class="mt-2 flex items-start gap-2">
+                                <div class="flex-1">
+                                    <select wire:model="data.materials.{{ $mi }}.item_id" class="input">
+                                        <option value="">— Pilih barang —</option>
+                                        @foreach ($materialOptions ?? [] as $opt)
+                                            <option value="{{ $opt->id }}">{{ $opt->name }} ({{ $opt->unit }})</option>
+                                        @endforeach
+                                    </select>
+                                    <x-error for="data.materials.{{ $mi }}.item_id" />
+                                </div>
+                                <div class="w-28">
+                                    <input type="number" step="0.0001" min="0" wire:model="data.materials.{{ $mi }}.quantity" class="input" placeholder="0,05" aria-label="Takaran">
+                                    <x-error for="data.materials.{{ $mi }}.quantity" />
+                                </div>
+                                <button type="button" wire:click="removeMaterialRow({{ $mi }})" class="mt-2.5 text-muted hover:text-rose-ink" title="Hapus">✕</button>
+                            </div>
+                        @endforeach
                     </div>
                 @endif
                 <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" wire:model="data.is_active" class="accent-brand-600"> Aktif</label>

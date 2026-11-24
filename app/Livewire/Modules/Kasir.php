@@ -258,6 +258,20 @@ class Kasir extends Component
         $this->pay['amount'] = $invoice->fresh()->outstanding();
     }
 
+    /** Hapus baris biaya admin (mis. pasien lama yang belum tercatat). Hanya sebelum ada pembayaran; tidak ditagih ulang. */
+    public function removeAdminFee(int $lineId): void
+    {
+        $invoice = $this->query()->findOrFail($this->selected);
+        abort_unless($invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID, 422);
+
+        $line = $invoice->items()->where('is_admin_fee', true)->findOrFail($lineId);
+        AuditLog::record('invoice.admin_fee.removed', $invoice, ['amount' => $line->amount]);
+        $line->delete();
+        $invoice->recalculate();
+        $this->pay['amount'] = $invoice->fresh()->outstanding();
+        $this->toast('Biaya admin dihapus dari tagihan ini.');
+    }
+
     /** FR-CTK-02: nomor kwitansi berurutan per cabang, mulai dari angka di pengaturan cabang. */
     private function issueReceipt(Invoice $invoice): Receipt
     {
@@ -310,6 +324,10 @@ class Kasir extends Component
             ->orderBy('updated_at')
             ->get();
 
+        // Piutang: tagihan belum lunas dari hari sebelumnya (cicilan/bayar sebagian). Fee dokter tidak menunggu pelunasan.
+        $receivables = $pending->filter(fn (Invoice $i) => $i->created_at->lt(today()))
+            ->sortBy('created_at')->values();
+
         $paidToday = $this->query()
             ->where('status', Invoice::STATUS_PAID)
             ->whereDate('paid_at', today())
@@ -325,6 +343,7 @@ class Kasir extends Component
             'context' => $context,
             'pending' => $pending,
             'paidToday' => $paidToday,
+            'receivables' => $receivables,
             'invoice' => $invoice,
             'methods' => Settings::paymentMethods(),
             'allMethods' => Payment::METHODS,

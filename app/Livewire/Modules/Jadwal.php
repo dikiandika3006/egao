@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\Doctor;
 use App\Models\DoctorSchedule;
+use App\Models\DoctorShiftAttendance;
 use App\Models\ScheduleOverride;
 use App\Support\BranchContext;
 use Carbon\Carbon;
@@ -190,7 +191,47 @@ class Jadwal extends Component
             'substitute_id' => '',
             'move_appointments' => true,
         ];
+        $this->attendance = $this->attendanceShifts($doctorId, $date);
         $this->form = 'override';
+    }
+
+    // ---- Tanda hadir per shift (dasar uang duduk dokter, diisi Owner) -------------------
+
+    /** Shift yang sudah ditandai hadir pada modal hari yang terbuka. */
+    public array $attendance = [];
+
+    private function attendanceShifts(int $doctorId, string $date): array
+    {
+        return DoctorShiftAttendance::where('doctor_id', $doctorId)->whereDate('date', $date)->orderBy('shift')->pluck('shift')->map(fn ($s) => (int) $s)->all();
+    }
+
+    public function toggleAttendance(int $shift, BranchContext $context): void
+    {
+        abort_unless($context->is(Role::Owner) && $this->form === 'override', 403, 'Hanya Owner yang menandai kehadiran shift.');
+        abort_unless(in_array($shift, [1, 2], true), 422);
+
+        $doctor = Doctor::where('clinic_id', $this->clinicId())->findOrFail((int) $this->override['doctor_id']);
+        $date = Carbon::parse($this->override['date'])->startOfDay();
+        if ($date->isFuture()) {
+            $this->addError('attendance', 'Kehadiran hanya bisa ditandai untuk hari ini atau sebelumnya.');
+
+            return;
+        }
+
+        $existing = DoctorShiftAttendance::where('doctor_id', $doctor->id)->whereDate('date', $date)->where('shift', $shift)->first();
+        if ($existing) {
+            $existing->delete();
+            AuditLog::record('jadwal.hadir.dihapus', $doctor, ['tanggal' => $date->toDateString(), 'shift' => $shift]);
+        } else {
+            $branchId = $doctor->scheduleOn($date)['branch_id'] ?? $context->id() ?? $doctor->primary_branch_id;
+            $row = DoctorShiftAttendance::create([
+                'doctor_id' => $doctor->id, 'branch_id' => $branchId, 'date' => $date->toDateString(),
+                'shift' => $shift, 'recorded_by' => auth()->id(),
+            ]);
+            AuditLog::record('jadwal.hadir', $row, ['tanggal' => $date->toDateString(), 'shift' => $shift]);
+        }
+
+        $this->attendance = $this->attendanceShifts($doctor->id, $date->toDateString());
     }
 
     public function saveOverride(BranchContext $context): void
@@ -338,10 +379,16 @@ class Jadwal extends Component
             ->orderBy('name')
             ->get();
 
-        $grid = $doctors->map(function (Doctor $doctor) use ($days, $branches) {
+        $present = DoctorShiftAttendance::whereIn('doctor_id', $doctors->pluck('id'))
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()
+            ->groupBy(fn ($a) => $a->doctor_id.':'.$a->date->toDateString())
+            ->map(fn ($g) => $g->pluck('shift')->sort()->values()->all());
+
+        $grid = $doctors->map(function (Doctor $doctor) use ($days, $branches, $present) {
             return [
                 'doctor' => $doctor,
-                'cells' => $days->map(function (Carbon $day) use ($doctor, $branches) {
+                'cells' => $days->map(function (Carbon $day) use ($doctor, $branches, $present) {
                     $override = $doctor->overrides->first(fn (ScheduleOverride $o) => $o->date->isSameDay($day));
                     $schedule = $doctor->scheduleOn($day);
 
@@ -351,6 +398,7 @@ class Jadwal extends Component
                         'branch' => $schedule ? $branches->get($schedule['branch_id']) : null,
                         'off' => $override?->type === ScheduleOverride::TYPE_OFF,
                         'note' => $override?->note,
+                        'present' => $present->get($doctor->id.':'.$day->toDateString(), []),
                     ];
                 }),
             ];
@@ -369,6 +417,7 @@ class Jadwal extends Component
             'branches' => $branches,
             'doctors' => $doctors,
             'canEdit' => $this->canEdit($context),
+            'isOwner' => $context->is(Role::Owner),
             'dayNames' => [1 => 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
         ]);
     }

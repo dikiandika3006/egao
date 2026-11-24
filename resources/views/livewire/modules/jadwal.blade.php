@@ -79,6 +79,9 @@
                                     @else
                                         <span>—</span>
                                     @endif
+                                    @if ($cell['present'])
+                                        <span class="mt-1 rounded bg-white/70 px-1 text-[10px] font-semibold text-brand-700" title="Hadir (dasar uang duduk)">✓ S{{ implode('+S', $cell['present']) }}</span>
+                                    @endif
                                 </button>
                             </td>
                         @endforeach
@@ -202,6 +205,21 @@
     @if ($form === 'override')
         @php $doc = $doctors->firstWhere('id', $override['doctor_id']); @endphp
         <x-modal title="{{ $doc?->name }} · {{ \Carbon\Carbon::parse($override['date'])->translatedFormat('l, j F Y') }}">
+            @if ($isOwner && ! \Carbon\Carbon::parse($override['date'])->isFuture())
+                <div class="mb-4 rounded-xl border border-line p-3">
+                    <p class="text-[13px] font-semibold">Tanda hadir (dasar uang duduk)</p>
+                    <div class="mt-2 flex gap-2">
+                        @foreach ([1, 2] as $sh)
+                            <button type="button" wire:click="toggleAttendance({{ $sh }})"
+                                @class(['btn flex-1', 'bg-brand-600 text-white' => in_array($sh, $attendance, true), 'bg-mist' => ! in_array($sh, $attendance, true)])>
+                                {{ in_array($sh, $attendance, true) ? '✓ ' : '' }}Shift {{ $sh }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <x-error for="attendance" />
+                    <p class="mt-1 text-[11px] text-muted">Klik untuk menandai/membatalkan. Per shift: kotor tindakan di bawah ambang → uang duduk, selain itu fee %.</p>
+                </div>
+            @endif
             <form wire:submit="saveOverride" class="grid gap-4 sm:grid-cols-2">
                 <div class="sm:col-span-2 flex gap-2">
                     @foreach (['move' => 'Praktik / pindah cabang', 'off' => 'Libur / izin'] as $val => $label)

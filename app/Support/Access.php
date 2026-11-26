@@ -20,23 +20,31 @@ class Access
     public const ABILITIES = ['lihat' => 'Lihat', 'edit' => 'Edit', 'keuangan' => 'Keuangan'];
 
     /** Menu yang punya angka rupiah yang bisa disembunyikan tersendiri. */
-    public const FINANCE_MENUS = ['dashboard', 'rekam-medis', 'stok', 'lab', 'master-barang', 'tindakan', 'gaji'];
+    public const FINANCE_MENUS = ['dashboard', 'rekam-medis', 'stok', 'lab', 'master-barang', 'tindakan', 'gaji', 'posisi-stok', 'kartu-stok'];
 
     /** Menu yang isinya seluruhnya angka uang: keuangan ikut izin lihat. */
-    public const MONEY_ONLY_MENUS = ['kasir', 'laporan', 'pengeluaran', 'tarif-gaji'];
+    public const MONEY_ONLY_MENUS = ['kasir', 'laporan', 'pengeluaran', 'tarif-gaji', 'laporan-stok'];
 
     /** Menu yang tidak diatur di matriks: Pengaturan program khusus Owner, Tentang terbuka untuk semua. */
     public const FIXED_MENUS = ['pengaturan', 'tentang'];
 
-    /** Bawaan peran Asisten (peran baru, belum ada perilaku lama). */
-    private const ASISTEN = [
-        'dashboard' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
+    /**
+     * Bawaan peran Admin / Asisten (25 Nov 2026): menu operasional saja. Laporan, Pengeluaran, Gaji, Master data
+     * tertutup; omzet hari ini di dashboard tampil (admin menghitung totalan kas). Rekam medis hanya baca: yang memeriksa dokter.
+     */
+    private const ADMIN = [
+        'dashboard' => ['lihat' => true, 'edit' => true, 'keuangan' => true],
         'antrean' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
         'janji' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
-        'pasien' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
-        'rekam-medis' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
-        'jadwal' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
+        'pasien' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
+        'rekam-medis' => ['lihat' => true, 'edit' => false, 'keuangan' => false], // hanya baca; yang memeriksa dokter
+        'kasir' => ['lihat' => true, 'edit' => true, 'keuangan' => true],
+        'jadwal' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
         'absensi' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
+        // Stok: hanya melihat posisi & kartu stok (tanpa harga); pembelian/opname & laporan jual-beli khusus Owner.
+        'posisi-stok' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
+        'kartu-stok' => ['lihat' => true, 'edit' => false, 'keuangan' => false],
+        'lab' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
     ];
 
     /** Peran yang izinnya bisa diatur (Owner selalu penuh). */
@@ -107,11 +115,11 @@ class Access
             : static::defaultPermission($role, $menu);
     }
 
-    /** Bawaan = perilaku sebelum fitur ini: peran yang tercantum di Navigation boleh lihat, edit, dan melihat angka. */
+    /** Bawaan: Admin/Asisten = daftar ADMIN; Dokter = peran yang tercantum di Navigation boleh lihat, edit, dan melihat angka. */
     public static function defaultPermission(Role $role, string $menu): array
     {
-        if ($role === Role::Asisten) {
-            return self::ASISTEN[$menu] ?? ['lihat' => false, 'edit' => false, 'keuangan' => false];
+        if ($role === Role::Admin) {
+            return self::ADMIN[$menu] ?? ['lihat' => false, 'edit' => false, 'keuangan' => false];
         }
 
         $item = Navigation::items()[$menu] ?? null;

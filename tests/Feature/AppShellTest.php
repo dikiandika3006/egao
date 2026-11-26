@@ -76,6 +76,28 @@ it('owner langsung masuk ke semua cabang tanpa memilih', function () {
         ->and(session(BranchContext::SESSION_ROLE))->toBe('owner');
 });
 
+it('dokter tidak diarahkan ke halaman khusus owner yang teringat dari sesi sebelumnya', function () {
+    $this->actingAs(User::where('username', 'nadia')->first())
+        ->withSession(['url.intended' => route('dokter')]);
+
+    Livewire::test(SelectBranch::class)
+        ->set('role', 'dokter')
+        ->set('branch', (string) $this->batu->id)
+        ->call('choose')
+        ->assertRedirect(route('dashboard'));
+});
+
+it('tetap kembali ke halaman yang teringat bila peran boleh membukanya', function () {
+    $this->actingAs(User::where('username', 'nadia')->first())
+        ->withSession(['url.intended' => route('pasien')]);
+
+    Livewire::test(SelectBranch::class)
+        ->set('role', 'dokter')
+        ->set('branch', (string) $this->batu->id)
+        ->call('choose')
+        ->assertRedirect(route('pasien'));
+});
+
 it('hanya owner yang boleh memilih semua cabang', function () {
     $this->actingAs(User::where('username', 'owner')->first())
         ->withSession([BranchContext::SESSION_ROLE => 'owner', BranchContext::SESSION_BRANCH => BranchContext::ALL]);

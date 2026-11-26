@@ -165,6 +165,10 @@ it('owner mengatur aturan fee bertahap di form tindakan', function () {
 
 it('admin tidak bisa mengubah aturan fee bertahap walau mengirim nilainya', function () {
     [$cetak, $insersi] = gigiPalsu();
+    // Owner membuka menu Tindakan & tarif untuk Admin/Asisten lewat Hak akses peran.
+    $matrix = \App\Support\Access::matrix();
+    $matrix['admin']['tindakan'] = ['lihat' => true, 'edit' => true, 'keuangan' => true];
+    \App\Support\Access::save($matrix);
     masukSebagai('admin', 'admin', $this->batu->id);
 
     \Livewire\Livewire::test(\App\Livewire\Modules\Pengaturan::class)

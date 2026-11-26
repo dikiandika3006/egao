@@ -12,6 +12,7 @@ use App\Models\StockMovement;
 use App\Services\StockService;
 use App\Support\Access;
 use App\Support\BranchContext;
+use App\Support\Navigation;
 use App\Support\Report;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -22,7 +23,8 @@ use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * Stok obat, bahan & alat (permintaan klien poin 5 & 8).
- * Tab: Barang · Pembelian · Pemakaian & opname · Mutasi · Laporan jual-beli.
+ * Tab: Barang · Posisi · Kartu stok · Mutasi · Pembelian · Pemakaian & opname · Laporan jual-beli.
+ * Tiap tab punya menu (izin) sendiri di grup "Manajemen stok" (lihat TAB_MENUS).
  */
 class Stok extends Component
 {
@@ -31,7 +33,7 @@ class Stok extends Component
     public const MENU = 'stok';
 
     /** Boleh tanpa izin Edit (lihat ModulePage). */
-    public const READ_ACTIONS = ['setTab', 'export', 'cancelPurchaseEdit', 'closeCancelPurchase'];
+    public const READ_ACTIONS = ['setTab', 'export', 'exportPosition', 'cancelPurchaseEdit', 'closeCancelPurchase'];
 
     /** Aksi master barang mengikuti izin menu "Master barang". */
     private const ITEM_ACTIONS = ['newItem', 'editItem', 'saveItem'];
@@ -39,23 +41,40 @@ class Stok extends Component
     protected function menuKey(?string $method = null): string
     {
         if ($method !== null) {
-            return in_array($method, self::ITEM_ACTIONS, true) ? 'master-barang' : 'stok';
+            return match (true) {
+                in_array($method, self::ITEM_ACTIONS, true) => 'master-barang',
+                $method === 'export' => 'laporan-stok',
+                $method === 'exportPosition' => 'posisi-stok',
+                default => 'stok', // pembelian & opname
+            };
         }
 
-        return $this->tab === 'barang' ? 'master-barang' : 'stok';
+        return self::TAB_MENUS[$this->tab] ?? 'stok';
     }
 
-    /** Tab barang ikut izin "Master barang", tab lain ikut izin "Stok obat & bahan". */
+    /** Tab yang izinnya Lihat menu pemiliknya. */
     private function tabs(): array
     {
         return array_filter(
             self::TABS,
-            fn ($k) => Access::can($k === 'barang' ? 'master-barang' : 'stok', 'lihat'),
+            fn ($k) => Access::can(self::TAB_MENUS[$k], 'lihat'),
             ARRAY_FILTER_USE_KEY,
         );
     }
 
-    public const TABS = ['barang' => 'Barang', 'pembelian' => 'Pembelian', 'pakai' => 'Pemakaian & opname', 'mutasi' => 'Mutasi stok', 'laporan' => 'Laporan jual-beli'];
+    public const TABS = [
+        'barang' => 'Barang', 'posisi' => 'Posisi stok', 'kartu' => 'Kartu stok',
+        'pembelian' => 'Pembelian', 'pakai' => 'Pemakaian & opname', 'laporan' => 'Laporan jual-beli',
+    ];
+
+    /** Tab lama yang digabung: Mutasi stok kini bagian Kartu stok (tanpa barang dipilih = semua mutasi). */
+    public const TAB_ALIASES = ['mutasi' => 'kartu'];
+
+    /** Tab → key menu Navigation (izin lihat/edit/keuangan). */
+    public const TAB_MENUS = [
+        'barang' => 'master-barang', 'posisi' => 'posisi-stok', 'kartu' => 'kartu-stok',
+        'pembelian' => 'stok', 'pakai' => 'stok', 'laporan' => 'laporan-stok',
+    ];
 
     #[Url(except: 'barang')]
     public string $tab = 'barang';
@@ -71,6 +90,13 @@ class Stok extends Component
 
     #[Url(as: 'sampai', except: '')]
     public string $to = '';
+
+    /** Kartu stok: barang & cabang yang dilihat. */
+    #[Url(as: 'barang', except: '')]
+    public string $cardItem = '';
+
+    #[Url(as: 'cabang', except: '')]
+    public string $cardBranch = '';
 
     // Form barang
     public bool $showItemForm = false;
@@ -103,6 +129,7 @@ class Stok extends Component
 
     public function setTab(string $tab): void
     {
+        $tab = self::TAB_ALIASES[$tab] ?? $tab;
         abort_unless(array_key_exists($tab, $this->tabs()), 404);
         $this->tab = $tab;
         $this->resetErrorBag();
@@ -382,7 +409,7 @@ class Stok extends Component
 
     public function export(BranchContext $context)
     {
-        abort_unless(Access::can('stok', 'lihat') && Access::can('stok', 'keuangan'), 403);
+        abort_unless(Access::can('laporan-stok', 'lihat'), 403);
         $r = $this->report($context);
         $rows = $r['rows']->map(fn ($x) => [
             $x['item']->code, $x['item']->name, Item::CATEGORIES[$x['item']->category] ?? $x['item']->category, $x['item']->unit,
@@ -396,9 +423,79 @@ class Stok extends Component
         );
     }
 
+    // ── Posisi stok & kartu stok ────────────────────────────────────
+
+    /** Status posisi: habis (≤ 0), menipis (≤ minimum), aman. */
+    public static function positionStatus(int $qty, int $min): string
+    {
+        return $qty <= 0 ? 'habis' : ($min > 0 && $qty <= $min ? 'menipis' : 'aman');
+    }
+
+    public function exportPosition(BranchContext $context)
+    {
+        abort_unless(Access::can('posisi-stok', 'lihat'), 403);
+        $withValue = Access::can('posisi-stok', 'keuangan');
+        $branches = $context->id() ? $context->options()->where('id', $context->id()) : $context->options();
+        $items = $this->items()->where('is_active', true)
+            ->with(['stocks' => fn ($q) => $q->whereIn('branch_id', $branches->pluck('id'))])
+            ->orderBy('category')->orderBy('name')->get();
+
+        $head = ['Kode', 'Barang', 'Kategori', 'Satuan', ...$branches->map(fn ($b) => 'Stok '.$b->shortName())->all(), 'Min.'];
+        if ($withValue) {
+            $head[] = 'Nilai (Rp)';
+        }
+        $rows = $items->map(function (Item $i) use ($branches, $withValue) {
+            $row = [$i->code, $i->name, Item::CATEGORIES[$i->category] ?? $i->category, $i->unit,
+                ...$branches->map(fn ($b) => $i->stockAt($b->id))->all(), $i->min_stock];
+            if ($withValue) {
+                $row[] = (int) $i->stocks->sum(fn ($s) => max(0, $s->quantity) * $s->avg_cost);
+            }
+
+            return $row;
+        })->all();
+
+        return Excel::download(new ArrayExport($head, $rows, 'Posisi stok'),
+            sprintf('posisi-stok-%s-%s.xlsx', str($context->label())->slug(), today()->format('Ymd')));
+    }
+
+    /**
+     * Kartu stok satu barang di satu cabang: saldo awal (mutasi sebelum periode) lalu baris berjalan.
+     *
+     * @return array{item:?Item, branch_id:?int, opening:int, rows:Collection, in:int, out:int, closing:int}
+     */
+    private function stockCard(Collection $branches): array
+    {
+        $item = filled($this->cardItem) ? $this->items()->find((int) $this->cardItem) : null;
+        $branchId = $branches->has((int) $this->cardBranch) ? (int) $this->cardBranch : $branches->keys()->first();
+        $empty = ['item' => $item, 'branch_id' => $branchId, 'opening' => 0, 'rows' => collect(), 'in' => 0, 'out' => 0, 'closing' => 0];
+        if (! $item || ! $branchId) {
+            return $empty;
+        }
+
+        [$from, $to] = Report::range($this->from, $this->to);
+        $base = StockMovement::where('item_id', $item->id)->where('branch_id', $branchId);
+        // Dihitung mundur dari stok sekarang agar saldo selalu cocok dengan Posisi stok (termasuk saldo awal tanpa mutasi).
+        $opening = $item->stockAt($branchId) - (int) (clone $base)->where('occurred_at', '>=', $from)->sum('quantity');
+
+        $balance = $opening;
+        $rows = (clone $base)->whereBetween('occurred_at', [$from, $to])->with('user')
+            ->orderBy('occurred_at')->orderBy('id')->get()
+            ->map(function (StockMovement $m) use (&$balance) {
+                $balance += $m->quantity;
+
+                return ['m' => $m, 'balance' => $balance];
+            });
+
+        return ['item' => $item, 'branch_id' => $branchId, 'opening' => $opening, 'rows' => $rows,
+            'in' => (int) $rows->sum(fn ($r) => max(0, $r['m']->quantity)),
+            'out' => (int) $rows->sum(fn ($r) => max(0, -$r['m']->quantity)),
+            'closing' => $balance];
+    }
+
     public function render(BranchContext $context)
     {
         $tabs = $this->tabs();
+        $this->tab = self::TAB_ALIASES[$this->tab] ?? $this->tab;
         if (! array_key_exists($this->tab, $tabs)) {
             $this->tab = (string) array_key_first($tabs);
         }
@@ -423,7 +520,8 @@ class Stok extends Component
             'allItems' => $allItems,
             'lowCount' => $low->count(),
             'stockValue' => (int) $allItems->sum(fn (Item $i) => $i->stocks->sum(fn ($s) => max(0, $s->quantity) * $s->avg_cost)),
-            'tabs' => $tabs,
+            // Menu sidebar sudah memisahkan tab; di halaman hanya tampil tab milik menu yang sama (Pembelian ↔ Pemakaian & opname).
+            'tabs' => array_filter($tabs, fn ($k) => self::TAB_MENUS[$k] === self::TAB_MENUS[$this->tab], ARRAY_FILTER_USE_KEY),
         ];
 
         if ($this->tab === 'pembelian') {
@@ -431,7 +529,8 @@ class Stok extends Component
             $data['purchaseTotal'] = (int) collect($this->purchase['lines'])->sum(fn ($l) => (int) ($l['quantity'] ?? 0) * (int) ($l['unit_cost'] ?? 0));
         }
 
-        if ($this->tab === 'mutasi') {
+        // Kartu stok tanpa barang dipilih = daftar mutasi semua barang.
+        if ($this->tab === 'kartu' && blank($this->cardItem)) {
             [$from, $to] = Report::range($this->from, $this->to);
             $data['movements'] = StockMovement::whereIn('branch_id', $branchIds)->whereBetween('occurred_at', [$from, $to])
                 ->whereHas('item', fn ($q) => $q->where('clinic_id', $this->clinicId())
@@ -447,6 +546,20 @@ class Stok extends Component
             $data['currentStock'] = app(StockService::class)->available((int) $this->usage['item_id'], $this->formBranchId($context));
         }
 
-        return $this->page('stok', 'livewire.modules.stok', $data);
+        if ($this->tab === 'posisi') {
+            $data['positions'] = $items->where('is_active', true)->values();
+        }
+
+        if ($this->tab === 'kartu') {
+            $data['card'] = $this->stockCard($branches);
+        }
+
+        // Judul & breadcrumb ikut menu tab yang dibuka; menu tersorot tetap dihitung Navigation::isActive.
+        $view = $this->page('stok', 'livewire.modules.stok', $data);
+
+        $menu = Navigation::item(self::TAB_MENUS[$this->tab]);
+
+        return $view->with('item', $menu)->title($menu['label'])
+            ->layoutData(['breadcrumb' => $menu['breadcrumb'], 'active' => 'stok']);
     }
 }

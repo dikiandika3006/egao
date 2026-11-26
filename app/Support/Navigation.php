@@ -10,7 +10,7 @@ use App\Enums\Role;
 class Navigation
 {
     /** Urutan & judul grup menu (sidebar dan menu Lainnya). Grup "bantuan" sengaja tidak ditampilkan. */
-    public const GROUPS = ['klinik' => 'Ruang klinik', 'master' => 'Master data', 'manajemen' => 'Manajemen'];
+    public const GROUPS = ['klinik' => 'Ruang klinik', 'master' => 'Master data', 'stok' => 'Manajemen stok', 'manajemen' => 'Manajemen'];
 
     /**
      * @return array<string, array{group:string, number:?string, label:string, route:string, path:string, roles:list<Role>, title:string, subtitle:string, breadcrumb:list<string>, requirements:string}>
@@ -69,7 +69,7 @@ class Navigation
             ],
             'dokter' => [
                 'group' => 'master', 'number' => '07', 'label' => 'Data dokter', 'route' => 'dokter', 'path' => '/dokter',
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Data dokter',
+                'roles' => [Role::Owner], 'title' => 'Data dokter',
                 'subtitle' => 'Identitas, STR/SIP, cabang utama, dan sejak kapan dokter bergabung di klinik.',
                 'breadcrumb' => ['Master data', 'Data dokter'], 'requirements' => 'FR-SET (master dokter)',
             ],
@@ -77,19 +77,19 @@ class Navigation
             'master-barang' => [
                 'group' => 'master', 'number' => null, 'label' => 'Master barang', 'route' => 'stok', 'path' => '/stok',
                 'query' => ['tab' => 'barang'], 'shortcut' => true,
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Master barang', 'subtitle' => '',
+                'roles' => [Role::Owner], 'title' => 'Master barang', 'subtitle' => '',
                 'breadcrumb' => ['Master data', 'Master barang'], 'requirements' => '-',
             ],
             'tindakan' => [
                 'group' => 'master', 'number' => null, 'label' => 'Tindakan & tarif', 'route' => 'pengaturan', 'path' => '/pengaturan',
                 'query' => ['tab' => 'tindakan'], 'shortcut' => true,
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Tindakan & tarif', 'subtitle' => '',
+                'roles' => [Role::Owner], 'title' => 'Tindakan & tarif', 'subtitle' => '',
                 'breadcrumb' => ['Master data', 'Tindakan & tarif'], 'requirements' => '-',
             ],
             'kategori-pengeluaran' => [
                 'group' => 'master', 'number' => null, 'label' => 'Kategori pengeluaran', 'route' => 'pengaturan', 'path' => '/pengaturan',
                 'query' => ['tab' => 'kategori'], 'shortcut' => true,
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Kategori pengeluaran', 'subtitle' => '',
+                'roles' => [Role::Owner], 'title' => 'Kategori pengeluaran', 'subtitle' => '',
                 'breadcrumb' => ['Master data', 'Kategori pengeluaran'], 'requirements' => '-',
             ],
             'tarif-gaji' => [
@@ -101,21 +101,44 @@ class Navigation
             ],
             'laporan' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Laporan', 'route' => 'laporan', 'path' => '/laporan',
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Angka yang mudah dipahami.',
+                'roles' => [Role::Owner], 'title' => 'Angka yang mudah dipahami.',
                 'subtitle' => 'Pemasukan, pengeluaran, dan selisih kas per cabang.',
                 'breadcrumb' => ['Manajemen', 'Laporan'], 'requirements' => 'FR-LAP-01 – 10',
             ],
             'pengeluaran' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Pengeluaran', 'route' => 'pengeluaran', 'path' => '/pengeluaran',
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Pengeluaran',
+                'roles' => [Role::Owner], 'title' => 'Pengeluaran',
                 'subtitle' => 'Catat biaya operasional per cabang. Gaji & bagi hasil terisi otomatis.',
                 'breadcrumb' => ['Manajemen', 'Pengeluaran'], 'requirements' => 'FR-PNG-01 – 05',
             ],
+            // Grup "Manajemen stok": satu halaman Stok, tiap menu membuka tab-nya (pintasan, izin sendiri).
+            'posisi-stok' => [
+                'group' => 'stok', 'number' => null, 'label' => 'Posisi stok', 'route' => 'stok', 'path' => '/stok',
+                'query' => ['tab' => 'posisi'], 'shortcut' => true,
+                'roles' => [Role::Owner, Role::Admin], 'title' => 'Posisi stok',
+                'subtitle' => 'Sisa stok tiap barang per cabang saat ini, lengkap dengan batas minimum.',
+                'breadcrumb' => ['Manajemen stok', 'Posisi stok'], 'requirements' => '-',
+            ],
+            'kartu-stok' => [
+                'group' => 'stok', 'number' => null, 'label' => 'Kartu stok', 'route' => 'stok', 'path' => '/stok',
+                'query' => ['tab' => 'kartu'], 'shortcut' => true,
+                'roles' => [Role::Owner, Role::Admin], 'title' => 'Kartu stok',
+                'subtitle' => 'Semua keluar-masuk stok per periode; pilih satu barang untuk melihat saldo awal, saldo berjalan, dan saldo akhir.',
+                'breadcrumb' => ['Manajemen stok', 'Kartu stok'], 'requirements' => '-',
+            ],
             'stok' => [
-                'group' => 'manajemen', 'number' => null, 'label' => 'Stok obat & bahan', 'route' => 'stok', 'path' => '/stok',
-                'roles' => [Role::Owner, Role::Admin], 'title' => 'Stok obat, bahan & alat',
+                'group' => 'stok', 'number' => null, 'label' => 'Pembelian & opname', 'route' => 'stok', 'path' => '/stok',
+                'query' => ['tab' => 'pembelian'],
+                'roles' => [Role::Owner], 'title' => 'Stok obat, bahan & alat',
                 'subtitle' => 'Pembelian menambah stok dan tercatat sebagai pengeluaran; penjualan di kasir mengurangi stok saat lunas.',
-                'breadcrumb' => ['Manajemen', 'Stok'], 'requirements' => 'Permintaan klien: jual-beli obat, alat & bahan',
+                'breadcrumb' => ['Manajemen stok', 'Pembelian & opname'], 'requirements' => 'Permintaan klien: jual-beli obat, alat & bahan',
+            ],
+            'laporan-stok' => [
+                'group' => 'stok', 'number' => null, 'label' => 'Laporan jual-beli', 'route' => 'stok', 'path' => '/stok',
+                'query' => ['tab' => 'laporan'], 'shortcut' => true,
+                'roles' => [Role::Owner], 'title' => 'Laporan jual-beli stok',
+                'subtitle' => 'Pembelian, penjualan, HPP, laba kotor, dan pemakaian per barang.',
+                'breadcrumb' => ['Manajemen stok', 'Laporan jual-beli'], 'requirements' => '-',
             ],
             'lab' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Order lab gigi', 'route' => 'lab', 'path' => '/lab-gigi',
@@ -171,6 +194,7 @@ class Navigation
     public static function isActive(string $key, array $item, ?string $active, ?string $tab = null): bool
     {
         $tab ??= request()->query('tab') ?? (static::DEFAULT_TABS[$active] ?? null);
+        $tab = ['mutasi' => 'kartu'][$tab] ?? $tab; // tab lama: Mutasi stok digabung ke Kartu stok
         $owner = fn (array $i) => ! empty($i['shortcut']) && $i['route'] === $active && $tab === ($i['query']['tab'] ?? null);
 
         if (! empty($item['shortcut'])) {

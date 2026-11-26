@@ -137,7 +137,7 @@ it('rencana evaluasi dokter otomatis menjadi janji kontrol', function () {
 // ── Stok ────────────────────────────────────────────────────────
 
 it('pembelian menambah stok dan mencatat pengeluaran', function () {
-    asUser('admin', 'admin', $this->batu->id);
+    asUser('owner', 'owner', $this->batu->id);
     $item = Item::where('code', 'PCT500')->first();
     $before = stockOf('PCT500', $this->batu->id);
 
@@ -222,7 +222,7 @@ it('bagi hasil dokter tidak menghitung penjualan obat', function () {
 });
 
 it('stok opname menyesuaikan stok ke jumlah fisik', function () {
-    asUser('admin', 'admin', $this->batu->id);
+    asUser('owner', 'owner', $this->batu->id);
     $item = Item::where('code', 'WAX')->first();
 
     Livewire::test(Stok::class)
@@ -238,7 +238,7 @@ it('stok opname menyesuaikan stok ke jumlah fisik', function () {
 });
 
 it('pemakaian tidak boleh melebihi stok', function () {
-    asUser('admin', 'admin', $this->batu->id);
+    asUser('owner', 'owner', $this->batu->id);
     $item = Item::where('code', 'CMP')->first();
 
     Livewire::test(Stok::class)

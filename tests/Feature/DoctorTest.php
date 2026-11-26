@@ -28,13 +28,14 @@ it('menampilkan data dokter beserta tanggal bergabung', function () {
         ->assertSee('1 Maret 2021');
 });
 
-it('hanya owner dan admin yang bisa membuka data dokter', function () {
-    actingForDoctors('admin', 'admin', $this->batu->id)->get(route('dokter'))->assertOk();
+it('bawaan: hanya owner yang membuka data dokter (Admin/Asisten & dokter ditolak)', function () {
+    actingForDoctors('owner', 'owner', $this->batu->id)->get(route('dokter'))->assertOk();
+    actingForDoctors('admin', 'admin', $this->batu->id)->get(route('dokter'))->assertForbidden();
     actingForDoctors('nadia', 'dokter', $this->batu->id)->get(route('dokter'))->assertForbidden();
 });
 
 it('menambah dokter baru dengan tanggal bergabung', function () {
-    actingForDoctors('admin', 'admin', $this->batu->id);
+    actingForDoctors('owner', 'owner', $this->batu->id);
 
     Livewire::test(Dokter::class)
         ->call('create')
@@ -137,6 +138,10 @@ it('akun yang sudah tertaut ke dokter lain ditolak', function () {
 });
 
 it('admin tidak bisa membuat atau mengambil akun lewat Data dokter', function () {
+    // Owner membuka menu Data dokter untuk Admin/Asisten lewat Hak akses peran.
+    $matrix = \App\Support\Access::matrix();
+    $matrix['admin']['dokter'] = ['lihat' => true, 'edit' => true, 'keuangan' => true];
+    \App\Support\Access::save($matrix);
     actingForDoctors('admin', 'admin', Branch::where('code', 'BTU')->value('id'));
     $owner = User::where('username', 'owner')->first();
 

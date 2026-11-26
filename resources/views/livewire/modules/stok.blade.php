@@ -6,15 +6,21 @@
             @if ($canEdit)<button type="button" wire:click="newItem" class="btn-primary">+ Barang baru</button>@endif
         @elseif ($tab === 'laporan')
             <button type="button" wire:click="export" class="btn-soft">Ekspor Excel</button>
+        @elseif ($tab === 'posisi')
+            <button type="button" wire:click="exportPosition" class="btn-soft">Ekspor Excel</button>
         @endif
     </x-page-header>
 
-    <div class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
+    <div @class(['mt-6 grid grid-cols-2 gap-3', 'lg:grid-cols-3' => $canSeeMoney])>
         <div class="card p-4"><p class="text-[13px] text-muted">Jenis barang aktif</p><p class="mt-2 text-xl font-semibold">{{ $allItems->count() }}</p></div>
         <div @class(['card p-4', 'bg-amber-soft' => $lowCount > 0])><p class="text-[13px] text-muted">Stok menipis</p><p @class(['mt-2 text-xl font-semibold', 'text-amber-ink' => $lowCount > 0])>{{ $lowCount }}</p></div>
-        <div class="card col-span-2 p-4 lg:col-span-1"><p class="text-[13px] text-muted">Nilai persediaan · {{ $context->label() }}</p><p class="mt-2 text-xl font-semibold">@rupiah($stockValue)</p></div>
+        {{-- Nilai persediaan hanya untuk peran dengan izin Keuangan menu tab ini. --}}
+        @if ($canSeeMoney)
+            <div class="card col-span-2 p-4 lg:col-span-1"><p class="text-[13px] text-muted">Nilai persediaan · {{ $context->label() }}</p><p class="mt-2 text-xl font-semibold">@rupiah($stockValue)</p></div>
+        @endif
     </div>
 
+    @if (count($tabs) > 1)
     <div class="mt-6 flex gap-6 overflow-x-auto border-b border-line text-sm whitespace-nowrap sm:gap-10">
         @foreach ($tabs as $k => $label)
             <button type="button" wire:click="setTab('{{ $k }}')" @class([
@@ -24,6 +30,7 @@
             ])>{{ $label }}</button>
         @endforeach
     </div>
+    @endif
 
     @if ($tab === 'barang')
         <div class="mt-5 flex flex-wrap items-center gap-3">
@@ -205,34 +212,137 @@
             </div>
         </div>
 
-    @elseif ($tab === 'mutasi')
-        <div class="mt-5 flex flex-wrap items-end gap-3">
-            <div><label class="label text-xs">Dari</label><input type="date" wire:model.live="from" class="input min-h-10"></div>
-            <div><label class="label text-xs">Sampai</label><input type="date" wire:model.live="to" class="input min-h-10"></div>
-            <input type="search" wire:model.live.debounce.300ms="search" placeholder="Filter nama barang…" class="input min-h-10 max-w-xs">
+    @elseif ($tab === 'posisi')
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+            <input type="search" wire:model.live.debounce.300ms="search" placeholder="Cari nama atau kode…" class="input max-w-xs">
+            <div class="flex rounded-lg bg-mist p-1 text-xs">
+                @foreach (['' => 'Semua'] + Item::CATEGORIES as $k => $label)
+                    <button type="button" wire:click="$set('category', '{{ $k }}')" @class(['min-h-8 rounded-md px-3', 'bg-white font-semibold shadow-sm' => $category === $k, 'text-muted' => $category !== $k])>{{ $label }}</button>
+                @endforeach
+            </div>
         </div>
+
         <section class="card mt-4 overflow-x-auto">
-            <table class="w-full min-w-[760px] text-left text-sm">
+            <table class="w-full min-w-[640px] text-left text-sm">
                 <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
-                    <tr><th class="py-3 pl-5">Waktu</th>@if ($branches->count() > 1)<th>Cabang</th>@endif<th>Barang</th><th>Jenis</th><th class="text-right">Jumlah</th><th>Keterangan</th><th class="pr-5">Oleh</th></tr>
+                    <tr>
+                        <th class="py-3.5 pl-5">Barang</th>
+                        @foreach ($branches as $b)<th class="text-right">Stok {{ $b->shortName() }}</th>@endforeach
+                        <th class="text-right">Min.</th>
+                        @if ($canSeeMoney)<th class="text-right">Nilai</th>@endif
+                        <th class="pr-5 text-right">Status</th>
+                    </tr>
                 </thead>
                 <tbody>
-                    @forelse ($movements as $m)
-                        <tr class="border-b border-line last:border-0">
-                            <td class="py-2.5 pl-5 text-[13px] whitespace-nowrap">{{ $m->occurred_at->translatedFormat('j M, H.i') }}</td>
-                            @if ($branches->count() > 1)<td class="text-[13px]">{{ $m->branch->shortName() }}</td>@endif
-                            <td class="text-[13px]">{{ $m->item->name }}</td>
-                            <td class="text-[13px]">{{ $m->typeLabel() }}</td>
-                            <td @class(['text-right font-semibold', 'text-brand-600' => $m->quantity > 0, 'text-rose-ink' => $m->quantity < 0])>{{ $m->quantity > 0 ? '+' : '' }}{{ $m->quantity }}</td>
-                            <td class="text-[12px] text-muted">{{ $m->note }}</td>
-                            <td class="pr-5 text-[12px] text-muted">{{ $m->user?->name ?? '—' }}</td>
+                    @forelse ($positions as $i)
+                        @php
+                            $worst = collect($branches->keys())->map(fn ($bid) => \App\Livewire\Modules\Stok::positionStatus($i->stockAt($bid), $i->min_stock));
+                            $status = $worst->contains('habis') ? 'habis' : ($worst->contains('menipis') ? 'menipis' : 'aman');
+                        @endphp
+                        <tr wire:key="p{{ $i->id }}" class="border-b border-line last:border-0">
+                            <td class="py-3 pl-5">
+                                <p class="font-medium">{{ $i->name }}</p>
+                                <p class="text-[11px] text-muted">{{ $i->code }} · {{ Item::CATEGORIES[$i->category] ?? $i->category }} · per {{ $i->unit }}</p>
+                            </td>
+                            @foreach ($branches as $bid => $b)
+                                @php $q = $i->stockAt($bid); $st = \App\Livewire\Modules\Stok::positionStatus($q, $i->min_stock); @endphp
+                                <td @class(['text-right font-semibold', 'text-rose-ink' => $st === 'habis', 'text-amber-ink' => $st === 'menipis'])>{{ $q }}</td>
+                            @endforeach
+                            <td class="text-right text-muted">{{ $i->min_stock }}</td>
+                            @if ($canSeeMoney)<td class="text-right">@rupiah($i->stocks->sum(fn ($s) => max(0, $s->quantity) * $s->avg_cost))</td>@endif
+                            <td class="pr-5 text-right">
+                                <span @class(['pill', 'bg-rose-soft text-rose-ink' => $status === 'habis', 'bg-amber-soft text-amber-ink' => $status === 'menipis', 'bg-leaf-100 text-brand-600' => $status === 'aman'])>{{ ['habis' => 'Habis', 'menipis' => 'Menipis', 'aman' => 'Aman'][$status] }}</span>
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="py-12 text-center text-muted">Belum ada mutasi di periode ini.</td></tr>
+                        <tr><td colspan="{{ $branches->count() + 4 }}" class="py-12 text-center text-muted">Belum ada barang aktif.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </section>
+
+    @elseif ($tab === 'kartu')
+        <div class="mt-5 flex flex-wrap items-end gap-3">
+            <div class="min-w-56 flex-1 sm:max-w-xs">
+                <label class="label text-xs">Barang</label>
+                <select wire:model.live="cardItem" class="input min-h-10">
+                    <option value="">Semua barang (daftar mutasi)</option>
+                    @foreach ($allItems as $i)<option value="{{ $i->id }}">{{ $i->name }} ({{ $i->code }})</option>@endforeach
+                </select>
+            </div>
+            @if ($card['item'] && $branches->count() > 1)
+                <div>
+                    <label class="label text-xs">Cabang</label>
+                    <select wire:model.live="cardBranch" class="input min-h-10">
+                        @foreach ($branches as $bid => $b)<option value="{{ $bid }}">{{ $b->shortName() }}</option>@endforeach
+                    </select>
+                </div>
+            @endif
+            <div><label class="label text-xs">Dari</label><input type="date" wire:model.live="from" class="input min-h-10"></div>
+            <div><label class="label text-xs">Sampai</label><input type="date" wire:model.live="to" class="input min-h-10"></div>
+            @if (! $card['item'])
+                <input type="search" wire:model.live.debounce.300ms="search" placeholder="Filter nama barang…" class="input min-h-10 max-w-xs">
+            @endif
+        </div>
+
+        @if (! $card['item'])
+            {{-- Tanpa barang dipilih: semua keluar-masuk stok (dulu menu Mutasi stok). Pilih barang untuk saldo berjalan. --}}
+            <section class="card mt-4 overflow-x-auto">
+                <table class="w-full min-w-[760px] text-left text-sm">
+                    <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
+                        <tr><th class="py-3 pl-5">Waktu</th>@if ($branches->count() > 1)<th>Cabang</th>@endif<th>Barang</th><th>Jenis</th><th class="text-right">Jumlah</th><th>Keterangan</th><th class="pr-5">Oleh</th></tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($movements as $m)
+                            <tr class="border-b border-line last:border-0">
+                                <td class="py-2.5 pl-5 text-[13px] whitespace-nowrap">{{ $m->occurred_at->translatedFormat('j M, H.i') }}</td>
+                                @if ($branches->count() > 1)<td class="text-[13px]">{{ $m->branch->shortName() }}</td>@endif
+                                <td class="text-[13px]"><button type="button" wire:click="$set('cardItem', '{{ $m->item_id }}')" class="text-left hover:text-brand-600 hover:underline" title="Lihat kartu stok barang ini">{{ $m->item->name }}</button></td>
+                                <td class="text-[13px]">{{ $m->typeLabel() }}</td>
+                                <td @class(['text-right font-semibold', 'text-brand-600' => $m->quantity > 0, 'text-rose-ink' => $m->quantity < 0])>{{ $m->quantity > 0 ? '+' : '' }}{{ $m->quantity }}</td>
+                                <td class="text-[12px] text-muted">{{ $m->note }}</td>
+                                <td class="pr-5 text-[12px] text-muted">{{ $m->user?->name ?? '—' }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="py-12 text-center text-muted">Belum ada mutasi di periode ini.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </section>
+        @else
+            <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div class="card p-4"><p class="text-[13px] text-muted">Saldo awal</p><p class="mt-2 text-xl font-semibold">{{ $card['opening'] }}</p></div>
+                <div class="card p-4"><p class="text-[13px] text-muted">Masuk</p><p class="mt-2 text-xl font-semibold text-brand-600">+{{ $card['in'] }}</p></div>
+                <div class="card p-4"><p class="text-[13px] text-muted">Keluar</p><p class="mt-2 text-xl font-semibold text-rose-ink">−{{ $card['out'] }}</p></div>
+                <div class="card p-4"><p class="text-[13px] text-muted">Saldo akhir · {{ $card['item']->unit }}</p><p class="mt-2 text-xl font-semibold">{{ $card['closing'] }}</p></div>
+            </div>
+            <section class="card mt-4 overflow-x-auto">
+                <table class="w-full min-w-[720px] text-left text-sm">
+                    <thead class="bg-canvas/70 text-[10px] font-medium text-muted uppercase">
+                        <tr><th class="py-3 pl-5">Waktu</th><th>Jenis</th><th>Keterangan</th><th class="text-right">Masuk</th><th class="text-right">Keluar</th><th class="text-right">Saldo</th><th class="pr-5">Oleh</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-line bg-canvas/40">
+                            <td class="py-2.5 pl-5 text-[13px]" colspan="5">Saldo awal</td>
+                            <td class="text-right font-semibold">{{ $card['opening'] }}</td><td></td>
+                        </tr>
+                        @forelse ($card['rows'] as $r)
+                            <tr class="border-b border-line last:border-0">
+                                <td class="py-2.5 pl-5 text-[13px] whitespace-nowrap">{{ $r['m']->occurred_at->translatedFormat('j M Y, H.i') }}</td>
+                                <td class="text-[13px]">{{ $r['m']->typeLabel() }}</td>
+                                <td class="text-[12px] text-muted">{{ $r['m']->note }}</td>
+                                <td class="text-right text-brand-600">{{ $r['m']->quantity > 0 ? $r['m']->quantity : '' }}</td>
+                                <td class="text-right text-rose-ink">{{ $r['m']->quantity < 0 ? -$r['m']->quantity : '' }}</td>
+                                <td class="text-right font-semibold">{{ $r['balance'] }}</td>
+                                <td class="pr-5 text-[12px] text-muted">{{ $r['m']->user?->name ?? '—' }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="py-10 text-center text-muted">Tidak ada mutasi di periode ini.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </section>
+        @endif
 
     @else
         <div class="mt-5 flex flex-wrap items-end gap-3">

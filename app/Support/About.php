@@ -19,7 +19,7 @@ class About
                 'Tanggal lahir, tempat lahir, dan telepon pasien boleh kosong (data lama); umur tampil "umur –".',
                 'Telepon dan NIK selalu disamarkan. Membuka data lengkap tercatat di jejak audit.',
                 'Pengguna hanya melihat data cabang yang menjadi aksesnya. Pilihan "Semua cabang" hanya untuk Owner.',
-                'Peran: Owner, Admin, Asisten, Dokter. Menu yang boleh dibuka, diubah, dan angka keuangannya diatur Owner per peran di Pengaturan › Hak akses peran; Owner selalu akses penuh.',
+                'Peran: Owner / Administrator (semua menu), Admin / Asisten (menu operasional, absensi diri sendiri; stok hanya melihat posisi & kartu stok tanpa harga), Dokter (menu klinis, absensi diri sendiri). Menu yang boleh dibuka, diubah, dan angka keuangannya diatur Owner per peran di Pengaturan › Hak akses peran; Owner selalu akses penuh.',
             ],
         ],
         [
@@ -35,7 +35,7 @@ class About
         [
             'title' => 'Rekam medis',
             'rules' => [
-                'Pemeriksaan diisi dokter kunjungan, atau Admin/Asisten/Owner (yang punya izin Edit Rekam medis) atas nama dokter tersebut di cabang aksesnya (penginput tercatat). Dokter lain hanya membaca.',
+                'Pemeriksaan diisi dokter kunjungan (Owner boleh mengisi/mengoreksi atas nama dokter, penginput tercatat). Admin/Asisten dan dokter lain hanya membaca rekam medis.',
                 'Tindakan yang dicatat dokter otomatis menjadi rincian tagihan di kasir, dengan harga sesuai tarif cabang saat itu.',
                 'Pasien beralergi wajib dikonfirmasi alerginya sebelum dikirim ke kasir.',
                 'Rekam medis tidak dihapus. Koreksi menjadi versi baru, versi lama tetap tersimpan.',
@@ -56,7 +56,7 @@ class About
                 'Satu dokter hanya boleh berada di satu lokasi pada jam yang sama; jadwal bentrok ditolak.',
                 'Pindah cabang sementara dan libur berlaku per tanggal dan tidak mengubah jadwal rutin.',
                 'Tukar jadwal dua dokter (seret sel) hanya untuk satu tanggal, hari ini atau ke depan; janji temu boleh ikut ditukar.',
-                'Absensi lokasi: absen hanya dalam radius cabang, akurasi GPS ≤ 150 m, dan di jam shift. Absen dokter = tanda hadir shift (uang duduk); absen asisten = upah shift & lembur per jam penuh. Koreksi hanya oleh Owner dan tercatat di audit.',
+                'Absensi lokasi: satu tombol Check in → Clock out; cabang = cabang terdekat dalam radius (bawaan 25 m), shift dari jam kerja cabang, akurasi GPS ≤ batas setting (bawaan 50 m). Mode uji melewati cek lokasi & jam dan ditandai "Uji". Absen dokter = tanda hadir shift (uang duduk); absen asisten = upah shift & lembur per jam penuh. Koreksi hanya oleh Owner dan tercatat di audit.',
                 'Hanya Owner dan Admin yang bisa mengubah jadwal.',
             ],
         ],
@@ -104,7 +104,7 @@ class About
         [
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
-                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan: di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
+                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan: di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
                 'Biaya admin & kartu ditagih sekali per pasien di tagihan pertamanya dan tidak masuk bagi hasil.',
                 'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
                 'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
@@ -115,6 +115,24 @@ class About
     ];
 
     public const CHANGELOG = [
+        [
+            'date' => '26 November 2026',
+            'changes' => [
+                'Tindakan & tagihan di Pemeriksaan kini seperti nota penjualan: gigi, jumlah, dan harga diketik langsung di tiap baris; "+ Tambah baris" untuk menambah tindakan.',
+                'Tindakan bertarif range kini wajib diisi harganya manual oleh Dokter/Owner saat Pemeriksaan (tidak terisi otomatis). Draf boleh disimpan dulu; kirim ke kasir ditolak selama ada harga yang belum diisi.',
+                'Pricelist 2024 diterapkan: Konsultasi Rp35.000, Cabut anak Rp200.000, Tambal anak Rp150.000–200.000, Scaling Rp200.000, Tambal gigi Rp250.000–500.000, PSA tunggal Rp250.000, PSA ganda (2-3 akar) Rp350.000; tindakan baru: Tambal + Cal LC, PSA 4-5 akar, PSA >5 akar, dan Pulpektomi/Pulpotomi anak (devitalisasi, preparasi, sterilisasi, pengisian).',
+                'Kartu baru "Lain-lain" di halaman Periksa (di bawah Resep) untuk menjual barang selain obat, mis. odol atau sikat gigi. Barang diambil dari stok cabang, ikut ditagihkan ke kasir, stok berkurang saat lunas, tidak tercatat di rekam medis, dan tidak dihitung dalam bagi hasil. Kategori stok baru: "Barang jual".',
+            ],
+        ],
+        [
+            'date' => '25 November 2026',
+            'changes' => [
+                'Absensi satu tombol: Check in lalu Clock out tanpa memilih nama, tanggal, shift, atau cabang; tombolnya ada di header atas semua halaman. Cabang dideteksi dari lokasi terdekat, shift dari jam.',
+                'Peran dirapikan menjadi 3: Owner / Administrator, Admin / Asisten (Admin dan Asisten digabung), dan Dokter. Admin/Asisten kini hanya membuka menu operasional (tanpa Laporan, Pengeluaran, Gaji, Master data); rekap & koreksi Absensi khusus Owner. Admin/Asisten tidak memeriksa pasien (rekam medis hanya baca) tetapi melihat omzet hari ini di Dashboard.',
+                'Tab baru Pengaturan › Absensi: radius lokasi (bawaan 25 m), batas akurasi GPS, dan Mode uji (tanpa cek lokasi & jam). Radius tidak lagi diisi per cabang; koordinat tetap di Master › Cabang.',
+                'Stok jadi grup menu sendiri "Manajemen stok": Posisi stok (baru), Kartu stok (gabungan Mutasi stok: semua mutasi, atau saldo berjalan bila satu barang dipilih), Pembelian & opname, dan Laporan jual-beli. Admin/Asisten hanya melihat posisi & kartu stok tanpa harga; pembelian, opname, dan laporan jual-beli khusus Owner.',
+            ],
+        ],
         [
             'date' => '24 November 2026',
             'changes' => [

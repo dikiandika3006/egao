@@ -59,7 +59,7 @@ class Pasien extends Component
 
     public function mount(): void
     {
-        if (request()->boolean('baru') && app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu()) {
+        if (request()->boolean('baru') && app(BranchContext::class)->is(Role::Admin, Role::Owner) && $this->canEditMenu()) {
             $this->create();
         }
     }
@@ -89,7 +89,7 @@ class Pasien extends Component
     /** Mendaftarkan & mengubah data pasien: Admin, Asisten, Owner yang punya izin Edit Data pasien. */
     private function authorizeWrite(): void
     {
-        abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(), 403);
+        abort_unless(app(BranchContext::class)->is(Role::Admin, Role::Owner) && $this->canEditMenu(), 403);
     }
 
     /** Impor massal pasien hanya Owner. */
@@ -305,7 +305,7 @@ class Pasien extends Component
             'patients' => $patients,
             'detail' => $detail,
             'history' => $history,
-            'canRegister' => $context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(),
+            'canRegister' => $context->is(Role::Admin, Role::Owner) && $this->canEditMenu(),
             'canImport' => $context->is(Role::Owner),
         ]);
     }

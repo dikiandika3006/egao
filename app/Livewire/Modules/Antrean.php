@@ -66,7 +66,7 @@ class Antrean extends Component
     public function register(?int $patientId = null): void
     {
         $context = app(BranchContext::class);
-        abort_unless($context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(), 403);
+        abort_unless($context->is(Role::Admin, Role::Owner) && $this->canEditMenu(), 403);
 
         $this->resetValidation();
         $this->patientSearch = '';
@@ -88,7 +88,7 @@ class Antrean extends Component
 
     public function save(BranchContext $context): void
     {
-        abort_unless($context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(), 403);
+        abort_unless($context->is(Role::Admin, Role::Owner) && $this->canEditMenu(), 403);
         $branchId = $this->targetBranch($context);
 
         $data = $this->validate([
@@ -145,7 +145,7 @@ class Antrean extends Component
 
     public function examine(int $id, BranchContext $context)
     {
-        abort_unless($context->is(Role::Dokter, Role::Admin, Role::Asisten, Role::Owner), 403);
+        abort_unless($context->is(Role::Dokter, Role::Owner), 403); // yang memeriksa hanya dokter (Owner akses penuh)
         $visit = $this->find($id, $context);
 
         return $this->redirectRoute('rekam-medis.periksa', ['visit' => $visit->id], navigate: true);
@@ -180,7 +180,7 @@ class Antrean extends Component
 
     private function canTransfer(BranchContext $context): bool
     {
-        return $context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu();
+        return $context->is(Role::Admin, Role::Owner) && $this->canEditMenu();
     }
 
     private function transferOf(int $visitId): ?Appointment
@@ -349,8 +349,8 @@ class Antrean extends Component
             'visits' => $list,
             'counts' => $counts,
             'tab' => $tab,
-            'canRegister' => $context->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu(),
-            'canExamine' => $context->is(Role::Dokter, Role::Admin, Role::Asisten, Role::Owner),
+            'canRegister' => $context->is(Role::Admin, Role::Owner) && $this->canEditMenu(),
+            'canExamine' => $context->is(Role::Dokter, Role::Owner),
             'isDoctor' => (bool) $myDoctorId,
             'candidates' => $candidates,
             'chosen' => $chosen,

@@ -11,6 +11,14 @@ trait HasCheckInOut
 
     public const SOURCE_LOCATION = 'lokasi';
 
+    /** Absen saat Mode uji aktif (lokasi & jam tidak dicek). */
+    public const SOURCE_TEST = 'uji';
+
+    public function viaTest(): bool
+    {
+        return $this->source === self::SOURCE_TEST;
+    }
+
     public function shiftLabel(): string
     {
         return self::SHIFT_LABELS[$this->shift] ?? 'Shift '.$this->shift;

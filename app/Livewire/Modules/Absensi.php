@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -29,7 +30,7 @@ class Absensi extends Component
 
     public const MENU = 'absensi';
 
-    public const READ_ACTIONS = ['closeForm'];
+    public const READ_ACTIONS = ['closeForm', 'attendanceChanged'];
 
     #[Url(as: 'bulan', except: '')]
     public string $month = '';
@@ -59,27 +60,23 @@ class Absensi extends Component
 
     // ---- Absen pribadi -------------------------------------------------------------------
 
-    public function checkIn(int $shift, float $lat, float $lng, ?float $accuracy, BranchContext $context, AttendanceService $service): void
+    /** Check in: cabang dideteksi dari lokasi, shift dari jam (Mode uji: cabang dari header, tanpa cek lokasi/jam). */
+    public function checkIn(?float $lat, ?float $lng, ?float $accuracy, BranchContext $context, AttendanceService $service): void
     {
-        $branch = $this->activeBranch($context);
-        $service->checkIn(auth()->user(), $branch, $shift, $lat, $lng, $accuracy);
-        $this->toast('Absen masuk shift '.$service->label($shift).' tercatat.');
+        $row = $service->checkIn(auth()->user(), $lat, $lng, $accuracy, $service->testBranchFor($context));
+        $this->toast('Check in '.$row->branch->shortName().' · shift '.$service->label($row->shift).' tercatat.');
     }
 
-    public function checkOut(int $shift, float $lat, float $lng, ?float $accuracy, BranchContext $context, AttendanceService $service): void
+    public function clockOut(?float $lat, ?float $lng, ?float $accuracy, AttendanceService $service): void
     {
-        $branch = $this->activeBranch($context);
-        $row = $service->checkOut(auth()->user(), $branch, $shift, $lat, $lng, $accuracy);
+        $row = $service->clockOut(auth()->user(), $lat, $lng, $accuracy);
         $over = (int) ($row->overtime_minutes ?? 0);
-        $this->toast('Absen pulang shift '.$service->label($shift).' tercatat'.($over > 0 ? ', lembur '.($over / 60).' jam.' : '.'));
+        $this->toast('Clock out shift '.$service->label($row->shift).' tercatat'.($over > 0 ? ', lembur '.($over / 60).' jam.' : '.'));
     }
 
-    private function activeBranch(BranchContext $context): Branch
-    {
-        $id = $this->requireBranch($context, 'absen');
-
-        return Branch::where('clinic_id', $this->clinicId())->findOrFail($id);
-    }
+    /** Absen dari tombol di header → muat ulang kartu "Absen saya" & rekap. */
+    #[On('absensi-diperbarui')]
+    public function attendanceChanged(): void {}
 
     // ---- Koreksi Owner -------------------------------------------------------------------
 
@@ -214,11 +211,12 @@ class Absensi extends Component
     {
         $today = now();
         $person = $service->personFor(auth()->user());
-        $branch = $context->id() ? Branch::where('clinic_id', $this->clinicId())->find($context->id()) : null;
-        $windows = $branch ? $service->windows($branch, $today) : [];
-        $mine = $person ? collect([1, 2])->mapWithKeys(fn ($s) => [$s => $service->record($person, $today, $s)])->all() : [];
+        $mine = $person ? $service->todayRecords($person, $today) : collect();
+        $open = $mine->first(fn ($r) => $r->check_in_at && ! $r->check_out_at);
+        $located = $context->options()->filter(fn (Branch $b) => $b->hasLocation());
 
-        $isManager = $context->is(Role::Owner, Role::Admin);
+        // Rekap & koreksi khusus Owner; Admin/Asisten & Dokter hanya melihat absen dirinya sendiri.
+        $isManager = $context->is(Role::Owner);
         $rows = collect();
         $start = $this->period();
         $end = $start->copy()->endOfMonth();
@@ -240,9 +238,12 @@ class Absensi extends Component
 
         return $this->page('absensi', 'livewire.modules.absensi', [
             'person' => $person,
-            'branch' => $branch,
-            'windows' => $windows,
             'mine' => $mine,
+            'open' => $open,
+            'locatedBranches' => $located,
+            'testMode' => $service->isTestMode(),
+            'testBranch' => $service->testBranchFor($context),
+            'radius' => $service->radius(),
             'today' => $today,
             'isManager' => $isManager,
             'isOwner' => $context->is(Role::Owner),
@@ -251,7 +252,6 @@ class Absensi extends Component
             'shiftLabels' => DoctorShiftAttendance::SHIFT_LABELS,
             'people' => $context->is(Role::Owner) ? $this->people() : collect(),
             'branches' => $context->options(),
-            'radiusInfo' => $branch?->hasLocation() ? $branch->attendance_radius_m : null,
         ]);
     }
 

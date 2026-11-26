@@ -65,6 +65,9 @@ class Pengaturan extends Component
     /** Formulir tab Aplikasi (khusus Owner). */
     public array $app = [];
 
+    /** Formulir tab Absensi (khusus Owner): radius, batas akurasi GPS, mode uji. */
+    public array $attendance = [];
+
     public $logo = null;
 
     public ?string $maintenanceLog = null;
@@ -106,7 +109,7 @@ class Pengaturan extends Component
     private function tabs(BranchContext $context): array
     {
         $tabs = $context->is(Role::Owner)
-            ? ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Gaji & bagi hasil', 'tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran', 'satusehat' => 'SATUSEHAT', 'google-calendar' => 'Google Calendar', 'pengguna' => 'Pengguna & peran', 'hak-akses' => 'Hak akses peran', 'audit' => 'Jejak audit']
+            ? ['klinik' => 'Klinik & cabang', 'aplikasi' => 'Aplikasi', 'bagi-hasil' => 'Gaji & bagi hasil', 'absensi' => 'Absensi', 'tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran', 'satusehat' => 'SATUSEHAT', 'google-calendar' => 'Google Calendar', 'pengguna' => 'Pengguna & peran', 'hak-akses' => 'Hak akses peran', 'audit' => 'Jejak audit']
             : ['bagi-hasil' => 'Gaji & bagi hasil', 'tindakan' => 'Tindakan & tarif', 'kategori' => 'Kategori pengeluaran'];
 
         return array_filter($tabs, fn ($k) => ! isset(self::MASTER_TABS[$k]) || Access::can(self::MASTER_TABS[$k], 'lihat'), ARRAY_FILTER_USE_KEY);
@@ -325,6 +328,34 @@ class Pengaturan extends Component
         $this->toast('Pengaturan aplikasi disimpan.');
     }
 
+    private function loadAttendance(): void
+    {
+        $this->attendance = [
+            'radius_m' => (string) Settings::int('attendance_radius_m'),
+            'max_accuracy_m' => (string) Settings::int('attendance_max_accuracy_m'),
+            'test_mode' => Settings::bool('attendance_test_mode'),
+        ];
+    }
+
+    public function saveAttendance(): void
+    {
+        abort_unless($this->isOwner(), 403);
+        $v = $this->validate([
+            'attendance.radius_m' => ['required', 'integer', 'min:10', 'max:2000'],
+            'attendance.max_accuracy_m' => ['required', 'integer', 'min:10', 'max:500'],
+            'attendance.test_mode' => ['boolean'],
+        ], attributes: ['attendance.radius_m' => 'radius absensi', 'attendance.max_accuracy_m' => 'batas akurasi GPS'])['attendance'];
+
+        $before = ['radius_m' => Settings::int('attendance_radius_m'), 'max_accuracy_m' => Settings::int('attendance_max_accuracy_m'), 'test_mode' => Settings::bool('attendance_test_mode')];
+        Settings::set('attendance_radius_m', (string) (int) $v['radius_m']);
+        Settings::set('attendance_max_accuracy_m', (string) (int) $v['max_accuracy_m']);
+        Settings::set('attendance_test_mode', $v['test_mode'] ? '1' : '0');
+
+        AuditLog::record('settings.absensi', null, ['before' => $before, 'after' => $v]);
+        $this->loadAttendance();
+        $this->toast('Pengaturan absensi disimpan.');
+    }
+
     public function removeLogo(): void
     {
         abort_unless($this->isOwner(), 403);
@@ -413,7 +444,6 @@ class Pengaturan extends Component
             // Titik absensi berbasis lokasi (kosong = absen lokasi belum bisa di cabang ini).
             'latitude' => $b->latitude !== null ? (string) $b->latitude : '',
             'longitude' => $b->longitude !== null ? (string) $b->longitude : '',
-            'attendance_radius_m' => (string) $b->attendance_radius_m,
             // Jam kerja per hari: tutup + sesi 1 (wajib bila buka) + sesi 2 (opsional, mis. setelah istirahat).
             'hours' => collect($b->weeklyHours())->map(fn (array $s) => [
                 'closed' => $s === [],
@@ -436,19 +466,16 @@ class Pengaturan extends Component
             'data.is_active' => ['boolean'],
             'data.latitude' => ['nullable', 'required_with:data.longitude', 'numeric', 'between:-90,90'],
             'data.longitude' => ['nullable', 'required_with:data.latitude', 'numeric', 'between:-180,180'],
-            'data.attendance_radius_m' => ['required', 'integer', 'min:20', 'max:2000'],
             'data.hours' => ['required', 'array'],
             'data.hours.*.closed' => ['boolean'],
             'data.hours.*.s1_start' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s1_end' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_start' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_end' => ['nullable', 'date_format:H:i'],
-        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi', 'data.latitude' => 'latitude', 'data.longitude' => 'longitude',
-            'data.attendance_radius_m' => 'radius absensi'])['data'];
+        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi', 'data.latitude' => 'latitude', 'data.longitude' => 'longitude'])['data'];
 
         $v['latitude'] = ($v['latitude'] ?? '') === '' ? null : (float) $v['latitude'];
         $v['longitude'] = ($v['longitude'] ?? '') === '' ? null : (float) $v['longitude'];
-        $v['attendance_radius_m'] = (int) $v['attendance_radius_m'];
 
         $hours = $this->parseHours($v['hours']);
         unset($v['hours']);
@@ -827,6 +854,9 @@ class Pengaturan extends Component
         if ($this->tab === 'aplikasi' && $this->app === []) {
             $this->loadApp();
         }
+        if ($this->tab === 'absensi' && $this->attendance === []) {
+            $this->loadAttendance();
+        }
         if ($this->tab === 'bagi-hasil' && $this->shares === []) {
             $this->loadShares();
         }
@@ -846,6 +876,7 @@ class Pengaturan extends Component
                     ->with(['doctor', 'procedure'])->get()->sortBy(fn ($s) => $s->doctor->name.$s->procedure->name)->values(),
             ],
             'aplikasi' => ['clinic' => Clinic::findOrFail($this->clinicId()), 'methods' => Payment::METHODS, 'pendingMigrations' => $this->pendingMigrations()],
+            'absensi' => ['locationBranches' => Branch::where('clinic_id', $this->clinicId())->orderBy('id')->get()],
             'tindakan' => [
                 'procedures' => Procedure::where('clinic_id', $this->clinicId())
                     ->when(trim($this->procedureSearch) !== '', function ($q) {

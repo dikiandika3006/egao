@@ -84,7 +84,7 @@ class Jadwal extends Component
 
     private function canEdit(BranchContext $context): bool
     {
-        return $context->is(Role::Owner, Role::Admin, Role::Asisten) && $this->canEditMenu();
+        return $context->is(Role::Owner, Role::Admin) && $this->canEditMenu();
     }
 
     // ---- Jadwal rutin (FR-JDW-06/07) ------------------------------------------------

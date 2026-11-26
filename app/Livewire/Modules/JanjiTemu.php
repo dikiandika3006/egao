@@ -94,7 +94,7 @@ class JanjiTemu extends Component
 
     private function canWrite(): bool
     {
-        return app(BranchContext::class)->is(Role::Admin, Role::Asisten, Role::Owner) && $this->canEditMenu();
+        return app(BranchContext::class)->is(Role::Admin, Role::Owner) && $this->canEditMenu();
     }
 
     private function resetForm(): void

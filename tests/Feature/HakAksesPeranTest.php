@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Support\Access;
 use App\Support\BranchContext;
 use App\Support\Navigation;
+use App\Support\Settings;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -36,49 +38,75 @@ function ubahAkses(string $role, string $menu, array $perm): void
     Access::save($matrix);
 }
 
-it('bawaan sama dengan hak akses lama per peran', function () {
-    foreach ([Role::Admin, Role::Dokter] as $role) {
-        foreach (Access::menus() as $key => $item) {
-            $old = in_array($role, $item['roles'], true);
-            expect(Access::can($key, 'lihat', $role))->toBe($key === 'dashboard' ? true : $old, "$key {$role->value}");
-            expect(Access::can($key, 'edit', $role))->toBe($old, "$key edit {$role->value}");
-        }
+it('hanya 3 peran; bawaan Dokter mengikuti Navigation', function () {
+    expect(array_map(fn ($r) => $r->value, Role::cases()))->toBe(['owner', 'admin', 'dokter']);
+
+    foreach (Access::menus() as $key => $item) {
+        $old = in_array(Role::Dokter, $item['roles'], true);
+        expect(Access::can($key, 'lihat', Role::Dokter))->toBe($key === 'dashboard' ? true : $old, "$key dokter");
+        expect(Access::can($key, 'edit', Role::Dokter))->toBe($old, "$key edit dokter");
     }
 
     expect(Access::can('gaji', 'lihat', Role::Owner))->toBeTrue()
+        ->and(Access::can('absensi', 'lihat', Role::Owner))->toBeTrue()
         ->and(Access::can('pengaturan', 'lihat', Role::Admin))->toBeFalse()
-        ->and(Access::can('tentang', 'lihat', Role::Asisten))->toBeTrue();
+        ->and(Access::can('tentang', 'lihat', Role::Admin))->toBeTrue();
 });
 
-it('peran Asisten punya bawaan sendiri', function () {
-    expect(Access::can('antrean', 'edit', Role::Asisten))->toBeTrue()
-        ->and(Access::can('pasien', 'lihat', Role::Asisten))->toBeTrue()
-        ->and(Access::can('pasien', 'edit', Role::Asisten))->toBeFalse()
-        ->and(Access::can('kasir', 'lihat', Role::Asisten))->toBeFalse()
-        ->and(Access::can('dashboard', 'keuangan', Role::Asisten))->toBeFalse();
+it('peran Admin / Asisten: menu operasional saja', function () {
+    foreach (['dashboard', 'antrean', 'janji', 'pasien', 'kasir', 'jadwal', 'absensi', 'lab'] as $menu) {
+        expect(Access::can($menu, 'edit', Role::Admin))->toBeTrue($menu);
+    }
+    // Stok: hanya melihat posisi & kartu stok tanpa harga; pembelian/opname & laporan jual-beli tertutup.
+    foreach (['posisi-stok', 'kartu-stok'] as $menu) {
+        expect(Access::can($menu, 'lihat', Role::Admin))->toBeTrue($menu)
+            ->and(Access::can($menu, 'edit', Role::Admin))->toBeFalse($menu)
+            ->and(Access::can($menu, 'keuangan', Role::Admin))->toBeFalse($menu);
+    }
+    expect(Access::can('stok', 'lihat', Role::Admin))->toBeFalse()
+        ->and(Access::can('laporan-stok', 'lihat', Role::Admin))->toBeFalse();
+    // Rekam medis hanya baca: yang memeriksa dokter.
+    expect(Access::can('rekam-medis', 'lihat', Role::Admin))->toBeTrue()
+        ->and(Access::can('rekam-medis', 'edit', Role::Admin))->toBeFalse();
+    foreach (['laporan', 'pengeluaran', 'gaji', 'tarif-gaji', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran'] as $menu) {
+        expect(Access::can($menu, 'lihat', Role::Admin))->toBeFalse($menu);
+    }
+    expect(Access::can('dashboard', 'keuangan', Role::Admin))->toBeTrue(); // omzet hari ini tampil untuk totalan kas
 });
 
-it('akun Asisten bisa login, membuka antrean, tetapi tidak membuka kasir', function () {
-    $user = User::create([
-        'clinic_id' => Clinic::firstOrFail()->id, 'name' => 'Asisten Batu', 'username' => 'asisten.batu',
-        'password' => 'rahasia123', 'roles' => [Role::Asisten->value], 'is_active' => true,
-    ]);
-    $user->branches()->attach($this->batu->id);
-
-    aksesLogin('asisten.batu', 'asisten', $this->batu->id);
+it('akun Admin membuka antrean & kasir, tetapi tidak Laporan, Pengeluaran, atau Master data', function () {
+    aksesLogin('admin', 'admin', $this->batu->id);
 
     $this->get(route('antrean'))->assertOk();
-    $this->get(route('kasir'))->assertForbidden();
-    $this->get(route('dashboard'))->assertOk()->assertDontSee('href="'.route('kasir').'"', false);
+    $this->get(route('kasir'))->assertOk();
+    $this->get(route('laporan'))->assertForbidden();
+    $this->get(route('pengeluaran'))->assertForbidden();
+    $this->get(route('dokter'))->assertForbidden();
+    $this->get(route('dashboard'))->assertOk()->assertDontSee('href="'.route('laporan').'"', false);
 });
 
-it('menu yang dimatikan hilang dari sidebar dan halamannya ditolak', function () {
-    ubahAkses('admin', 'pengeluaran', ['lihat' => false]);
+it('migrasi menggabungkan peran asisten ke admin', function () {
+    $user = User::create([
+        'clinic_id' => Clinic::firstOrFail()->id, 'name' => 'Asisten Lama', 'username' => 'asisten.lama',
+        'password' => 'rahasia123', 'roles' => ['admin'], 'is_active' => true,
+    ]);
+    DB::table('users')->where('id', $user->id)->update(['roles' => json_encode(['asisten', 'admin'])]);
+    Settings::set(Access::KEY, json_encode(['asisten' => ['antrean' => ['lihat' => true]], 'dokter' => []]));
+
+    (require database_path('migrations/2026_11_25_000001_gabung_peran_asisten_ke_admin.php'))->up();
+
+    expect($user->fresh()->roles)->toBe(['admin'])
+        ->and(json_decode(Settings::get(Access::KEY), true))->toBe(['dokter' => []]);
+});
+
+it('menu yang dimatikan hilang dari sidebar dan halamannya ditolak; Owner bisa membuka menu tambahan', function () {
+    ubahAkses('admin', 'kasir', ['lihat' => false]);
+    ubahAkses('admin', 'laporan', ['lihat' => true]);
 
     aksesLogin('admin', 'admin', $this->batu->id);
 
-    expect(Navigation::visible(Role::Admin))->not->toHaveKey('pengeluaran');
-    $this->get(route('pengeluaran'))->assertForbidden();
+    expect(Navigation::visible(Role::Admin))->not->toHaveKey('kasir')->toHaveKey('laporan');
+    $this->get(route('kasir'))->assertForbidden();
     $this->get(route('laporan'))->assertOk();
 });
 
@@ -93,6 +121,7 @@ it('tanpa izin Edit aksi tulis ditolak, aksi lihat tetap jalan', function () {
 });
 
 it('tanpa izin Keuangan angka rupiah disamarkan', function () {
+    ubahAkses('admin', 'master-barang', ['lihat' => true, 'edit' => true, 'keuangan' => true]);
     aksesLogin('admin', 'admin', $this->batu->id);
     $this->get(route('stok', ['tab' => 'barang']))->assertOk()->assertDontSee('Rp•••');
 
@@ -101,6 +130,7 @@ it('tanpa izin Keuangan angka rupiah disamarkan', function () {
 });
 
 it('pintasan Master data tetap membuka halaman induk walau menu induk dimatikan', function () {
+    ubahAkses('admin', 'master-barang', ['lihat' => true]);
     ubahAkses('admin', 'stok', ['lihat' => false]);
     aksesLogin('admin', 'admin', $this->batu->id);
 

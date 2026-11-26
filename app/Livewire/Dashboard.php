@@ -30,7 +30,7 @@ class Dashboard extends Component
 
     public function callPatient(int $visitId, BranchContext $context): void
     {
-        abort_unless($context->is(Role::Admin, Role::Asisten, Role::Dokter, Role::Owner) && Access::can('antrean', 'edit'), 403);
+        abort_unless($context->is(Role::Admin, Role::Dokter, Role::Owner) && Access::can('antrean', 'edit'), 403);
 
         $visit = Visit::forBranch($context->id())->findOrFail($visitId);
 

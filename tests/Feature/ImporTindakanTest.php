@@ -65,7 +65,7 @@ it('mengimpor tindakan baru ke semua cabang dan memperbarui tarif tindakan lama'
 });
 
 it('hanya mengisi tarif cabang yang dipilih dan kode bentrok diberi angka', function () {
-    tindakanLogin('admin', 'admin', $this->batu->id);
+    tindakanLogin('owner', 'owner', $this->batu->id);
     Procedure::create(['clinic_id' => $this->batu->clinic_id, 'code' => 'TA', 'name' => 'Lain', 'is_active' => true]);
     $before = Procedure::where('code', 'KONS')->with('prices')->first()->priceFor($this->malang->id);
 

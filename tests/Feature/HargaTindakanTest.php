@@ -56,7 +56,7 @@ it('dokter menaikkan harga tindakan dan tersimpan di tagihan', function () {
     $raised = $this->standard + 50000;
 
     hargaExam()
-        ->assertSee('Ubah harga')
+        ->assertSeeHtml('data-price-input')
         ->set('procedures.0.unit_price', (string) $raised)
         ->assertHasNoErrors()
         ->call('saveDraft')
@@ -75,7 +75,7 @@ it('harga di bawah standar ditolak di form dan di server', function () {
     hargaExam()
         ->set('procedures.0.unit_price', (string) ($this->standard - 1000))
         ->assertHasErrors('procedures.0.unit_price')
-        ->assertSet('procedures.0.unit_price', null);
+        ->assertSet('procedures.0.unit_price', $this->standard);
 
     // Lewati komponen: service tetap menolak.
     expect(fn () => app(ExamService::class)->saveDraft($this->visit, examPayload(
@@ -102,14 +102,14 @@ it('admin tidak bisa mengubah harga tetapi kenaikan dokter tetap terjaga', funct
 
     // Admin mengirim harga → ditolak.
     Livewire::test(Exam::class, ['visit' => $this->visit])
-        ->assertDontSee('Ubah harga')
+        ->assertDontSeeHtml('data-price-input')
         ->set('procedures.0.unit_price', '1')
         ->assertForbidden();
 
-    // Harga dari klien Admin diabaikan oleh service; kenaikan yang tersimpan dipertahankan.
-    app(ExamService::class)->saveDraft($this->visit->fresh(), examPayload(
+    // Admin/Asisten tidak memeriksa: simpan lewat service pun ditolak; kenaikan dokter tetap.
+    expect(fn () => app(ExamService::class)->saveDraft($this->visit->fresh(), examPayload(
         [['procedure_id' => $this->procedure->id, 'quantity' => 2, 'unit_price' => $this->standard + 999999]],
-    ));
+    )))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
     expect(savedItem()->unit_price)->toBe($this->standard + 25000);
 });

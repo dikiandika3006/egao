@@ -22,8 +22,7 @@ function masukSebagaiPeran(string $username, string $role, string|int $branch)
 it('mengelompokkan data master dalam satu grup', function () {
     expect(array_keys(Navigation::visible(Role::Owner, 'master')))
         ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran', 'tarif-gaji'])
-        ->and(array_keys(Navigation::visible(Role::Admin, 'master')))
-        ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran'])
+        ->and(array_keys(Navigation::visible(Role::Admin, 'master')))->toBe(['pasien'])
         ->and(array_keys(Navigation::visible(Role::Dokter, 'master')))->toBe(['pasien'])
         ->and(Navigation::visible(Role::Owner, 'klinik'))->not->toHaveKeys(['pasien', 'dokter']);
 });
@@ -51,8 +50,10 @@ it('sidebar menampilkan grup Master data sesuai peran', function () {
     masukSebagaiPeran('admin', 'admin', $this->batu->id)
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertSeeInOrder(['Ruang klinik', 'Master data', 'Data pasien', 'Data dokter', 'Master barang', 'Tindakan &amp; tarif', 'Kategori pengeluaran', 'Manajemen'], false)
-        ->assertSee(route('stok', ['tab' => 'barang']), false);
+        ->assertSeeInOrder(['Ruang klinik', 'Master data', 'Data pasien', 'Manajemen stok', 'Posisi stok', 'Manajemen', 'Order lab'], false)
+        ->assertDontSee('Data dokter')
+        ->assertDontSee('Kategori pengeluaran')
+        ->assertDontSee(route('laporan'), false);
 
     masukSebagaiPeran('nadia', 'dokter', $this->batu->id)
         ->get(route('dashboard'))
@@ -105,7 +106,13 @@ it('Pengaturan hanya berisi pengaturan program; tab data master tidak tampil di 
         ->assertDontSee("setTab('klinik')", false);
 });
 
-it('menu Pengaturan disembunyikan untuk Admin, data master tetap bisa dibuka', function () {
+it('menu Pengaturan disembunyikan untuk Admin; data master yang dibuka Owner tetap bisa diakses', function () {
+    $matrix = \App\Support\Access::matrix();
+    foreach (['tindakan', 'kategori-pengeluaran'] as $menu) {
+        $matrix['admin'][$menu] = ['lihat' => true, 'edit' => true, 'keuangan' => true];
+    }
+    \App\Support\Access::save($matrix);
+
     expect(Navigation::visible(Role::Admin, 'manajemen'))->not->toHaveKey('pengaturan')
         ->and(Navigation::visible(Role::Owner, 'manajemen'))->toHaveKey('pengaturan')
         ->and(Navigation::visible(Role::Admin, 'master'))->not->toHaveKey('tarif-gaji');

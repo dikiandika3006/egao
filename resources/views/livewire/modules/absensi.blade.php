@@ -6,71 +6,76 @@
         @endif
     </x-page-header>
 
-    {{-- Absen pribadi hari ini --}}
+    {{-- Absen pribadi hari ini: satu tombol Check in → Clock out. Cabang dari lokasi, shift dari jam. --}}
     <section class="card mt-7 p-5 lg:p-6"
         x-data="{
             busy: false, msg: '',
-            locate(action, shift) {
-                if (! navigator.geolocation) { this.msg = 'Browser tidak mendukung lokasi.'; return }
-                if (! window.isSecureContext) { this.msg = 'Lokasi hanya bisa diambil lewat koneksi aman (HTTPS).'; return }
-                this.busy = true; this.msg = 'Mengambil lokasi…';
+            locate(action) {
+                const testMode = @js($testMode);
+                const send = (lat, lng, acc) => { this.msg = ''; $wire[action](lat, lng, acc).finally(() => this.busy = false) };
+                const fail = (text) => { if (testMode) { send(null, null, null) } else { this.busy = false; this.msg = text } };
+                this.busy = true;
+                if (! navigator.geolocation) return fail('Browser tidak mendukung lokasi.');
+                if (! window.isSecureContext) return fail('Lokasi hanya bisa diambil lewat koneksi aman (HTTPS).');
+                this.msg = 'Mengambil lokasi…';
                 navigator.geolocation.getCurrentPosition(
-                    p => { this.msg = ''; $wire[action](shift, p.coords.latitude, p.coords.longitude, p.coords.accuracy).finally(() => this.busy = false) },
-                    e => { this.busy = false; this.msg = 'Gagal mengambil lokasi: ' + e.message + '. Izinkan akses lokasi untuk situs ini.' },
+                    p => send(p.coords.latitude, p.coords.longitude, p.coords.accuracy),
+                    e => fail('Gagal mengambil lokasi: ' + e.message + '. Izinkan akses lokasi untuk situs ini.'),
                     { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
             }
         }">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+        @if ($testMode)
+            <p class="mb-4 rounded-xl bg-amber-soft px-4 py-2.5 text-xs text-amber-ink">
+                <b>Mode uji aktif.</b> Lokasi &amp; jam tidak dicek, cabang = pilihan di header{{ $testBranch ? ' ('.$testBranch->name.')' : '' }}. Matikan di Pengaturan › Absensi sebelum dipakai sungguhan.
+            </p>
+        @endif
+
+        <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <p class="eyebrow">Absen saya · {{ $today->translatedFormat('l, j F Y') }}</p>
-                <p class="mt-1 text-sm text-muted">
-                    @if (! $person)
-                        Akun Anda belum terhubung ke data dokter atau karyawan, jadi belum bisa absen.
-                    @elseif (! $branch)
-                        Pilih cabang tempat Anda bertugas (bukan "Semua cabang") untuk absen.
-                    @elseif (! $radiusInfo)
-                        Lokasi {{ $branch->name }} belum diatur Owner (Pengaturan › Cabang).
-                    @else
-                        {{ $person['model']->name }} · {{ $branch->name }} · harus berada dalam {{ $radiusInfo }} m dari klinik.
-                    @endif
-                </p>
+                @if (! $person)
+                    <p class="mt-1 text-sm text-muted">Akun Anda belum terhubung ke data dokter atau karyawan, jadi belum bisa absen.</p>
+                @else
+                    <p class="mt-1 text-lg font-semibold">{{ $person['model']->name }}</p>
+                    <p class="text-sm text-muted">
+                        @if ($open)
+                            Check in {{ $open->check_in_at->format('H:i') }} · {{ $open->branch?->name }} · Shift {{ $open->shiftLabel() }}
+                        @elseif (! $testMode && $locatedBranches->isEmpty())
+                            Koordinat cabang belum diatur Owner (Master › Cabang).
+                        @else
+                            Cabang & shift terdeteksi otomatis. Harus berada dalam {{ $radius }} m dari klinik.
+                        @endif
+                    </p>
+                @endif
             </div>
+            @if ($person && $canEdit)
+                @if ($open)
+                    <button type="button" class="btn-primary min-h-12 px-8 text-base" x-bind:disabled="busy" x-on:click="locate('clockOut')">Clock out</button>
+                @else
+                    <button type="button" class="btn-primary min-h-12 px-8 text-base" x-bind:disabled="busy" x-on:click="locate('checkIn')">Check in</button>
+                @endif
+            @endif
         </div>
         <x-error for="absen" />
         <p x-show="msg" x-text="msg" class="mt-2 text-xs text-amber-ink"></p>
 
-        @if ($person && $branch)
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                @foreach ($shiftLabels as $shift => $label)
-                    @php $win = $windows[$shift] ?? null; $rec = $mine[$shift] ?? null; @endphp
-                    <div wire:key="me-{{ $shift }}" class="rounded-xl bg-mist p-4">
-                        <div class="flex items-center justify-between">
-                            <p class="font-semibold">Shift {{ $label }}</p>
-                            <span class="text-xs text-muted">{{ $win ? Format::jam($win[0]).'–'.Format::jam($win[1]) : 'Tutup' }}</span>
-                        </div>
-                        <p class="mt-2 text-xs text-muted">
-                            Masuk: <b class="text-brand-700">{{ $rec?->check_in_at?->format('H:i') ?? ($rec ? 'dicentang Owner' : '—') }}</b>
-                            · Pulang: <b class="text-brand-700">{{ $rec?->check_out_at?->format('H:i') ?? '—' }}</b>
-                            @if (($rec->overtime_minutes ?? 0) > 0) · Lembur {{ $rec->overtime_minutes / 60 }} jam @endif
+        @if ($person && $mine->isNotEmpty())
+            <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                @foreach ($mine as $rec)
+                    <div wire:key="me-{{ $rec->id }}" class="rounded-xl bg-mist px-4 py-3 text-xs text-muted">
+                        <p class="text-sm font-semibold text-brand-700">Shift {{ $rec->shiftLabel() }} · {{ $rec->branch?->shortName() }}
+                            @if ($rec->viaTest())<span class="pill ml-1 bg-amber-soft text-[10px] text-amber-ink">Uji</span>@endif
                         </p>
-                        @if ($win && $canEdit)
-                            <div class="mt-3 flex gap-2">
-                                @if (! $rec?->check_in_at)
-                                    <button type="button" class="btn-primary min-h-10 flex-1" x-bind:disabled="busy" x-on:click="locate('checkIn', {{ $shift }})">Absen masuk</button>
-                                @elseif (! $rec->check_out_at)
-                                    <button type="button" class="btn-primary min-h-10 flex-1" x-bind:disabled="busy" x-on:click="locate('checkOut', {{ $shift }})">Absen pulang</button>
-                                @else
-                                    <span class="pill bg-leaf-100 text-brand-600">Selesai</span>
-                                @endif
-                            </div>
-                        @endif
+                        Masuk <b class="text-brand-700">{{ $rec->check_in_at?->format('H:i') ?? 'dicentang Owner' }}</b>
+                        · Pulang <b class="text-brand-700">{{ $rec->check_out_at?->format('H:i') ?? '—' }}</b>
+                        @if (($rec->overtime_minutes ?? 0) > 0) · Lembur {{ $rec->overtime_minutes / 60 }} jam @endif
                     </div>
                 @endforeach
             </div>
         @endif
     </section>
 
-    {{-- Rekap bulanan (Owner & Admin) --}}
+    {{-- Rekap bulanan (khusus Owner) --}}
     @if ($isManager)
         <section class="card mt-6 overflow-x-auto">
             <div class="flex flex-wrap items-center justify-between gap-3 p-5 pb-3">
@@ -97,7 +102,7 @@
                             <td class="text-right">{{ $a->workedMinutes() ? round($a->workedMinutes() / 60, 1).' j' : '—' }}</td>
                             <td class="text-right">{{ ($a->overtime_minutes ?? 0) > 0 ? round($a->overtime_minutes / 60, 1).' j' : '—' }}</td>
                             <td>
-                                <span @class(['pill text-[11px]', 'bg-leaf-100 text-brand-600' => $a->viaLocation(), 'bg-mist text-muted' => ! $a->viaLocation()])>{{ $a->viaLocation() ? 'Lokasi'.($a->distance_m !== null ? ' · '.$a->distance_m.' m' : '') : 'Manual' }}</span>
+                                <span @class(['pill text-[11px]', 'bg-leaf-100 text-brand-600' => $a->viaLocation(), 'bg-amber-soft text-amber-ink' => $a->viaTest(), 'bg-mist text-muted' => ! $a->viaLocation() && ! $a->viaTest()])>{{ $a->viaTest() ? 'Uji' : ($a->viaLocation() ? 'Lokasi'.($a->distance_m !== null ? ' · '.$a->distance_m.' m' : '') : 'Manual') }}</span>
                                 @if ($a->note)<p class="mt-0.5 text-[11px] text-muted">{{ $a->note }}</p>@endif
                             </td>
                             <td class="pr-5 text-right">

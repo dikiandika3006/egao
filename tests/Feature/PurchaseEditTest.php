@@ -50,7 +50,7 @@ function makePurchase(int $itemId, int $qty, int $cost): Purchase
 }
 
 it('mengubah jumlah & harga pembelian: stok, pengeluaran, dan nilai beli ikut terkoreksi', function () {
-    purchaseLogin('admin', 'admin', $this->batu->id);
+    purchaseLogin('owner', 'owner', $this->batu->id);
     $stockBefore = qtyAt($this->item->id, $this->batu->id);
     $valueBefore = buyValue($this->item->id);
 
@@ -75,7 +75,7 @@ it('mengubah jumlah & harga pembelian: stok, pengeluaran, dan nilai beli ikut te
 });
 
 it('menolak pengurangan bila stok pembelian sudah terpakai', function () {
-    purchaseLogin('admin', 'admin', $this->batu->id);
+    purchaseLogin('owner', 'owner', $this->batu->id);
     $p = makePurchase($this->item->id, 10, 300);
     $left = qtyAt($this->item->id, $this->batu->id);
 
@@ -93,7 +93,7 @@ it('menolak pengurangan bila stok pembelian sudah terpakai', function () {
 });
 
 it('membatalkan pembelian: stok kembali dan pengeluaran dihapus', function () {
-    purchaseLogin('admin', 'admin', $this->batu->id);
+    purchaseLogin('owner', 'owner', $this->batu->id);
     $before = qtyAt($this->item->id, $this->batu->id);
     $p = makePurchase($this->item->id, 20, 500);
     $expenseId = $p->expense_id;
@@ -141,7 +141,11 @@ it('owner di semua cabang bisa memindahkan pembelian ke cabang lain', function (
         ->and(Expense::find($p->fresh()->expense_id)->branch_id)->toBe($this->malang->id);
 });
 
-it('admin tidak bisa mengubah pembelian cabang lain', function () {
+it('admin yang diberi akses stok tetap tidak bisa mengubah pembelian cabang lain', function () {
+    // Bawaan Admin tidak boleh pembelian (khusus Owner); Owner bisa membukanya lewat Hak akses peran.
+    $matrix = \App\Support\Access::matrix();
+    $matrix['admin']['stok'] = ['lihat' => true, 'edit' => true, 'keuangan' => true];
+    \App\Support\Access::save($matrix);
     purchaseLogin('admin.malang', 'admin', $this->malang->id);
     $other = Purchase::create(['branch_id' => $this->batu->id, 'date' => today(), 'total' => 0]);
 

@@ -36,6 +36,10 @@ class Settings
         'admin_fee' => '5000',
         // Margin bawaan harga jual obat/produk (% di atas HPP).
         'default_margin_percent' => '0',
+        // Absensi (Pengaturan → Absensi). Koordinat per cabang di Master › Cabang.
+        'attendance_radius_m' => '25',
+        'attendance_max_accuracy_m' => '50',
+        'attendance_test_mode' => '0',
         // SATUSEHAT (Pengaturan → SATUSEHAT). Kredensial per cabang ada di tabel branches.
         'satusehat_enabled' => '0',
         'satusehat_env' => 'sandbox',

@@ -173,20 +173,22 @@ it('owner bisa mengisi pemeriksaan atas nama dokter kunjungan', function () {
         ->assertHasNoErrors();
 });
 
-it('admin bisa mengisi pemeriksaan di cabangnya, tidak di cabang lain', function () {
+it('Admin/Asisten hanya membaca pemeriksaan; yang memeriksa dokter (Owner boleh mengisi)', function () {
     $visit = todayVisit('Ahmad Fauzi');
+    $status = $visit->status;
     loginAs('admin', 'admin', $this->batu->id);
 
-    $this->get(route('rekam-medis.periksa', $visit))->assertOk();
-    Livewire::test(Exam::class, ['visit' => $visit])
-        ->assertDontSee('Mode baca saja')
-        ->call('addDiagnosis', 'K05.1')
-        ->assertHasNoErrors();
-
-    loginAs('admin.malang', 'admin', $this->malang->id);
+    $this->get(route('rekam-medis.periksa', $visit))->assertOk()->assertSee('Mode baca saja');
+    expect($visit->fresh()->status)->toBe($status); // membuka tidak memulai periksa
     Livewire::test(Exam::class, ['visit' => $visit])
         ->call('addDiagnosis', 'K05.1')
         ->assertForbidden();
+    $this->get(route('antrean'))->assertOk()->assertDontSee(route('rekam-medis.periksa', $visit), false);
+
+    loginAs('owner', 'owner', $this->batu->id);
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->call('addDiagnosis', 'K05.1')
+        ->assertHasNoErrors();
 });
 
 it('koreksi setelah final membuat versi baru dan tagihan tidak berubah (FR-RM-22)', function () {
@@ -254,7 +256,7 @@ it('tindakan dipilih lewat kolom cari yang bisa diketik (nama/kode)', function (
 
     Livewire::test(Exam::class, ['visit' => $visit])
         ->set('addingProcedure', true)
-        ->assertSee('Ketik nama/kode tindakan')
+        ->assertSee('Cari tindakan (nama/kode)')
         ->assertSee('CBUT')
         ->assertDontSeeHtml('<option value="">Pilih tindakan');
 });

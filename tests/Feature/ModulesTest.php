@@ -179,7 +179,7 @@ it('dokter tidak bisa mengubah jadwal', function () {
 });
 
 it('mencatat pengeluaran dan menolak kategori sistem', function () {
-    moduleLogin('admin', 'admin', $this->batu->id);
+    moduleLogin('owner', 'owner', $this->batu->id);
     $system = ExpenseCategory::where('is_system', true)->first();
     $normal = ExpenseCategory::where('is_system', false)->first();
 

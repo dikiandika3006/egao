@@ -17,7 +17,7 @@
         get dirty() { return this.typing || $wire.unsaved },
         mark(e) {
             const model = [...e.target.attributes].find(a => a.name.startsWith('wire:model'));
-            if (model && /^(complaint|plan|anamnesis|bloodPressure|currentMedication|prescriptions|procedures)/.test(model.value)) this.typing = true;
+            if (model && /^(complaint|plan|anamnesis|bloodPressure|currentMedication|prescriptions|procedures|goods)/.test(model.value)) this.typing = true;
         },
         init() {
             this.offCommit = Livewire.hook('commit', ({ component, respond }) => {
@@ -337,6 +337,11 @@
 
                         return $d ? ['i' => $i, 'item' => $d, 'qty' => max(1, (int) ($rx['item_quantity'] ?? 1))] : null;
                     })->filter();
+                    $goodsLines = collect($goods)->map(function ($g) {
+                        $d = filled($g['item_id'] ?? null) ? $this->goodsOptions->get((int) $g['item_id']) : null;
+
+                        return $d ? ['item' => $d, 'qty' => max(1, (int) ($g['quantity'] ?? 1))] : null;
+                    })->filter();
                 @endphp
 
                 <div class="mt-5 flex items-baseline justify-between border-b border-line pb-2">
@@ -351,70 +356,80 @@
                             $maxPrice = $this->maxPrice($p['procedure_id']);
                             $price = $this->priceOf($p);
                             $mayLower = ! empty($p['is_incomplete']) || $opt?->allow_lower_price;
-                            $outOfRange = $price < $standard || $price > ($maxPrice ?? $standard);
+                            $needsPrice = $this->needsPrice($p);
+                            $outOfRange = ! $needsPrice && ($price < $standard || $price > ($maxPrice ?? $standard));
                         @endphp
-                        <li wire:key="p{{ $i }}-{{ $p['procedure_id'] }}" class="-mx-2 flex items-start justify-between gap-3 rounded-lg px-2 py-1.5"
-                            x-data="{ editPrice: false }"
+                        @php
+                            $editPrice = $billing && $this->canEditPrice && $opt && ! $opt->price_locked;
+                            $priceError = $errors->first("procedures.{$i}.unit_price");
+                            $showIncomplete = $editPrice && (! empty($p['is_incomplete']) || str_contains((string) $priceError, 'Tidak selesai'));
+                        @endphp
+                        {{-- Baris seperti nota: nama + hapus, lalu gigi / qty / harga diketik langsung. --}}
+                        <li wire:key="p{{ $i }}-{{ $p['procedure_id'] }}" class="-mx-2 rounded-lg px-2 py-2"
                             x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
-                            <div class="min-w-0">
-                                <p>{{ $opt?->name ?? ($p['name'] ?? 'Tindakan') }}</p>
-                                @if ($p['quantity'] > 1 || $p['tooth'] || $price !== $standard || $maxPrice)
-                                    <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
-                                        @if ($maxPrice)
-                                            <span @class(['ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold', 'bg-amber-soft text-amber-ink' => $outOfRange, 'bg-canvas text-muted' => ! $outOfRange])>tarif {{ Format::rupiah($standard) }} – {{ Format::rupiah($maxPrice) }}</span>
-                                        @elseif ($price !== $standard)<span class="ml-1 rounded bg-amber-soft px-1.5 py-0.5 text-[10px] font-semibold text-amber-ink">standar {{ Format::rupiah($standard) }}</span>@endif
-                                        @if (! empty($p['is_incomplete']))<span class="ml-1 rounded bg-rose-soft px-1.5 py-0.5 text-[10px] font-semibold text-rose-ink">tidak selesai</span>@endif
-                                    </p>
-                                @endif
-                                @if ($opt?->price_locked)
-                                    <p class="mt-1 text-[11px] text-muted">Tarif terkunci</p>
-                                @endif
-                                @if (! $opt)
-                                    <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tidak tersedia / tanpa tarif di {{ $visit->branch->name }}</p>
-                                @elseif ($price <= 0)
-                                    <p class="mt-1 inline-block rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber-ink">Tarif Rp0 — cek Master data › Tindakan & tarif</p>
-                                @endif
-                                @if ($billing && $this->canEditPrice && ! $opt?->price_locked)
-                                    <button type="button" x-show="! editPrice" x-on:click="editPrice = true" class="mt-1 block text-xs font-medium text-brand-600 hover:underline">Ubah harga</button>
-                                    <div x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2">
-                                        <input type="number" min="{{ $mayLower ? 0 : $standard }}" step="1000" inputmode="numeric"
-                                            wire:model.blur="procedures.{{ $i }}.unit_price" placeholder="{{ $standard }}"
-                                            class="input h-9 w-36 text-sm" aria-label="Harga {{ $opt?->name }}">
-                                        <button type="button" x-on:click="editPrice = false" class="text-xs text-muted hover:underline">Selesai</button>
-                                    </div>
-                                    <label x-show="editPrice" x-cloak class="mt-1.5 flex items-center gap-2 text-xs">
-                                        <input type="checkbox" wire:model.live="procedures.{{ $i }}.is_incomplete" class="size-4 rounded accent-brand-600">
-                                        Tidak selesai (boleh di bawah tarif minimal, wajib alasan)
-                                    </label>
-                                    <p x-show="editPrice" x-cloak class="mt-1 text-[11px] text-muted">
-                                        @if ($maxPrice)
-                                            Tarif {{ Format::rupiah($standard) }} – {{ Format::rupiah($maxPrice) }}. Di atas {{ Format::rupiah($maxPrice) }} tetap boleh, tercatat di audit.
-                                        @else
-                                            Tarif {{ Format::rupiah($standard) }}.
-                                        @endif
-                                        @if ($mayLower)
-                                            Boleh lebih rendah dengan alasan.
-                                        @endif
-                                        Kosongkan untuk kembali ke tarif minimal.
-                                    </p>
-                                    <x-error for="procedures.{{ $i }}.unit_price" />
-                                @endif
-                                @if ($price < $standard)
-                                    @if ($billing && $this->canEditPrice)
-                                        <input type="text" maxlength="255" wire:model.blur="procedures.{{ $i }}.price_reason"
-                                            placeholder="Alasan harga di bawah tarif minimal (wajib)" class="input mt-1.5 h-9 w-full text-sm"
-                                            aria-label="Alasan harga {{ $opt?->name }}">
-                                    @elseif (! empty($p['price_reason']))
-                                        <p class="mt-1 text-[11px] text-muted">Alasan: {{ $p['price_reason'] }}</p>
-                                    @endif
-                                @endif
-                            </div>
-                            <div class="flex shrink-0 items-center gap-3">
-                                <span>{{ Format::rupiah($price * $p['quantity']) }}</span>
+                            <div class="flex items-start justify-between gap-3">
+                                <p class="min-w-0">{{ $opt?->name ?? ($p['name'] ?? 'Tindakan') }}
+                                    @if (! empty($p['is_incomplete']))<span class="ml-1 rounded bg-rose-soft px-1.5 py-0.5 text-[10px] font-semibold text-rose-ink">tidak selesai</span>@endif
+                                </p>
                                 @if ($billing)
-                                    <button type="button" wire:click="removeProcedure({{ $i }})" class="text-muted hover:text-rose-ink" title="Hapus">✕</button>
+                                    <button type="button" wire:click="removeProcedure({{ $i }})" class="shrink-0 text-muted hover:text-rose-ink" title="Hapus">✕</button>
                                 @endif
                             </div>
+
+                            @if ($billing)
+                                <div class="mt-1.5 flex items-center gap-1.5">
+                                    <input type="text" wire:model.blur="procedures.{{ $i }}.tooth" maxlength="10" placeholder="Gigi"
+                                        class="input h-9 w-16 px-2 text-center text-sm" aria-label="Gigi {{ $opt?->name }}">
+                                    <input type="number" wire:model.blur="procedures.{{ $i }}.quantity" min="1" max="99"
+                                        class="input h-9 w-14 px-2 text-center text-sm" aria-label="Jumlah {{ $opt?->name }}" title="Jumlah">
+                                    @if ($editPrice)
+                                        <div class="min-w-0 flex-1">
+                                            <x-money model="procedures.{{ $i }}.unit_price" x-on:blur="$wire.$commit()"
+                                                placeholder="{{ $maxPrice ? 'Isi harga' : '' }}" aria-label="Harga {{ $opt?->name }}" data-price-input
+                                                class="h-9 min-h-9 text-sm {{ $needsPrice ? 'border-amber-ink' : '' }}" />
+                                        </div>
+                                    @else
+                                        <span class="flex-1 text-right text-sm text-muted">× {{ Format::rupiah($price) }}</span>
+                                    @endif
+                                    <span @class(['w-24 shrink-0 text-right text-sm tabular-nums', 'text-amber-ink' => $needsPrice])>{{ $needsPrice ? 'Rp –' : Format::rupiah($price * max(1, (int) $p['quantity'])) }}</span>
+                                </div>
+                            @else
+                                <p class="text-xs text-muted">{{ $p['quantity'] }} × {{ $needsPrice ? 'harga belum diisi' : Format::rupiah($price) }}{{ $p['tooth'] ? ' • gigi '.$p['tooth'] : '' }}
+                                    <span class="float-right text-[15px] text-brand-700">{{ $needsPrice ? 'Rp –' : Format::rupiah($price * max(1, (int) $p['quantity'])) }}</span>
+                                </p>
+                            @endif
+
+                            <p class="mt-1 text-[11px] text-muted">
+                                @if (! $opt)
+                                    <span class="rounded bg-amber-soft px-1.5 py-0.5 font-medium text-amber-ink">Tidak tersedia / tanpa tarif di {{ $visit->branch->name }}</span>
+                                @elseif ($opt->price_locked)
+                                    Tarif terkunci {{ Format::rupiah($standard) }}
+                                @elseif ($maxPrice)
+                                    <span @class(['rounded px-1.5 py-0.5 font-semibold', 'bg-amber-soft text-amber-ink' => $outOfRange || $needsPrice, 'bg-canvas' => ! $outOfRange && ! $needsPrice])>tarif {{ Format::rupiah($standard) }} – {{ Format::rupiah($maxPrice) }}</span>
+                                    @if ($needsPrice) wajib isi harga @endif
+                                @elseif ($standard <= 0)
+                                    <span class="rounded bg-amber-soft px-1.5 py-0.5 font-medium text-amber-ink">Tarif Rp0 — cek Master data › Tindakan & tarif</span>
+                                @else
+                                    <span @class(['rounded bg-amber-soft px-1.5 py-0.5 font-semibold text-amber-ink' => $price !== $standard])>tarif {{ Format::rupiah($standard) }}</span>
+                                @endif
+                            </p>
+                            <x-error for="procedures.{{ $i }}.unit_price" />
+
+                            @if ($showIncomplete)
+                                <label class="mt-1.5 flex items-center gap-2 text-xs">
+                                    <input type="checkbox" wire:model.live="procedures.{{ $i }}.is_incomplete" class="size-4 rounded accent-brand-600">
+                                    Tidak selesai (boleh di bawah tarif minimal, wajib alasan)
+                                </label>
+                            @endif
+                            @if ($price < $standard && ! $needsPrice)
+                                @if ($editPrice)
+                                    <input type="text" maxlength="255" wire:model.blur="procedures.{{ $i }}.price_reason"
+                                        placeholder="Alasan harga di bawah tarif minimal (wajib)" class="input mt-1.5 h-9 w-full text-sm"
+                                        aria-label="Alasan harga {{ $opt?->name }}">
+                                @elseif (! empty($p['price_reason']))
+                                    <p class="mt-1 text-[11px] text-muted">Alasan: {{ $p['price_reason'] }}</p>
+                                @endif
+                            @endif
                         </li>
                     @empty
                         <li class="text-sm text-muted">Belum ada tindakan.</li>
@@ -439,16 +454,20 @@
 
                 @if ($billing)
                     @if ($addingProcedure)
-                        <form wire:submit="addProcedure" wire:key="add-procedure" class="mt-4 space-y-2 rounded-xl border border-line p-3">
-                            {{-- Cari tindakan: ketik nama/kode, pilih dengan klik atau ↑ ↓ Enter. --}}
-                            <div class="relative" x-data="{
+                        <div wire:key="add-procedure" class="mt-3 space-y-2 rounded-xl border border-dashed border-line p-2">
+                            {{-- Baris baru: ketik nama/kode, pilih dengan klik atau ↑ ↓ Enter → langsung jadi baris; gigi/qty/harga diisi di baris. --}}
+                            <div class="relative flex items-center gap-2" x-data="{
                                 q: '', open: false, active: 0,
-                                opts: @js($this->procedureOptions->values()->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'code' => $o->code, 'price' => Format::rupiah($o->prices->first()->price), 'zero' => (int) $o->prices->first()->price <= 0])),
+                                opts: @js($this->procedureOptions->values()->map(fn ($o) => ['id' => $o->id, 'name' => $o->name, 'code' => $o->code, 'price' => Format::rupiah($o->prices->first()->price).($o->prices->first()->max_price > $o->prices->first()->price ? ' – '.Format::rupiah($o->prices->first()->max_price) : ''), 'zero' => (int) $o->prices->first()->price <= 0])),
                                 get list() {
                                     const terms = this.q.toLowerCase().split(/\s+/).filter(Boolean);
                                     return this.opts.filter(o => terms.every(t => (o.code + ' ' + o.name).toLowerCase().includes(t))).slice(0, 50);
                                 },
-                                pick(o) { this.q = o.name; this.open = false; $wire.$set('newProcedureId', o.id, false); },
+                                pick(o) {
+                                    this.q = ''; this.open = false;
+                                    $wire.$set('newProcedureId', o.id, false);
+                                    $wire.addProcedure().then(() => { const ins = document.querySelectorAll('[data-price-input]'); ins[ins.length - 1]?.focus(); });
+                                },
                                 type() { this.open = true; this.active = 0; $wire.$set('newProcedureId', null, false); },
                                 enter(e) { if (this.open && this.list[this.active]) { e.preventDefault(); this.pick(this.list[this.active]); } },
                             }" x-on:click.outside="open = false">
@@ -456,8 +475,8 @@
                                     x-on:keydown.arrow-down.prevent="open = true; active = Math.min(active + 1, list.length - 1)"
                                     x-on:keydown.arrow-up.prevent="active = Math.max(active - 1, 0)"
                                     x-on:keydown.enter="enter($event)" x-on:keydown.escape="open = false"
-                                    placeholder="Ketik nama/kode tindakan…" autocomplete="off" class="input" aria-label="Tindakan" x-ref="search" x-init="$nextTick(() => $refs.search.focus())">
-                                <ul x-show="open" x-cloak class="absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white py-1 text-sm shadow-lg">
+                                    placeholder="Cari tindakan (nama/kode)…" autocomplete="off" class="input h-10 min-h-10 flex-1 text-sm" aria-label="Tindakan" x-ref="search" x-init="$nextTick(() => $refs.search.focus())">
+                                <ul x-show="open" x-cloak class="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white py-1 text-sm shadow-lg">
                                     <template x-for="(o, i) in list" :key="o.id">
                                         <li>
                                             <button type="button" x-on:mousedown.prevent="pick(o)" x-on:mouseenter="active = i"
@@ -469,23 +488,12 @@
                                     </template>
                                     <li x-show="list.length === 0" class="px-3 py-2 text-muted">Tindakan tidak ditemukan.</li>
                                 </ul>
+                                <button type="button" x-on:mousedown.prevent wire:click="$set('addingProcedure', false)" class="shrink-0 px-1 text-muted hover:text-rose-ink" title="Batal">✕</button>
                             </div>
                             @error('newProcedureId') <p class="text-xs text-rose-ink">{{ $message }}</p> @enderror
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="number" wire:model="newQuantity" min="1" max="99" class="input" aria-label="Jumlah">
-                                <input type="text" wire:model="newTooth" maxlength="10" placeholder="Gigi (opsional)" class="input">
-                            </div>
-                            <div class="flex gap-2">
-                                {{-- mousedown.prevent: fokus input tidak lepas, keyboard ponsel tidak menutup & menggeser tombol sebelum klik. --}}
-                                <button type="submit" x-on:mousedown.prevent wire:loading.attr="disabled" wire:target="addProcedure" class="btn-primary flex-1">
-                                    <span wire:loading.remove wire:target="addProcedure">Tambah</span>
-                                    <span wire:loading wire:target="addProcedure">Menambahkan…</span>
-                                </button>
-                                <button type="button" x-on:mousedown.prevent wire:click="$set('addingProcedure', false)" class="btn-ghost">Batal</button>
-                            </div>
-                        </form>
+                        </div>
                     @else
-                        <button type="button" wire:click="$set('addingProcedure', true)" class="mt-4 text-sm font-semibold text-brand-600 hover:underline">+ Tambah tindakan</button>
+                        <button type="button" wire:click="$set('addingProcedure', true)" class="mt-3 w-full rounded-xl border border-dashed border-line py-2.5 text-sm font-semibold text-brand-600 hover:bg-leaf-50">+ Tambah baris</button>
                     @endif
                 @endif
 
@@ -499,6 +507,18 @@
                         x-data x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
                         <p class="min-w-0 text-sm text-muted">{{ $drugLines->map(fn ($l) => $l['item']->name.' ×'.$l['qty'])->implode(', ') }}</p>
                         <span class="shrink-0">{{ Format::rupiah($this->drugTotal) }}</span>
+                    </div>
+                @endif
+
+                @if ($goodsLines->isNotEmpty())
+                    <div class="mt-6 flex items-baseline justify-between border-b border-line pb-2">
+                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Lain-lain</p>
+                        <p class="text-xs text-muted">{{ $goodsLines->count() }} item</p>
+                    </div>
+                    <div wire:key="bill-goods-{{ $goodsLines->count() }}-{{ $this->goodsTotal }}" class="-mx-2 mt-3 flex items-start justify-between gap-3 rounded-lg px-2 py-1.5 text-[15px]"
+                        x-data x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }">
+                        <p class="min-w-0 text-sm text-muted">{{ $goodsLines->map(fn ($l) => $l['item']->name.' ×'.$l['qty'])->implode(', ') }}</p>
+                        <span class="shrink-0">{{ Format::rupiah($this->goodsTotal) }}</span>
                     </div>
                 @endif
 
@@ -664,6 +684,112 @@
                     <button type="button" wire:click="addPrescription" class="mt-3 text-sm font-semibold text-sky-ink hover:underline">+ Tambah obat</button>
                 @endif
             </section>
+
+            {{-- Lain-lain: barang jual selain obat (odol, sikat gigi, bracket). Hanya ditagihkan, tidak masuk rekam medis. --}}
+            @if ($billing || $goods)
+                <section class="card border-l-4 border-l-amber-ink/50 p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <h2 class="text-xl font-semibold">Lain-lain</h2>
+                        @if ($goods)<span class="pill bg-amber-soft text-amber-ink">{{ count($goods) }} barang</span>@endif
+                    </div>
+                    <p class="mt-1.5 text-xs text-muted">Barang yang dijual ke pasien selain obat, mis. odol atau sikat gigi. Diambil dari stok {{ $visit->branch->name }}.</p>
+
+                    @php
+                        $goodsJs = $this->goodsOptions->values()->map(fn ($d) => [
+                            'id' => $d->id, 'name' => $d->name, 'unit' => $d->unit,
+                            'price' => Format::rupiah($d->sell_price), 'stock' => (int) ($d->stocks->first()?->quantity ?? 0),
+                        ]);
+                    @endphp
+
+                    <div class="mt-4 space-y-3">
+                        @forelse ($goods as $i => $g)
+                            @php
+                                $chosen = filled($g['item_id'] ?? null) ? $this->goodsOptions->get((int) $g['item_id']) : null;
+                                $left = (int) ($chosen?->stocks->first()?->quantity ?? 0);
+                                $need = max(1, (int) ($g['quantity'] ?? 1));
+                            @endphp
+                            <div wire:key="goods{{ $i }}" class="space-y-2 rounded-xl bg-amber-soft/40 p-3"
+                                x-init="if (window.__examReady) { $el.classList.add('flash-new'); setTimeout(() => $el.classList.remove('flash-new'), 1600) }"
+                                x-data="{
+                                    q: @js($chosen?->name ?? ''), open: false, active: 0,
+                                    opts: @js($goodsJs),
+                                    get list() {
+                                        const terms = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+                                        return this.opts.filter(o => terms.every(t => o.name.toLowerCase().includes(t))).slice(0, 30);
+                                    },
+                                    pick(o) { if (o.stock <= 0) return; this.q = o.name; this.open = false; $wire.set('goods.{{ $i }}.item_id', o.id); },
+                                    enter(e) { if (this.open && this.list[this.active]) { e.preventDefault(); this.pick(this.list[this.active]); } },
+                                }">
+                                <div class="flex items-start gap-2">
+                                    <div class="min-w-0 flex-1">
+                                        @if ($billing)
+                                            <div class="relative" x-on:click.outside="open = false">
+                                                <input type="text" x-model="q" x-on:input="open = true; active = 0" x-on:focus="open = true"
+                                                    x-on:keydown.arrow-down.prevent="open = true; active = Math.min(active + 1, list.length - 1)"
+                                                    x-on:keydown.arrow-up.prevent="active = Math.max(active - 1, 0)"
+                                                    x-on:keydown.enter="enter($event)" x-on:keydown.escape="open = false"
+                                                    placeholder="Ketik nama barang…" autocomplete="off" class="input min-h-10 bg-white text-[14px] font-medium" aria-label="Barang">
+                                                <ul x-show="open" x-cloak class="absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-white py-1 text-sm shadow-lg">
+                                                    <template x-for="(o, k) in list" :key="o.id">
+                                                        <li>
+                                                            <button type="button" x-on:mousedown.prevent="pick(o)" x-on:mouseenter="active = k" :disabled="o.stock <= 0"
+                                                                :class="[k === active ? 'bg-mist' : '', o.stock <= 0 ? 'opacity-50 cursor-not-allowed' : '']"
+                                                                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                                                                <span><span x-text="o.name"></span> <span class="text-xs text-muted" x-text="o.price + '/' + o.unit"></span></span>
+                                                                <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                                                                    :class="o.stock <= 0 ? 'bg-rose-soft text-rose-ink' : (o.stock < 10 ? 'bg-amber-soft text-amber-ink' : 'bg-leaf-100 text-brand-600')"
+                                                                    x-text="o.stock <= 0 ? 'habis' : 'stok ' + o.stock"></span>
+                                                            </button>
+                                                        </li>
+                                                    </template>
+                                                    <li x-show="list.length === 0" class="px-3 py-2 text-xs text-muted">Barang tidak ditemukan.</li>
+                                                </ul>
+                                            </div>
+                                        @elseif ($chosen)
+                                            <p class="font-medium">{{ $chosen->name }}</p>
+                                        @endif
+                                        @if ($chosen && $billing)
+                                            <p class="mt-1 text-[11px]">
+                                                <span @class(['rounded px-1.5 py-0.5 font-semibold', 'bg-rose-soft text-rose-ink' => $left < $need, 'bg-leaf-100 text-brand-600' => $left >= $need])>stok {{ $left }} {{ $chosen->unit }}</span>
+                                                @if ($left < $need)<span class="ml-1 text-rose-ink">stok kurang</span>@endif
+                                            </p>
+                                        @endif
+                                        <x-error for="goods.{{ $i }}.item_id" />
+                                    </div>
+                                    @if ($billing)
+                                        <button type="button" wire:click="removeGoods({{ $i }})" class="mt-2 px-1 text-muted hover:text-rose-ink" title="Hapus barang">✕</button>
+                                    @endif
+                                </div>
+
+                                @if ($chosen)
+                                    <div class="flex flex-wrap items-center gap-2 text-[13px]">
+                                        <label class="flex items-center gap-1.5">
+                                            <span class="text-muted">Jumlah</span>
+                                            <input type="number" wire:model.blur="goods.{{ $i }}.quantity" min="1" max="999" @disabled(! $billing)
+                                                class="input min-h-9 w-20 bg-white text-[13px]" aria-label="Jumlah barang">
+                                            <span class="text-muted">{{ $chosen->unit }}</span>
+                                        </label>
+                                        <span class="ml-auto text-[12px] font-semibold text-brand-700">{{ Format::rupiah($chosen->sell_price * $need) }}</span>
+                                    </div>
+                                    <x-error for="goods.{{ $i }}.quantity" />
+                                @endif
+                            </div>
+                        @empty
+                            <p class="text-sm text-muted">
+                                @if ($this->goodsOptions->isEmpty())
+                                    Belum ada barang jual. Tambahkan di Stok dengan kategori Barang jual dan isi harga jualnya.
+                                @else
+                                    Tidak ada barang lain yang dibeli.
+                                @endif
+                            </p>
+                        @endforelse
+                    </div>
+                    @error('goods') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                    @if ($billing && $this->goodsOptions->isNotEmpty())
+                        <button type="button" wire:click="addGoods" class="mt-3 text-sm font-semibold text-amber-ink hover:underline">+ Tambah barang</button>
+                    @endif
+                </section>
+            @endif
 
             {{-- Kunjungan sebelumnya (FR-RM-14) --}}
             <section class="card p-5">

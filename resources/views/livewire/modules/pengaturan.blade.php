@@ -354,6 +354,53 @@
                 </form>
                 @break
 
+            @case('absensi')
+                <div class="grid gap-6 lg:grid-cols-2">
+                    <form wire:submit="saveAttendance" class="card p-5 lg:p-6">
+                        <h2 class="text-lg font-semibold">Aturan check in</h2>
+                        <p class="mt-1 text-xs text-muted">Dokter & asisten cukup tekan Check in lalu Clock out. Cabang dideteksi dari lokasi terdekat dalam radius, shift dari jam kerja cabang.</p>
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label class="label">Radius lokasi (meter)</label>
+                                <input type="number" min="10" max="2000" wire:model="attendance.radius_m" class="input">
+                                <p class="mt-1 text-[11px] text-muted">Jarak maksimal dari titik klinik.</p>
+                                <x-error for="attendance.radius_m" />
+                            </div>
+                            <div>
+                                <label class="label">Batas akurasi GPS (meter)</label>
+                                <input type="number" min="10" max="500" wire:model="attendance.max_accuracy_m" class="input">
+                                <p class="mt-1 text-[11px] text-muted">Sinyal lebih kasar dari ini ditolak.</p>
+                                <x-error for="attendance.max_accuracy_m" />
+                            </div>
+                        </div>
+                        <label class="mt-5 flex items-start gap-3 rounded-xl border border-line p-3">
+                            <input type="checkbox" wire:model="attendance.test_mode" class="mt-0.5 accent-brand-600">
+                            <span class="text-sm">
+                                <span class="font-semibold">Mode uji</span>
+                                <span class="block text-[11px] text-muted">Lokasi & jam tidak dicek; cabang = pilihan di header. Absen ditandai "Uji" di rekap dan tetap terhitung di gaji, jadi hapus lewat Koreksi bila tidak dipakai. Matikan sebelum dipakai sungguhan.</span>
+                            </span>
+                        </label>
+                        <div class="mt-5 flex justify-end"><button type="submit" class="btn-primary">Simpan</button></div>
+                    </form>
+
+                    <section class="card p-5 lg:p-6">
+                        <h2 class="text-lg font-semibold">Titik lokasi cabang</h2>
+                        <p class="mt-1 text-xs text-muted">Koordinat diisi di data cabang (Master › Cabang).</p>
+                        <ul class="mt-4 divide-y divide-line text-sm">
+                            @foreach ($locationBranches as $b)
+                                <li wire:key="loc-{{ $b->id }}" class="flex items-center justify-between gap-3 py-3">
+                                    <div>
+                                        <p class="font-semibold">{{ $b->name }} @unless ($b->is_active)<span class="text-xs font-normal text-muted">(nonaktif)</span>@endunless</p>
+                                        <p class="text-xs text-muted">{{ $b->hasLocation() ? $b->latitude.', '.$b->longitude : 'Belum diatur — check in di cabang ini belum bisa' }}</p>
+                                    </div>
+                                    <button type="button" wire:click="editBranch({{ $b->id }})" class="link-arrow">Atur</button>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </section>
+                </div>
+                @break
+
             @case('tindakan')
                 <div class="mb-4 flex flex-wrap items-center justify-end gap-2">
                     <input type="search" wire:model.live.debounce.300ms="procedureSearch" class="input mr-auto w-full sm:max-w-sm" placeholder="Cari kode, nama, atau kategori tindakan…">
@@ -426,10 +473,9 @@
                     </p>
                 </section>
                 @php
-                    // Tiap peran satu blok warna: Admin biru, Asisten kuning, Dokter hijau.
+                    // Tiap peran satu blok warna: Admin/Asisten biru, Dokter hijau.
                     $roleStyle = [
                         'admin' => ['head' => 'bg-sky-soft text-sky-ink', 'cell' => 'bg-sky-soft/35', 'check' => 'accent-sky-ink'],
-                        'asisten' => ['head' => 'bg-amber-soft text-amber-ink', 'cell' => 'bg-amber-soft/40', 'check' => 'accent-amber-ink'],
                         'dokter' => ['head' => 'bg-leaf-100 text-brand-600', 'cell' => 'bg-leaf-50/60', 'check' => 'accent-brand-600'],
                     ];
                     $menuGroups = collect($accessMenus)->groupBy(fn ($m) => $m['group'], preserveKeys: true)
@@ -564,11 +610,10 @@
                 <div class="sm:col-span-2"><label class="label">Telepon</label><input type="text" wire:model="data.phone" class="input"></div>
                 <div class="sm:col-span-2 rounded-xl border border-line p-3" x-data="{ msg: '' }">
                     <p class="text-sm font-semibold">Lokasi absensi</p>
-                    <p class="mt-0.5 text-[11px] text-muted">Dokter & asisten hanya bisa absen bila berada dalam radius ini dari titik klinik. Isi dengan berdiri di klinik lalu tekan tombol di bawah.</p>
-                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                    <p class="mt-0.5 text-[11px] text-muted">Titik klinik untuk check in/clock out. Radius &amp; mode uji diatur di Pengaturan › Absensi. Isi dengan berdiri di klinik lalu tekan tombol di bawah.</p>
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
                         <div><label class="label">Latitude</label><input type="text" inputmode="decimal" wire:model="data.latitude" class="input" placeholder="-7.8671"><x-error for="data.latitude" /></div>
                         <div><label class="label">Longitude</label><input type="text" inputmode="decimal" wire:model="data.longitude" class="input" placeholder="112.5239"><x-error for="data.longitude" /></div>
-                        <div><label class="label">Radius (meter)</label><input type="number" min="20" max="2000" wire:model="data.attendance_radius_m" class="input"><x-error for="data.attendance_radius_m" /></div>
                     </div>
                     <button type="button" class="btn-soft mt-3 min-h-9 px-3 text-xs"
                         x-on:click="if (! navigator.geolocation) { msg = 'Browser tidak mendukung lokasi.'; return }

@@ -29,6 +29,7 @@ use Illuminate\Validation\ValidationException;
  *  diagnoses[]     = {code, primary}
  *  procedures[]    = {procedure_id, tooth, quantity}
  *  prescriptions[] = {drug_name, dose, quantity}
+ *  goods[]         = {item_id, quantity}  barang lain-lain (bukan obat): hanya ditagihkan, tidak masuk rekam medis
  */
 class ExamService
 {
@@ -46,16 +47,17 @@ class ExamService
     }
 
     /**
-     * Admin/Asisten/Owner boleh mengisi pemeriksaan atas nama dokter kunjungan (mis. dokter mendikte, admin mengetik),
-     * hanya untuk cabang yang boleh diakses. Penginput tercatat di created_by / audit.
+     * Owner boleh mengisi/mengoreksi pemeriksaan atas nama dokter kunjungan, hanya untuk cabang yang boleh diakses.
+     * Admin/Asisten tidak memeriksa (25 Nov 2026): yang memeriksa hanya dokter; Admin hanya membaca rekam medis.
+     * Penginput tercatat di created_by / audit.
      */
     public function isStaffEditor(Visit $visit): bool
     {
-        return $this->context->is(Role::Admin, Role::Asisten, Role::Owner)
+        return $this->context->is(Role::Owner)
             && $this->context->options()->contains('id', $visit->branch_id);
     }
 
-    /** Catatan klinis boleh diubah: dokter pemilik atau Admin/Owner, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
+    /** Catatan klinis boleh diubah: dokter pemilik atau Owner, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
     public function canEditClinical(Visit $visit): bool
     {
         return ($this->isOwningDoctor($visit) || $this->isStaffEditor($visit))
@@ -93,7 +95,7 @@ class ExamService
 
         return DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
-            $this->persistBilling($visit, $data['procedures'] ?? [], Invoice::STATUS_DRAFT, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data));
+            $this->persistBilling($visit, $data['procedures'] ?? [], Invoice::STATUS_DRAFT, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
 
             return $record;
         });
@@ -108,7 +110,7 @@ class ExamService
 
         $record = DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
-            $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data));
+            $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
 
             $record->update(['status' => MedicalRecord::STATUS_FINAL, 'finalized_at' => now()]);
             $this->snapshot($record->fresh(), 'Dikirim ke kasir');
@@ -301,13 +303,13 @@ class ExamService
 
     /**
      * Harga standar = tarif minimal cabang kunjungan saat disimpan (FR-RM-15), lalu dibekukan di invoice_items.
-     * Tarif bisa berupa range (min–maks). Dokter/Owner boleh mengisi unit_price ≥ minimal; di atas maks tetap boleh tetapi
+     * Tarif bisa berupa range (min–maks); harga range wajib diisi manual (draf menyimpan Rp0 = belum diisi; kirim ke kasir ditolak). Dokter/Owner boleh mengisi unit_price ≥ minimal; di atas maks tetap boleh tetapi
      * dicatat di audit (bagi hasil ikut harga ini). Di bawah minimal hanya bila dicentang "tidak selesai" (atau tindakan
      * bertanda "harga boleh di bawah standar") dan beralasan. Tindakan bertarif terkunci selalu tarif minimal.
      * Peran lain tidak bisa mengubah harga, tetapi harga yang sudah tersimpan untuk tindakan yang sama dipertahankan.
      * Biaya bahan resep dibekukan per baris (material_cost); biaya admin ditagih sekali di tagihan pertama pasien.
      */
-    private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = [], ?array $discount = null): Invoice
+    private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = [], ?array $discount = null, array $goods = []): Invoice
     {
         $ids = collect($procedures)->pluck('procedure_id')->unique();
         $master = Procedure::with(['prices', 'materials.item'])->whereIn('id', $ids)->get()->keyBy('id');
@@ -324,7 +326,7 @@ class ExamService
         $raised = [];
         $lowered = [];
 
-        $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, $stock, &$saved, &$raised, &$lowered) {
+        $items = collect($procedures)->map(function (array $p) use ($master, $visit, $canRaise, $stock, $status, &$saved, &$raised, &$lowered) {
             $procedure = $master->get((int) $p['procedure_id']);
             $range = $procedure?->rangeFor($visit->branch_id);
 
@@ -337,6 +339,7 @@ class ExamService
             $reason = $this->clean($p['price_reason'] ?? null, 255);
             $incomplete = $canRaise ? (bool) ($p['is_incomplete'] ?? false) : false;
             $previous = ! empty($saved[$procedure->id]) ? array_shift($saved[$procedure->id]) : null;
+            $pending = false;
 
             if ($procedure->price_locked) {
                 $price = $standard;
@@ -349,15 +352,25 @@ class ExamService
                     ]);
                 }
                 $price = max(0, $requested);
-            } elseif ($previous !== null && ($previous['price'] >= $standard || $previous['incomplete'] || $procedure->allow_lower_price)) {
+            } elseif ($previous !== null && ($previous['price'] >= $standard || $previous['incomplete']
+                || ($procedure->allow_lower_price && ! ($max !== null && $previous['price'] === 0)))) {
                 $price = $previous['price'];
                 $reason ??= $previous['reason'];
                 $incomplete = $previous['incomplete'];
-            } else {
+            } elseif ($max === null) {
                 $price = $standard;
+            } elseif ($status === Invoice::STATUS_DRAFT) {
+                // Tarif range wajib diisi manual; draf menyimpan Rp0 sebagai tanda "belum diisi".
+                $price = 0;
+                $pending = true;
+            } else {
+                throw ValidationException::withMessages([
+                    'procedures' => "Isi harga {$procedure->name} (Rp ".number_format($standard, 0, ',', '.')
+                        .' – Rp '.number_format($max, 0, ',', '.').').',
+                ]);
             }
 
-            if ($price < $standard) {
+            if ($price < $standard && ! $pending) {
                 if (! $reason) {
                     throw ValidationException::withMessages([
                         'procedures' => "Tuliskan alasan harga {$procedure->name} di bawah tarif minimal (mis. cabut tidak selesai).",
@@ -394,22 +407,11 @@ class ExamService
             ];
         });
 
-        // Obat resep dari stok klinik ikut ditagihkan (tanpa doctor_id → tidak masuk bagi hasil).
-        $goods = Item::whereIn('id', collect($prescriptions)->pluck('item_id')->filter())->whereNotNull('sell_price')->get()->keyBy('id');
-        foreach ($prescriptions as $p) {
-            $item = filled($p['item_id'] ?? null) ? $goods->get((int) $p['item_id']) : null;
-            if (! $item) {
-                continue;
-            }
-            $qty = max(1, min(999, (int) ($p['item_quantity'] ?? 1)));
-            if ($status !== Invoice::STATUS_DRAFT && $stock->available($item->id, $visit->branch_id) < $qty) {
-                throw ValidationException::withMessages(['prescriptions' => "Stok {$item->name} di cabang ini tidak cukup untuk {$qty} {$item->unit}."]);
-            }
-            $items->push([
-                'item_id' => $item->id, 'doctor_id' => null, 'name' => $item->name, 'tooth' => null,
-                'quantity' => $qty, 'unit_price' => (int) $item->sell_price, 'amount' => (int) $item->sell_price * $qty,
-            ]);
-        }
+        // Obat resep & barang lain-lain dari stok klinik ikut ditagihkan (tanpa doctor_id → tidak masuk bagi hasil).
+        $check = $status !== Invoice::STATUS_DRAFT;
+        $items = $items
+            ->merge($this->stockLines($visit, $prescriptions, 'item_quantity', 'prescriptions', fn ($q) => $q, $check))
+            ->merge($this->stockLines($visit, $goods, 'quantity', 'goods', fn ($q) => $q->where('category', '!=', 'obat'), $check));
 
         $invoice = Invoice::firstOrNew(['visit_id' => $visit->id]);
 
@@ -467,6 +469,36 @@ class ExamService
         }
 
         return $invoice;
+    }
+
+    /**
+     * Baris tagihan barang dari stok (obat resep / barang lain-lain) dengan harga jual saat ini.
+     * Hanya item klinik sendiri yang punya harga jual; stok cabang dicek saat tagihan dikirim ke kasir.
+     */
+    private function stockLines(Visit $visit, array $lines, string $qtyKey, string $errorKey, \Closure $scope, bool $checkStock): array
+    {
+        $ids = collect($lines)->pluck('item_id')->filter()->map(fn ($id) => (int) $id);
+        $stock = app(StockService::class);
+        $catalog = $scope(Item::whereIn('id', $ids)->where('clinic_id', $visit->patient->clinic_id)->whereNotNull('sell_price'))
+            ->get()->keyBy('id');
+
+        $rows = [];
+        foreach ($lines as $line) {
+            $item = filled($line['item_id'] ?? null) ? $catalog->get((int) $line['item_id']) : null;
+            if (! $item) {
+                continue;
+            }
+            $qty = max(1, min(999, (int) ($line[$qtyKey] ?? 1)));
+            if ($checkStock && $stock->available($item->id, $visit->branch_id) < $qty) {
+                throw ValidationException::withMessages([$errorKey => "Stok {$item->name} di cabang ini tidak cukup untuk {$qty} {$item->unit}."]);
+            }
+            $rows[] = [
+                'item_id' => $item->id, 'doctor_id' => null, 'name' => $item->name, 'tooth' => null,
+                'quantity' => $qty, 'unit_price' => (int) $item->sell_price, 'amount' => (int) $item->sell_price * $qty,
+            ];
+        }
+
+        return $rows;
     }
 
     public const ADMIN_FEE_NAME = 'Biaya admin & kartu';

@@ -85,14 +85,20 @@
                     <span @class(['text-brand-700' => $loop->last])>{{ $crumb }}</span>
                 @endforeach
             </nav>
-            <livewire:branch-switcher />
+            <div class="flex items-center gap-4">
+                <livewire:attendance-button />
+                <livewire:branch-switcher />
+            </div>
         </header>
 
         {{-- Header ponsel --}}
         <header class="bg-white px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 lg:hidden">
             <div class="flex items-start justify-between">
                 <a href="{{ route('dashboard') }}" wire:navigate><x-logo size="sm" /></a>
-                <livewire:branch-switcher compact />
+                <div class="flex items-center gap-2">
+                    <livewire:attendance-button compact />
+                    <livewire:branch-switcher compact />
+                </div>
             </div>
             <div class="mt-3 flex items-center justify-between text-[10px] text-muted">
                 <p>{{ $role?->label() }} / {{ last($breadcrumb) ?: 'Dashboard' }}</p>

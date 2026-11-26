@@ -3,6 +3,7 @@
 namespace App\Livewire\MedicalRecords;
 
 use App\Models\Icd10Code;
+use App\Models\InvoiceItem;
 use App\Models\Item;
 use App\Models\Procedure;
 use App\Models\ToothConditionType;
@@ -13,6 +14,7 @@ use App\Support\BranchContext;
 use App\Support\Format;
 use App\Support\TreatmentSuggestions;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -28,7 +30,7 @@ class Exam extends Component
 
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
-        'drugOptions', 'drugTotal', 'standardPrice', 'maxPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
+        'drugOptions', 'drugTotal', 'goodsOptions', 'goodsTotal','standardPrice', 'maxPrice', 'defaultPrice', 'needsPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
         'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
     ];
 
@@ -88,6 +90,13 @@ class Exam extends Component
 
     /** @var list<array{drug_name:string, dose:?string, quantity:?string}> */
     public array $prescriptions = [];
+
+    /**
+     * Barang jual selain obat (odol, sikat gigi, bracket, dll.): hanya ditagihkan, tidak masuk rekam medis.
+     *
+     * @var list<array{item_id:int|string, quantity:int|string}>
+     */
+    public array $goods = [];
 
     // Odontogram
     public string $dentition = 'adult';
@@ -160,13 +169,19 @@ class Exam extends Component
         // Hanya baris tindakan; item obat/barang (procedure_id null) dimuat lewat resep, bukan sebagai tindakan.
         $this->procedures = $visit->invoice?->items->whereNotNull('procedure_id')->values()->map(fn ($i) => [
             'procedure_id' => $i->procedure_id, 'tooth' => $i->tooth, 'quantity' => $i->quantity, 'name' => $i->name,
-            // Harga dinaikkan/diturunkan dokter/Owner dipertahankan; selain itu null = ikut harga standar terbaru.
-            'unit_price' => $i->isRaised() || $i->isLowered() ? (int) $i->unit_price : null,
+            // Tarif tunggal: harga yang diubah dokter/Owner dipertahankan, selain itu null = ikut tarif terbaru.
+            // Tarif range: harga yang diisi manual dimuat apa adanya; Rp0 tanpa "tidak selesai" = draf yang belum diisi harganya.
+            'unit_price' => $this->loadedPrice($i),
             'price_reason' => $i->price_reason,
             'is_incomplete' => (bool) $i->is_incomplete,
         ])->all() ?? [];
 
         $this->prescriptions = $visit->prescriptions->map->only(['item_id', 'drug_name', 'dose', 'quantity', 'item_quantity'])->all();
+
+        // Barang lain-lain = baris tagihan dari stok yang bukan obat (obat dimuat lewat resep).
+        $this->goods = $visit->invoice?->items->whereNotNull('item_id')->whereNull('procedure_id')
+            ->filter(fn ($i) => $this->goodsOptions->has($i->item_id))->values()
+            ->map(fn ($i) => ['item_id' => $i->item_id, 'quantity' => $i->quantity])->all() ?? [];
 
         $this->selectedCondition = $this->conditions->first()?->id;
 
@@ -187,7 +202,7 @@ class Exam extends Component
     {
         return md5(json_encode([
             $this->complaint, $this->anamnesis, $this->bloodPressure, $this->currentMedication, $this->plan,
-            $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions,
+            $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions, $this->goods,
             $this->discount, $this->discountReason,
         ]));
     }
@@ -287,7 +302,7 @@ class Exam extends Component
     {
         $procedures = (int) collect($this->procedures)->sum(fn ($p) => $this->priceOf($p) * max(1, (int) $p['quantity']));
 
-        return $procedures + $this->drugTotal;
+        return $procedures + $this->drugTotal + $this->goodsTotal;
     }
 
     /** Dokter penanggung jawab / Owner boleh memberi diskon sebelum dikirim ke kasir. */
@@ -324,6 +339,26 @@ class Exam extends Component
         });
     }
 
+    /** Barang jual bukan obat (kategori Barang jual, alat, dll.) yang punya harga jual, beserta stok cabang kunjungan. */
+    #[Computed]
+    public function goodsOptions(): Collection
+    {
+        return Item::where('clinic_id', auth()->user()->clinic_id)
+            ->where('category', '!=', 'obat')->where('is_active', true)->whereNotNull('sell_price')
+            ->with(['stocks' => fn ($q) => $q->where('branch_id', $this->visit->branch_id)])
+            ->orderByRaw("category = 'barang' desc")->orderBy('name')->get()->keyBy('id');
+    }
+
+    #[Computed]
+    public function goodsTotal(): int
+    {
+        return (int) collect($this->goods)->sum(function ($g) {
+            $item = filled($g['item_id'] ?? null) ? $this->goodsOptions->get((int) $g['item_id']) : null;
+
+            return $item ? $item->sell_price * max(1, (int) ($g['quantity'] ?? 1)) : 0;
+        });
+    }
+
     /** Harga standar tindakan di cabang kunjungan. */
     public function standardPrice(?int $procedureId): int
     {
@@ -338,20 +373,55 @@ class Exam extends Component
         return $max !== null && (int) $max > $this->standardPrice($procedureId) ? (int) $max : null;
     }
 
+    /** Harga otomatis tindakan: tarif tunggal (atau minimal bila terkunci). Tarif range = null, wajib diisi manual. */
+    public function defaultPrice(?int $procedureId): ?int
+    {
+        if ($this->procedureOptions->get($procedureId)?->price_locked || $this->maxPrice($procedureId) === null) {
+            return $this->standardPrice($procedureId);
+        }
+
+        return null;
+    }
+
+    /** Tindakan bertarif range yang harganya belum diisi manual. */
+    public function needsPrice(array $p): bool
+    {
+        return ! filled($p['unit_price'] ?? null) && $this->defaultPrice($p['procedure_id'] ?? null) === null;
+    }
+
+    /** Harga baris tagihan tersimpan yang dimuat ke kolom harga (null = tarif terkunci / tarif range belum diisi). */
+    private function loadedPrice(InvoiceItem $i): ?int
+    {
+        $price = (int) $i->unit_price;
+        $procedure = $this->procedureOptions->get($i->procedure_id);
+
+        $default = $this->defaultPrice($i->procedure_id);
+
+        if ($procedure?->price_locked || ($default === null && $price === 0 && ! $i->is_incomplete)) {
+            return null;
+        }
+
+        // Tarif tunggal yang tidak diubah dokter ikut tarif terbaru; harga yang diubah dipertahankan.
+        return $default !== null && ($i->standard_price === null || $price === (int) $i->standard_price) ? $default : $price;
+    }
+
     /** Harga boleh di bawah tarif minimal: dicentang "tidak selesai" atau tindakan berizin. */
     private function mayLower(array $p): bool
     {
         return ! empty($p['is_incomplete']) || (bool) $this->procedureOptions->get($p['procedure_id'] ?? null)?->allow_lower_price;
     }
 
-    /** Harga yang dipakai: harga dinaikkan (bila ada) atau harga standar. */
+    /** Harga yang dipakai: harga yang diisi (bila ada) atau tarif tunggal. Tarif range belum diisi = 0 (tidak ikut total). */
     public function priceOf(array $p): int
     {
         $standard = $this->standardPrice($p['procedure_id'] ?? null);
         $procedure = $this->procedureOptions->get($p['procedure_id'] ?? null);
 
-        if (! filled($p['unit_price'] ?? null) || $procedure?->price_locked) {
+        if ($procedure?->price_locked) {
             return $standard;
+        }
+        if (! filled($p['unit_price'] ?? null)) {
+            return $this->defaultPrice($p['procedure_id'] ?? null) ?? 0;
         }
 
         return $this->mayLower($p) ? max(0, (int) $p['unit_price']) : max($standard, (int) $p['unit_price']);
@@ -364,11 +434,21 @@ class Exam extends Component
         return $this->canEditBilling && app(ExamService::class)->canRaisePrice();
     }
 
-    /** Ubah harga tindakan: kosong/sama dengan standar = harga standar; di bawah standar hanya untuk tindakan berizin (wajib alasan). */
+    /** Ubah baris tindakan (gigi, jumlah, harga). Harga kosong = tarif tunggal terisi lagi / tarif range belum diisi; di bawah standar hanya untuk tindakan berizin (wajib alasan). */
     public function updatedProcedures($value, string $key): void
     {
         [$index, $field] = array_pad(explode('.', $key), 2, null);
-        if (! isset($this->procedures[$index]) || ! in_array($field, ['unit_price', 'price_reason', 'is_incomplete'], true)) {
+        if (! isset($this->procedures[$index]) || ! in_array($field, ['unit_price', 'price_reason', 'is_incomplete', 'quantity', 'tooth'], true)) {
+            return;
+        }
+
+        // Gigi & jumlah diketik langsung di baris (seperti nota).
+        if ($field === 'quantity' || $field === 'tooth') {
+            $this->authorizeBilling();
+            $this->procedures[$index][$field] = $field === 'quantity'
+                ? max(1, min(99, (int) preg_replace('/\D/', '', (string) $value) ?: 1))
+                : (mb_substr(trim((string) $value), 0, 10) ?: null);
+
             return;
         }
 
@@ -382,7 +462,7 @@ class Exam extends Component
             // Centang dilepas: harga di bawah minimal tidak berlaku lagi.
             if (! $this->mayLower($this->procedures[$index]) && filled($this->procedures[$index]['unit_price'] ?? null)
                 && (int) $this->procedures[$index]['unit_price'] < $standard) {
-                $this->procedures[$index]['unit_price'] = null;
+                $this->procedures[$index]['unit_price'] = $this->defaultPrice($this->procedures[$index]['procedure_id']);
                 $this->procedures[$index]['price_reason'] = null;
             }
 
@@ -397,7 +477,7 @@ class Exam extends Component
         }
 
         if (! $this->canEditPrice) {
-            $this->procedures[$index]['unit_price'] = null;
+            $this->procedures[$index]['unit_price'] = $this->defaultPrice($this->procedures[$index]['procedure_id']);
             abort(403, 'Hanya Dokter dan Owner yang boleh mengubah harga tindakan.');
         }
 
@@ -409,12 +489,13 @@ class Exam extends Component
         if ($procedure?->price_locked) {
             $this->procedures[$index]['unit_price'] = null;
             $this->addError("procedures.{$index}.unit_price", 'Tarif tindakan ini terkunci, tidak bisa diubah.');
-        } elseif ($value === null || $value === '' || $price === $standard) {
-            $this->procedures[$index]['unit_price'] = null;
+        } elseif ($value === null || $value === '') {
+            // Dikosongkan: tarif tunggal terisi lagi; tarif range kembali "belum diisi".
+            $this->procedures[$index]['unit_price'] = $this->defaultPrice($this->procedures[$index]['procedure_id']);
         } elseif ($price < $standard && $this->mayLower($this->procedures[$index])) {
             $this->procedures[$index]['unit_price'] = $price;
         } elseif ($price < $standard) {
-            $this->procedures[$index]['unit_price'] = null;
+            $this->procedures[$index]['unit_price'] = $this->defaultPrice($this->procedures[$index]['procedure_id']);
             $this->addError("procedures.{$index}.unit_price", 'Di bawah tarif minimal '.Format::rupiah($standard).'. Centang "Tidak selesai" bila tindakannya tidak selesai.');
         } else {
             $this->procedures[$index]['unit_price'] = $price;
@@ -584,9 +665,20 @@ class Exam extends Component
             return;
         }
 
-        $this->procedures[] = ['procedure_id' => $this->newProcedureId, 'tooth' => trim($this->newTooth) ?: null, 'quantity' => $this->newQuantity, 'unit_price' => null];
+        $this->procedures[] = $this->newRow($this->newProcedureId, trim($this->newTooth) ?: null, $this->newQuantity);
         $this->reset('newProcedureId', 'newQuantity', 'newTooth', 'addingProcedure', 'zeroPriceConfirmed');
         $this->resetErrorBag('procedures');
+    }
+
+    /** Baris tindakan baru seperti nota: tarif tunggal langsung terisi di kolom harga; tarif range kosong (wajib diisi); terkunci tidak diisi. */
+    private function newRow(int $procedureId, ?string $tooth, int $quantity): array
+    {
+        $locked = (bool) $this->procedureOptions->get($procedureId)?->price_locked;
+
+        return [
+            'procedure_id' => $procedureId, 'tooth' => $tooth, 'quantity' => $quantity,
+            'unit_price' => $locked ? null : $this->defaultPrice($procedureId),
+        ];
     }
 
     /** Membuka form tambah tindakan: kolom gigi terisi gigi yang sedang dipilih di peta gigi. */
@@ -624,7 +716,7 @@ class Exam extends Component
             $this->procedureOptions,
         );
 
-        $this->procedures[] = ['procedure_id' => $procedureId, 'tooth' => $tooth, 'quantity' => 1, 'unit_price' => null];
+        $this->procedures[] = $this->newRow($procedureId, $tooth, 1);
         $this->reset('zeroPriceConfirmed');
         $this->resetErrorBag('procedures');
         unset($this->suggestions);
@@ -634,7 +726,7 @@ class Exam extends Component
     #[Computed]
     public function zeroPriceProcedures(): Collection
     {
-        return collect($this->procedures)->filter(fn ($p) => $this->priceOf($p) <= 0)->values();
+        return collect($this->procedures)->filter(fn ($p) => ! $this->needsPrice($p) && $this->priceOf($p) <= 0)->values();
     }
 
     public function removeProcedure(int $index): void
@@ -659,6 +751,19 @@ class Exam extends Component
 
     // ── Simpan ──────────────────────────────────────────────────────
 
+    public function addGoods(): void
+    {
+        $this->authorizeBilling();
+        $this->goods[] = ['item_id' => '', 'quantity' => 1];
+    }
+
+    public function removeGoods(int $index): void
+    {
+        $this->authorizeBilling();
+        unset($this->goods[$index]);
+        $this->goods = array_values($this->goods);
+    }
+
     public function saveDraft(ExamService $exam): void
     {
         $this->validateFields();
@@ -677,6 +782,18 @@ class Exam extends Component
     {
         $this->authorizeBilling();
         $this->validateFields();
+
+        // Tindakan bertarif range wajib diisi harganya manual sebelum dikirim ke kasir.
+        $missingPrice = false;
+        foreach ($this->procedures as $i => $p) {
+            if ($this->needsPrice($p)) {
+                $missingPrice = true;
+                $this->addError("procedures.{$i}.unit_price", 'Isi harga '.Format::rupiah($this->standardPrice($p['procedure_id'])).' – '.Format::rupiah((int) $this->maxPrice($p['procedure_id'])).'.');
+            }
+        }
+        if ($missingPrice) {
+            return;
+        }
 
         $incomplete = blank(trim($this->complaint)) || $this->diagnoses === [] || $this->procedures === [];
         $needsReview = ! $this->allergyConfirmed || ($this->zeroPriceProcedures->isNotEmpty() && ! $this->zeroPriceConfirmed);
@@ -744,6 +861,8 @@ class Exam extends Component
             'prescriptions.*.dose' => 'nullable|string|max:255',
             'prescriptions.*.quantity' => 'nullable|string|max:30',
             'prescriptions.*.item_quantity' => 'nullable|integer|min:1|max:999',
+            'goods.*.item_id' => ['nullable', Rule::in($this->goodsOptions->keys()->map(fn ($id) => (string) $id)->all())],
+            'goods.*.quantity' => 'required|integer|min:1|max:999',
             'discount' => 'nullable|integer|min:0',
             'discountReason' => 'nullable|string|max:255',
         ], ['bloodPressure.regex' => 'Format tekanan darah: sistolik/diastolik, mis. 120/80.'],
@@ -765,6 +884,7 @@ class Exam extends Component
             'diagnoses' => $this->diagnoses,
             'procedures' => $this->procedures,
             'prescriptions' => $this->prescriptions,
+            'goods' => $this->goods,
             'discount' => (int) $this->discount,
             'discount_reason' => $this->discountReason,
         ];

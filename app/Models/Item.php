@@ -5,10 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Barang persediaan: obat, bahan habis pakai, alat. */
+/** Barang persediaan: obat, bahan habis pakai, alat, barang jual (odol, sikat gigi, bracket, dll.). */
 class Item extends Model
 {
-    public const CATEGORIES = ['obat' => 'Obat', 'bahan' => 'Bahan', 'alat' => 'Alat'];
+    public const CATEGORIES = ['obat' => 'Obat', 'bahan' => 'Bahan', 'alat' => 'Alat', 'barang' => 'Barang jual'];
 
     protected $fillable = ['clinic_id', 'code', 'name', 'category', 'unit', 'buy_price', 'sell_price', 'margin_percent', 'min_stock', 'is_active'];
 

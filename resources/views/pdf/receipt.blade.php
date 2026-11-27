@@ -15,7 +15,7 @@
     }
     $contact = collect([
         $branch->phone ?? $branch->clinic->phone,
-        ($wa = \App\Support\Settings::get('clinic_whatsapp')) ? 'WA '.$wa : null,
+        ($wa = \App\Support\Settings::get('clinic_whatsapp')) ? 'No. WA '.$wa : null,
         \App\Support\Settings::get('clinic_email'),
     ])->filter()->implode(' · ');
 @endphp
@@ -99,11 +99,18 @@
 
     <div class="box">Terbilang: {{ ucfirst(Format::terbilang($invoice->total)) }} rupiah</div>
 
+    {{-- Tanda tangan: Dokter (bila ada pemeriksaan) dan Petugas; pesan penutup di bawahnya. --}}
     <table style="margin-top: 26px">
         <tr>
-            <td class="muted" style="width: 60%">{{ $branch->receipt_footer }}</td>
+            <td style="width: 40%"></td>
+            @if ($visit)
+                <td style="width: 30%; text-align: center">Dokter,<br><br><br>{{ $visit->doctor->name }}</td>
+            @endif
             <td class="r">Petugas,<br><br><br>{{ $invoice->payments->last()?->receiver?->name ?? '________________' }}</td>
         </tr>
     </table>
+    @if ($branch->receipt_footer)
+        <p class="muted" style="margin-top: 22px">{{ $branch->receipt_footer }}</p>
+    @endif
 </body>
 </html>

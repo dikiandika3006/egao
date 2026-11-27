@@ -354,6 +354,23 @@
                     @endif
                 </p>
 
+                {{-- Asisten pendamping: dipilih di sini saja (dasar fee asisten); Kasir hanya menampilkan. --}}
+                @php $assistantOptions = $this->assistantOptions; @endphp
+                @if ($billing && $assistantOptions->isNotEmpty())
+                    <label class="mt-3 flex items-center gap-2 text-sm">
+                        <span class="shrink-0 text-muted">Asisten pendamping</span>
+                        <select wire:model.live="assistantId" class="input min-h-9 flex-1 py-1 text-sm">
+                            <option value="">— tanpa asisten —</option>
+                            @foreach ($assistantOptions as $a)
+                                <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (nonaktif)' }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <x-error for="assistantId" />
+                @elseif ($assistantId)
+                    <p class="mt-3 text-sm"><span class="text-muted">Asisten pendamping</span> · {{ $assistantOptions->get($assistantId)?->name ?? '—' }}</p>
+                @endif
+
                 @php
                     $procedureSubtotal = collect($procedures)->sum(fn ($p) => $this->priceOf($p) * max(1, (int) $p['quantity']));
                     $drugLines = collect($prescriptions)->map(function ($rx, $i) {
@@ -903,6 +920,12 @@
                                 @endforeach
                             </ul>
                             <p class="mt-1">Kalau memang gratis, lanjutkan. Kalau belum, isi tarifnya dulu di Master data › Tindakan & tarif.</p>
+                        </div>
+                    @endif
+                    @if ($this->missingAssistant() && ! $noAssistantConfirmed)
+                        <div class="rounded-xl bg-amber-soft px-4 py-3 text-sm text-amber-ink">
+                            <p class="font-semibold">Belum ada asisten pendamping</p>
+                            <p class="mt-1">Kalau tindakan ini memang tanpa asisten, lanjutkan. Kalau ada, tekan Kembali dan pilih asistennya agar fee asisten terhitung.</p>
                         </div>
                     @endif
                 </div>

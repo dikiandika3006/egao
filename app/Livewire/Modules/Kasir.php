@@ -307,25 +307,6 @@ class Kasir extends Component
     }
 
     /** Asisten pendamping kunjungan (dasar fee asisten di Gaji). Boleh diubah sebelum/sesudah lunas. */
-    public function assignAssistant($employeeId = null): void
-    {
-        $invoice = $this->query()->with('visit')->findOrFail($this->selected);
-        abort_unless($invoice->visit, 422);
-
-        $employeeId = $employeeId === '' || $employeeId === null ? null : (int) $employeeId;
-        if ($employeeId) {
-            abort_unless(\App\Models\Employee::where('clinic_id', $this->clinicId())->where('position', 'Asisten dokter')->whereKey($employeeId)->exists(), 404);
-        }
-
-        $before = $invoice->visit->assistant_id;
-        if ($before === $employeeId) {
-            return;
-        }
-        $invoice->visit->update(['assistant_id' => $employeeId]);
-        AuditLog::record('visit.assistant.updated', $invoice->visit, ['before' => $before, 'after' => $employeeId]);
-        $this->toast($employeeId ? 'Asisten pendamping disimpan.' : 'Asisten pendamping dikosongkan.');
-    }
-
     private function query()
     {
         $context = app(BranchContext::class);
@@ -355,7 +336,7 @@ class Kasir extends Component
             ->get();
 
         $invoice = $this->selected
-            ? $this->query()->with(['visit.patient', 'visit.doctor', 'patient', 'branch', 'items', 'payments.receiver', 'receipts'])->find($this->selected)
+            ? $this->query()->with(['visit.patient', 'visit.doctor', 'visit.assistant', 'patient', 'branch', 'items', 'payments.receiver', 'receipts'])->find($this->selected)
             : null;
 
         return $this->page('kasir', 'livewire.modules.kasir', [
@@ -375,11 +356,6 @@ class Kasir extends Component
                     ->with(['stocks' => fn ($q) => $q->where('branch_id', $invoice->branch_id)])->orderBy('category')->orderBy('name')->get()
                 : collect(),
             'totalToday' => $paidToday->sum('total'),
-            'assistants' => $invoice?->visit
-                ? \App\Models\Employee::where('clinic_id', $this->clinicId())->where('position', 'Asisten dokter')
-                    ->where(fn ($q) => $q->where('is_active', true)->orWhere('id', $invoice->visit->assistant_id))
-                    ->orderBy('name')->get(['id', 'name', 'is_active'])
-                : collect(),
         ]);
     }
 }

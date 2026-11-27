@@ -30,6 +30,7 @@ use Illuminate\Validation\ValidationException;
  *  procedures[]    = {procedure_id, tooth, quantity}
  *  prescriptions[] = {drug_name, dose, quantity}
  *  goods[]         = {item_id, quantity}  barang lain-lain (bukan obat): hanya ditagihkan, tidak masuk rekam medis
+ *  assistant_id    = asisten pendamping (opsional; kunci tidak ada = tidak diubah)
  */
 class ExamService
 {
@@ -109,6 +110,7 @@ class ExamService
             $before = (int) $locked->total;
 
             $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
+            $this->syncAssistant($visit, $data);
 
             AuditLog::record('tagihan.diubah_setelah_kirim', $invoice, [
                 'total_lama' => $before,
@@ -141,6 +143,7 @@ class ExamService
         return DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
             $this->persistBilling($visit, $data['procedures'] ?? [], Invoice::STATUS_DRAFT, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
+            $this->syncAssistant($visit, $data);
 
             return $record;
         });
@@ -156,6 +159,7 @@ class ExamService
         $record = DB::transaction(function () use ($visit, $data) {
             $record = $this->persistClinical($visit, $data);
             $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
+            $this->syncAssistant($visit, $data);
 
             $record->update(['status' => MedicalRecord::STATUS_FINAL, 'finalized_at' => now()]);
             $this->snapshot($record->fresh(), 'Dikirim ke kasir');
@@ -317,6 +321,43 @@ class ExamService
      * Diskon tagihan diberikan dokter penanggung jawab (atau Owner) di pemeriksaan, sebelum dikirim ke kasir.
      * Admin/Asisten yang mengisi pemeriksaan atas nama dokter tidak bisa mengubahnya.
      */
+    /**
+     * Pilihan asisten pendamping: karyawan aktif berjabatan "Asisten dokter" di cabang kunjungan
+     * (cabang utama, atau punya jadwal rutin di cabang itu), plus asisten yang sudah tersimpan di kunjungan.
+     */
+    public function assistantOptions(Visit $visit): \Illuminate\Support\Collection
+    {
+        $visit->loadMissing('patient');
+        $branchId = $visit->branch_id;
+
+        return \App\Models\Employee::where('clinic_id', $visit->patient->clinic_id)->where('position', 'Asisten dokter')
+            ->where(fn ($q) => $q
+                ->where(fn ($q) => $q->where('is_active', true)->where(fn ($q) => $q->where('primary_branch_id', $branchId)
+                    ->orWhereHas('schedules', fn ($s) => $s->where('branch_id', $branchId))))
+                ->when($visit->assistant_id, fn ($q) => $q->orWhere('id', $visit->assistant_id)))
+            ->orderBy('name')->get(['id', 'name', 'is_active']);
+    }
+
+    /** Asisten dipilih saat tindakan (27 Nov 2026; dulu di Kasir). Divalidasi ulang di server, perubahan dicatat di audit. */
+    private function syncAssistant(Visit $visit, array $data): void
+    {
+        if (! array_key_exists('assistant_id', $data)) {
+            return;
+        }
+
+        $id = filled($data['assistant_id']) ? (int) $data['assistant_id'] : null;
+        if ($id !== null && ! $this->assistantOptions($visit)->contains('id', $id)) {
+            throw ValidationException::withMessages(['assistantId' => 'Pilih asisten berjabatan "Asisten dokter".']);
+        }
+
+        $before = $visit->assistant_id;
+        if ($before === $id) {
+            return;
+        }
+        $visit->update(['assistant_id' => $id]);
+        AuditLog::record('visit.assistant.updated', $visit, ['before' => $before, 'after' => $id]);
+    }
+
     public function canGiveDiscount(Visit $visit): bool
     {
         return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner))

@@ -229,24 +229,6 @@ it('admin tidak bisa membuka tab gaji & bagi hasil maupun mengisi jam', function
     $this->get(route('gaji'))->assertForbidden();
 });
 
-it('kasir memilih asisten pendamping, hanya karyawan berjabatan asisten', function () {
-    $proc = Procedure::where('clinic_id', $this->clinicId)->first();
-    $visit = paidVisit(['procedure_id' => $proc->id, 'amount' => 100_000]);
-    gajiLogin('admin', 'admin', $this->batu->id);
-
-    Livewire::test(Kasir::class)->call('open', $visit->invoice->id)
-        ->call('assignAssistant', $this->assistant->id)
-        ->assertSee('Asisten Uji');
-    expect($visit->fresh()->assistant_id)->toBe($this->assistant->id);
-
-    Livewire::test(Kasir::class)->call('open', $visit->invoice->id)
-        ->call('assignAssistant', $this->adminStaff->id)->assertNotFound();
-    expect($visit->fresh()->assistant_id)->toBe($this->assistant->id);
-
-    Livewire::test(Kasir::class)->call('open', $visit->invoice->id)->call('assignAssistant', '');
-    expect($visit->fresh()->assistant_id)->toBeNull();
-});
-
 it('mencatat pasien rujukan drg luar dan memfilternya', function () {
     gajiLogin('admin', 'admin', $this->batu->id);
 

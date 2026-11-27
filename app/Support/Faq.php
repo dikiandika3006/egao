@@ -137,10 +137,10 @@ class Faq
         [
             'group' => 'Gaji & bagi hasil',
             'q' => 'Bagaimana memilih asisten pendamping supaya fee asisten terhitung?',
-            'a' => 'Di Kasir, buka tagihan kunjungan pasien. Di bawah nama dokter ada pilihan "Asisten"; pilih asisten yang mendampingi. Pilihan ini bisa diubah sebelum atau sesudah lunas dan tercatat di jejak audit. Fee asisten dihitung dari tindakan pada tagihan yang sudah dikirim ke kasir (tidak menunggu lunas). Hanya karyawan berjabatan "Asisten dokter" yang muncul di pilihan.',
-            'where' => 'Kasir',
-            'roles' => 'Admin, Owner',
-            'tags' => 'asisten pendamping fee asisten kasir dampingi',
+            'a' => 'Asisten dipilih saat tindakan: di layar Pemeriksaan, kartu "Tindakan & tagihan", isi "Asisten pendamping" lalu simpan draf atau kirim ke kasir. Pilihan masih bisa diubah lewat tombol ✎ Edit selama tagihan belum dibayar; setelah ada pembayaran terkunci. Kasir hanya menampilkan nama asisten (tidak bisa mengubah). Setiap perubahan tercatat di jejak audit. Fee asisten dihitung dari tindakan pada tagihan yang sudah dikirim ke kasir (tidak menunggu lunas). Yang muncul di pilihan hanya karyawan aktif berjabatan "Asisten dokter" di cabang kunjungan: cabang utamanya sama, atau ia punya jadwal rutin di cabang itu (Jadwal dokter › Asisten).',
+            'where' => 'Rekam medis › Pemeriksaan › Tindakan & tagihan',
+            'roles' => 'Dokter, Owner',
+            'tags' => 'asisten pendamping fee asisten tindakan pemeriksaan dampingi kasir',
         ],
         [
             'group' => 'Gaji & bagi hasil',

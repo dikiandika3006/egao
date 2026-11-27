@@ -31,7 +31,7 @@ class Exam extends Component
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
         'drugOptions', 'drugTotal', 'goodsOptions', 'goodsTotal','standardPrice', 'maxPrice', 'defaultPrice', 'needsPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'canEditSentBilling', 'billingEditable', 'isCorrection',
-        'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
+        'editable', 'assistantOptions', 'missingAssistant', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
     ];
 
     public const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
@@ -78,6 +78,9 @@ class Exam extends Component
     public ?int $discount = 0;
 
     public string $discountReason = '';
+
+    /** Asisten pendamping kunjungan (visits.assistant_id); dipilih saat tindakan, dasar fee asisten di Gaji. */
+    public ?int $assistantId = null;
 
     /** @var list<array{tooth:int, condition_id:int, surfaces:list<string>, note:?string}> */
     public array $findings = [];
@@ -130,6 +133,9 @@ class Exam extends Component
 
     public bool $zeroPriceConfirmed = false;
 
+    /** Dokter sudah menyetujui kirim tanpa asisten pendamping (konfirmasi saja, tidak wajib). */
+    public bool $noAssistantConfirmed = false;
+
     /** Sidik isian terakhir yang tersimpan; dipakai untuk peringatan "belum disimpan". */
     #[Locked]
     public string $savedHash = '';
@@ -161,6 +167,7 @@ class Exam extends Component
         $this->allergyConfirmed = (bool) $record?->allergy_confirmed;
         $this->discount = (int) $visit->invoice?->discount;
         $this->discountReason = (string) $visit->invoice?->discount_reason;
+        $this->assistantId = $visit->assistant_id;
 
         $this->findings = $visit->findings->map(fn (ToothFinding $f) => [
             'tooth' => $f->tooth, 'condition_id' => $f->tooth_condition_type_id,
@@ -206,7 +213,7 @@ class Exam extends Component
         return md5(json_encode([
             $this->complaint, $this->anamnesis, $this->bloodPressure, $this->currentMedication, $this->plan,
             $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions, $this->goods,
-            $this->discount, $this->discountReason,
+            $this->discount, $this->discountReason, $this->assistantId,
         ]));
     }
 
@@ -340,6 +347,13 @@ class Exam extends Component
 
             return $item ? $item->sell_price * max(1, (int) ($p['item_quantity'] ?? 1)) : 0;
         });
+    }
+
+    /** Karyawan berjabatan "Asisten dokter" (aktif, atau asisten yang sudah tersimpan di kunjungan ini). */
+    #[Computed]
+    public function assistantOptions(): Collection
+    {
+        return app(ExamService::class)->assistantOptions($this->visit)->keyBy('id');
     }
 
     /** Barang jual bukan obat (kategori Barang jual, alat, dll.) yang punya harga jual, beserta stok cabang kunjungan. */
@@ -805,7 +819,8 @@ class Exam extends Component
         }
 
         $incomplete = blank(trim($this->complaint)) || $this->diagnoses === [] || $this->procedures === [];
-        $needsReview = ! $this->allergyConfirmed || ($this->zeroPriceProcedures->isNotEmpty() && ! $this->zeroPriceConfirmed);
+        $needsReview = ! $this->allergyConfirmed || ($this->zeroPriceProcedures->isNotEmpty() && ! $this->zeroPriceConfirmed)
+            || ($this->missingAssistant() && ! $this->noAssistantConfirmed);
 
         if (! $incomplete && $needsReview) {
             $this->showSendReview = true;
@@ -822,6 +837,7 @@ class Exam extends Component
         $this->authorizeBilling();
         $this->allergyConfirmed = true;
         $this->zeroPriceConfirmed = true;
+        $this->noAssistantConfirmed = true;
         $this->showSendReview = false;
 
         return $this->send($exam);
@@ -844,6 +860,12 @@ class Exam extends Component
         session()->flash('status', 'Rekam medis tersimpan dan tagihan terkirim ke kasir '.$this->visit->branch->name.'.');
 
         return $this->redirectRoute('rekam-medis', navigate: true);
+    }
+
+    /** Asisten belum dipilih padahal ada asisten di cabang ini → minta konfirmasi (boleh tetap kirim). */
+    public function missingAssistant(): bool
+    {
+        return $this->assistantId === null && $this->assistantOptions->isNotEmpty();
     }
 
     /** Tindakan bertarif range wajib diisi harganya manual; tandai baris yang kosong. true = ada yang kosong. */
@@ -925,8 +947,9 @@ class Exam extends Component
             'goods.*.quantity' => 'required|integer|min:1|max:999',
             'discount' => 'nullable|integer|min:0',
             'discountReason' => 'nullable|string|max:255',
+            'assistantId' => ['nullable', 'integer', Rule::in($this->assistantOptions->keys()->all())],
         ], ['bloodPressure.regex' => 'Format tekanan darah: sistolik/diastolik, mis. 120/80.'],
-            ['complaint' => 'keluhan utama', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
+            ['complaint' => 'keluhan utama', 'assistantId' => 'asisten pendamping', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
     }
 
     private function payload(): array
@@ -947,6 +970,7 @@ class Exam extends Component
             'goods' => $this->goods,
             'discount' => (int) $this->discount,
             'discount_reason' => $this->discountReason,
+            'assistant_id' => $this->assistantId,
         ];
     }
 

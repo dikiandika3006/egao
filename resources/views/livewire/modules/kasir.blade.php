@@ -54,16 +54,8 @@
                         @endif
                         @if ($invoice->visit)
                             <p class="mt-1 text-sm text-muted">{{ $invoice->visit->doctor->name }} · {{ $invoice->visit->visit_date->translatedFormat('j M Y') }}</p>
-                            @if ($assistants->isNotEmpty())
-                                <label class="mt-2 flex items-center gap-2 text-xs text-muted">
-                                    Asisten
-                                    <select wire:change="assignAssistant($event.target.value)" class="input min-h-8 py-1 text-[13px]">
-                                        <option value="">— tanpa asisten —</option>
-                                        @foreach ($assistants as $a)
-                                            <option value="{{ $a->id }}" @selected($invoice->visit->assistant_id === $a->id)>{{ $a->name }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
+                            @if ($invoice->visit->assistant)
+                                <p class="mt-1 text-xs text-muted">Asisten · {{ $invoice->visit->assistant->name }}</p>
                             @endif
                         @else
                             <p class="mt-1 text-sm text-muted">Penjualan langsung · {{ $invoice->created_at->translatedFormat('j M Y') }}</p>

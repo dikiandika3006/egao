@@ -518,6 +518,14 @@ class Faq
         // ── Akun & pengaturan ────────────────────────────────────────
         [
             'group' => 'Akun & pengaturan',
+            'q' => 'Di mana mengunduh buku manual?',
+            'a' => 'Buka Bantuan & aturan › tab "Panduan & FAQ". Di bagian "Buku manual" tekan "Unduh PDF". Setiap peran melihat manual perannya sendiri; Owner melihat semua manual. Owner bisa mengunggah atau mengganti file manual di bawah daftar: pilih peran, tekan "Pilih file" (PDF, maks. 10 MB), lalu "Unggah" — file baru langsung dipakai untuk semua pengguna.',
+            'where' => 'Bantuan & aturan › Panduan & FAQ',
+            'roles' => 'Semua peran (ganti file: Owner)',
+            'tags' => 'buku manual panduan pdf unduh download cetak petunjuk penggunaan upload unggah',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
             'q' => 'Bagaimana mengganti kata sandi saya sendiri?',
             'a' => 'Klik nama Anda di kanan atas › "Ubah kata sandi" (di ponsel: buka menu ☰ › "Ubah kata sandi"). Masukkan kata sandi lama, lalu kata sandi baru minimal 8 karakter dua kali. Perubahan tercatat di jejak audit. Lupa kata sandi lama? Minta Owner mengisi kata sandi baru di Master data › Master user.',
             'where' => 'Menu profil (kanan atas)',

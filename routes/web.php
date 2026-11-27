@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ManualDownloadController;
 use App\Http\Controllers\MedicalRecordPrintController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\ReportPdfController;
@@ -81,6 +82,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/gaji/slip/{type}/{id}', PayslipController::class)
             ->whereIn('type', ['doctor', 'employee'])->whereNumber('id')
             ->name('gaji.slip');
+
+        // Buku manual PDF per peran (hak akses dicek di controller).
+        Route::get('/panduan/manual/{role}', ManualDownloadController::class)->name('manual.unduh');
 
         // Laporan PDF (FR-LAP-06).
         Route::get('/laporan/pdf', ReportPdfController::class)

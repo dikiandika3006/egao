@@ -118,6 +118,7 @@ class About
         [
             'date' => '27 November 2026',
             'changes' => [
+                'Buku manual PDF per peran: unduh di Tentang aplikasi › Panduan & FAQ (Owner melihat semua manual dan bisa mengunggah/mengganti filenya; peran lain hanya manual perannya).',
                 'Ubah kata sandi sendiri: menu profil kanan atas (atau menu ☰ di ponsel) › "Ubah kata sandi", wajib memasukkan kata sandi lama; tercatat di audit.',
                 'Master user: daftar akun login (username, kata sandi, peran, cabang) pindah dari tab Pengaturan menjadi menu sendiri di grup Master data, khusus Owner.',
             ],

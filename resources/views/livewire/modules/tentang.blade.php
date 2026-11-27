@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-3xl">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']" />
 
     <div class="mt-6 flex gap-1 rounded-xl bg-white p-1 text-sm" role="tablist">
@@ -12,6 +12,61 @@
     </div>
 
     @if ($tab === 'panduan')
+    {{-- Buku manual PDF per peran (App\Support\Manual). Owner melihat semua & bisa mengganti filenya. --}}
+    <section class="card mt-6 p-5 lg:p-6">
+        <h2 class="text-lg font-semibold">Buku manual</h2>
+        <p class="mt-1 text-sm text-muted">Panduan lengkap penggunaan program dalam bentuk PDF, bisa diunduh dan dicetak.</p>
+
+        <div class="mt-4 space-y-2">
+            @forelse ($manuals as $m)
+                <div wire:key="manual-{{ $m['role']->value }}" class="rounded-xl border border-line p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="font-medium">Buku Manual {{ $m['label'] }}</p>
+                            <p class="mt-0.5 text-xs text-muted">
+                                @if ($m['exists'])
+                                    PDF · {{ number_format($m['size'] / 1048576, 1, ',', '.') }} MB · diperbarui {{ $m['updated']->translatedFormat('d M Y') }}
+                                @else
+                                    Belum tersedia
+                                @endif
+                            </p>
+                        </div>
+                        @if ($m['exists'])
+                            <a href="{{ route('manual.unduh', $m['role']->value) }}" class="btn-primary" data-unduh-manual="{{ $m['role']->value }}">Unduh PDF</a>
+                        @else
+                            <span class="pill bg-mist text-muted">Belum tersedia</span>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <p class="rounded-xl bg-mist px-4 py-6 text-center text-sm text-muted">Belum ada buku manual untuk peran Anda.</p>
+            @endforelse
+        </div>
+
+        @if ($isOwner)
+            {{-- Owner: unggah / ganti manual satu peran. Satu baris di layar lebar, turun ke bawah di ponsel. --}}
+            <form wire:submit="saveManual" class="mt-5 border-t border-line pt-4">
+                <p class="label">Unggah / ganti buku manual (PDF, maks. 10 MB)</p>
+                <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <select wire:model="manualRole" class="input sm:w-64" aria-label="Manual untuk peran">
+                        @foreach ($manuals as $m)
+                            <option value="{{ $m['role']->value }}">{{ $m['label'] }}</option>
+                        @endforeach
+                    </select>
+                    <label class="input flex min-w-0 flex-1 cursor-pointer items-center gap-2 hover:bg-mist">
+                        <input type="file" accept="application/pdf,.pdf" wire:model="manualFile" class="sr-only">
+                        <span class="btn-soft min-h-8 shrink-0 px-3 text-xs">Pilih file</span>
+                        <span class="truncate text-sm text-muted" wire:loading.remove wire:target="manualFile">{{ $manualFile?->getClientOriginalName() ?? 'Belum ada file dipilih' }}</span>
+                        <span class="text-sm text-muted" wire:loading wire:target="manualFile">Mengunggah…</span>
+                    </label>
+                    <button type="submit" class="btn-primary shrink-0" wire:loading.attr="disabled" wire:target="manualFile, saveManual">Unggah</button>
+                </div>
+                <x-error for="manualRole" />
+                <x-error for="manualFile" />
+            </form>
+        @endif
+    </section>
+
     {{-- Panduan / FAQ yang bisa dicari (App\Support\Faq) --}}
     <section id="panduan" class="card mt-6 p-5 lg:p-6">
         <h2 class="text-lg font-semibold">Panduan &amp; FAQ</h2>

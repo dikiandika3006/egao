@@ -21,13 +21,27 @@
             if (model && /^(complaint|plan|anamnesis|bloodPressure|currentMedication|prescriptions|procedures|goods)/.test(model.value)) this.typing = true;
         },
         init() {
-            this.offCommit = Livewire.hook('commit', ({ component, respond }) => {
-                if (component.id === $wire.$id) respond(() => this.typing = false);
+            this.offCommit = Livewire.hook('commit', ({ component, commit, respond, succeed }) => {
+                if (component.id !== $wire.$id) return;
+                respond(() => this.typing = false);
+                // Simpan/kirim gagal validasi: gulir ke isian pertama yang kurang dan pindahkan kursor ke sana.
+                const saving = (commit.calls || []).some(c => /^(confirmSend|send|saveDraft|saveBillingChanges|saveCorrection|confirmChecksAndSend)$/.test(c.method));
+                if (saving) succeed(() => setTimeout(() => this.focusInvalid(), 60));
             });
             this.onNavigate = (e) => { if (this.dirty && ! confirm('Ada isian pemeriksaan yang belum disimpan. Tinggalkan halaman ini?')) e.preventDefault(); };
             this.onUnload = (e) => { if (this.dirty) { e.preventDefault(); e.returnValue = ''; } };
             document.addEventListener('livewire:navigate', this.onNavigate);
             window.addEventListener('beforeunload', this.onUnload);
+        },
+        focusInvalid() {
+            const marker = this.$root.querySelector('[data-invalid]');
+            if (! marker) return;
+            // data-invalid="#id" = fokus ke elemen itu; "scroll" = hanya gulir; kosong = isian terdekat.
+            const hint = marker.dataset.invalid;
+            const target = hint === 'scroll' ? null : (hint && this.$root.querySelector(hint))
+                || marker.parentElement.querySelector('input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+            (target || marker).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            target?.focus({ preventScroll: true });
         },
         destroy() {
             this.offCommit?.();
@@ -84,7 +98,7 @@
                 <input type="checkbox" wire:model.live="allergyConfirmed" @disabled(! $editable) class="size-4 accent-brand-600">
                 Alergi sudah dikonfirmasi ke pasien
             </label>
-            @error('allergy_confirmed') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+            @error('allergy_confirmed') <p class="mt-1 text-xs text-rose-ink" data-invalid="scroll">{{ $message }}</p> @enderror
         </div>
         <button type="button" wire:click="$set('showHistory', true)" class="link-arrow justify-self-start sm:justify-self-end">Riwayat lintas cabang <span aria-hidden="true">→</span></button>
     </div>
@@ -212,10 +226,11 @@
 
                 <label for="complaint" class="mt-5 block text-xs text-muted">Keluhan utama</label>
                 <textarea id="complaint" wire:model.blur="complaint" rows="2" maxlength="500" @disabled(! $editable)
-                          class="mt-2 w-full resize-none rounded-lg bg-canvas px-3.5 py-3 text-[15px] focus:ring-2 focus:ring-leaf-200 focus:outline-none disabled:text-brand-700"
+                          @class(['mt-2 w-full resize-none rounded-lg bg-canvas px-3.5 py-3 text-[15px] focus:ring-2 focus:ring-leaf-200 focus:outline-none disabled:text-brand-700',
+                              'ring-2 ring-rose-ink/60 bg-rose-soft focus:ring-rose-ink/60' => $errors->has('complaint')])
                           placeholder="Contoh: sakit gigi geraham kanan bawah sejak 3 hari."></textarea>
                 <div class="mt-1 flex justify-between text-[11px] text-muted">
-                    @error('complaint') <span class="text-rose-ink">{{ $message }}</span> @else <span></span> @enderror
+                    @error('complaint') <span class="text-rose-ink" data-invalid="#complaint">{{ $message }}</span> @else <span></span> @enderror
                     <span>{{ mb_strlen($complaint) }}/500</span>
                 </div>
 
@@ -236,7 +251,7 @@
                         </div>
                     @endforeach
                 </div>
-                @error('diagnoses') <p class="mt-1 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                @error('diagnoses') <p class="mt-1 text-xs text-rose-ink" data-invalid="#icd-search">{{ $message }}</p> @enderror
 
                 {{-- Saran diagnosis dari temuan peta gigi: sekali klik. --}}
                 @if ($editable && $this->diagnosisSuggestions->isNotEmpty())
@@ -255,7 +270,8 @@
 
                 @if ($editable)
                     <div class="relative mt-2" x-data @click.outside="if ($wire.icdSearch) $wire.set('icdSearch', '')">
-                        <input type="search" wire:model.live.debounce.250ms="icdSearch" placeholder="Cari kode atau nama, mis. “karang” atau “K02”" class="input">
+                        <input type="search" id="icd-search" wire:model.live.debounce.250ms="icdSearch" placeholder="Cari kode atau nama, mis. “karang” atau “K02”"
+                            @class(['input', 'ring-2 ring-rose-ink/60' => $errors->has('diagnoses')])>
                         @if ($this->icdResults->isNotEmpty())
                             <ul class="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-line bg-white p-1 shadow-lg">
                                 @foreach ($this->icdResults as $icd)
@@ -498,7 +514,7 @@
                         <li class="text-sm text-muted">Belum ada tindakan.</li>
                     @endforelse
                 </ul>
-                @error('procedures') <p class="mt-2 text-xs text-rose-ink">{{ $message }}</p> @enderror
+                @error('procedures') <p class="mt-2 rounded-lg bg-rose-soft px-3 py-2 text-xs text-rose-ink" data-invalid="scroll">{{ $message }}</p> @enderror
 
                 {{-- Saran dari diagnosis: sekali klik menambah tindakan (gigi = gigi yang dipilih di peta gigi). --}}
                 @if ($billing && $this->suggestions->isNotEmpty())

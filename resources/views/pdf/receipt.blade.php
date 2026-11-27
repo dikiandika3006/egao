@@ -15,7 +15,7 @@
     }
     $contact = collect([
         $branch->phone ?? $branch->clinic->phone,
-        ($wa = \App\Support\Settings::get('clinic_whatsapp')) ? 'No. WA '.$wa : null,
+        ($wa = $branch->whatsapp ?: \App\Support\Settings::get('clinic_whatsapp')) ? 'No. WA '.$wa : null,
         \App\Support\Settings::get('clinic_email'),
     ])->filter()->implode(' · ');
 @endphp

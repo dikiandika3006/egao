@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Branch extends Model
 {
     protected $fillable = [
-        'clinic_id', 'code', 'name', 'city', 'address', 'latitude', 'longitude', 'attendance_radius_m', 'phone', 'color',
+        'clinic_id', 'code', 'name', 'city', 'address', 'latitude', 'longitude', 'attendance_radius_m', 'phone', 'whatsapp', 'color',
         'opens_at', 'closes_at', 'operating_hours', 'receipt_start_number', 'receipt_footer', 'is_active',
         'satusehat_org_id', 'satusehat_client_id', 'satusehat_client_secret', 'satusehat_location_id',
     ];

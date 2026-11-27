@@ -551,7 +551,7 @@ class Faq
         [
             'group' => 'Akun & pengaturan',
             'q' => 'Di mana mengubah profil klinik, logo, dan data cabang?',
-            'a' => 'Pengaturan › tab "Klinik & cabang" untuk nama, alamat, jam buka, dan nomor awal kwitansi tiap cabang. Logo, tagline, kontak, dan lama sesi login ada di tab "Aplikasi".',
+            'a' => 'Pengaturan › tab "Klinik & cabang" untuk nama, alamat, telepon, nomor WhatsApp (tampil di kwitansi), jam buka, dan nomor awal kwitansi tiap cabang. Logo, tagline, kontak, dan lama sesi login ada di tab "Aplikasi".',
             'where' => 'Pengaturan › Klinik & cabang / Aplikasi',
             'roles' => 'Owner',
             'tags' => 'profil klinik logo alamat jam buka cabang kwitansi',

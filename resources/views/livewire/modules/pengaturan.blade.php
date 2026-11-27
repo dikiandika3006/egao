@@ -42,6 +42,7 @@
                             <dl class="mt-4 grid grid-cols-[150px_1fr] gap-y-2 text-sm">
                                 <dt class="text-muted">Alamat</dt><dd>{{ $b->address ?: '—' }}</dd>
                                 <dt class="text-muted">Telepon</dt><dd>{{ $b->phone ?: '—' }}</dd>
+                                <dt class="text-muted">WhatsApp</dt><dd>{{ $b->whatsapp ?: '—' }}</dd>
                                 <dt class="text-muted">Jam kerja</dt>
                                 <dd class="space-y-0.5">
                                     @foreach (\App\Models\Branch::DAY_NAMES as $d => $dayName)
@@ -290,7 +291,7 @@
                             <div><label class="label">Tagline</label><input type="text" wire:model="app.clinic_tagline" class="input"><x-error for="app.clinic_tagline" /></div>
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div><label class="label">Email</label><input type="email" wire:model="app.clinic_email" class="input"><x-error for="app.clinic_email" /></div>
-                                <div><label class="label">WhatsApp</label><input type="tel" wire:model="app.clinic_whatsapp" class="input"><x-error for="app.clinic_whatsapp" /></div>
+                                <div><label class="label">WhatsApp (cadangan)</label><input type="tel" wire:model="app.clinic_whatsapp" class="input" title="Dipakai di kwitansi bila WA cabang kosong"><x-error for="app.clinic_whatsapp" /></div>
                             </div>
                         </div>
                     </section>
@@ -609,7 +610,8 @@
             <form wire:submit="saveBranch" class="grid gap-4 sm:grid-cols-2">
                 <div class="sm:col-span-2"><label class="label">Nama cabang</label><input type="text" wire:model="data.name" class="input"><x-error for="data.name" /></div>
                 <div class="sm:col-span-2"><label class="label">Alamat</label><textarea wire:model="data.address" rows="2" class="input py-2.5"></textarea></div>
-                <div class="sm:col-span-2"><label class="label">Telepon</label><input type="text" wire:model="data.phone" class="input"></div>
+                <div><label class="label">Telepon</label><input type="text" wire:model="data.phone" class="input"></div>
+                <div><label class="label">WhatsApp</label><input type="tel" wire:model="data.whatsapp" class="input" placeholder="Tampil di kwitansi"><x-error for="data.whatsapp" /></div>
                 <div class="sm:col-span-2 rounded-xl border border-line p-3" x-data="{ msg: '' }">
                     <p class="text-sm font-semibold">Lokasi absensi</p>
                     <p class="mt-0.5 text-[11px] text-muted">Titik klinik untuk check in/clock out. Radius &amp; mode uji diatur di Pengaturan › Absensi. Isi dengan berdiri di klinik lalu tekan tombol di bawah.</p>

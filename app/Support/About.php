@@ -139,6 +139,12 @@ class About
 
     public const CHANGELOG = [
         [
+            'date' => '28 November 2026',
+            'changes' => [
+                'Nomor WhatsApp kini per cabang (Pengaturan › Klinik & cabang › Ubah) dan tampil di kwitansi cabang tersebut. WA di tab Aplikasi hanya cadangan bila WA cabang kosong.',
+            ],
+        ],
+        [
             'date' => '27 November 2026',
             'changes' => [
                 'Asisten pendamping boleh 2 per kunjungan (satu kotak pilihan dengan centang, maksimal 2); masing-masing asisten mendapat fee asisten penuh.',

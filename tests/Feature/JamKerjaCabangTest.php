@@ -63,6 +63,17 @@ it('owner mengatur jam kerja per cabang', function () {
         ->and(Branch::where('code', 'MLG')->first()->hoursLabel($this->sunday))->toBe('10.00–17.00');
 });
 
+it('owner mengatur nomor WhatsApp per cabang', function () {
+    jamLogin('owner', 'owner', 'all');
+
+    $test = Livewire::test(Pengaturan::class)->call('setTab', 'klinik')->call('editBranch', $this->batu->id);
+    $test->set('data.whatsapp', 'abc')->call('saveBranch')->assertHasErrors('data.whatsapp');
+    $test->set('data.whatsapp', '0812 3456 7890')->call('saveBranch')->assertHasNoErrors();
+
+    expect($this->batu->fresh()->whatsapp)->toBe('0812 3456 7890')
+        ->and(Branch::where('code', 'MLG')->first()->whatsapp)->not->toBe('0812 3456 7890');
+});
+
 it('janji di luar jam kerja hanya diberi peringatan dan tetap tersimpan', function () {
     jamLogin('admin', 'admin', $this->batu->id);
     $patient = Patient::first();

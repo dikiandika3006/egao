@@ -440,7 +440,7 @@ class Pengaturan extends Component
         abort_unless($this->isOwner(), 403);
         $b = Branch::where('clinic_id', $this->clinicId())->findOrFail($id);
         $this->editingId = $b->id;
-        $this->data = $b->only(['name', 'address', 'phone', 'receipt_start_number', 'receipt_footer']) + [
+        $this->data = $b->only(['name', 'address', 'phone', 'whatsapp', 'receipt_start_number', 'receipt_footer']) + [
             'is_active' => $b->is_active,
             // Titik absensi berbasis lokasi (kosong = absen lokasi belum bisa di cabang ini).
             'latitude' => $b->latitude !== null ? (string) $b->latitude : '',
@@ -462,6 +462,7 @@ class Pengaturan extends Component
             'data.name' => ['required', 'string', 'max:120'],
             'data.address' => ['nullable', 'string', 'max:500'],
             'data.phone' => ['nullable', 'string', 'max:30'],
+            'data.whatsapp' => ['nullable', 'regex:/^[0-9+\-\s]{8,20}$/'],
             'data.receipt_start_number' => ['required', 'integer', 'min:1'],
             'data.receipt_footer' => ['nullable', 'string', 'max:255'],
             'data.is_active' => ['boolean'],
@@ -473,7 +474,7 @@ class Pengaturan extends Component
             'data.hours.*.s1_end' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_start' => ['nullable', 'date_format:H:i'],
             'data.hours.*.s2_end' => ['nullable', 'date_format:H:i'],
-        ], attributes: ['data.receipt_start_number' => 'nomor awal kwitansi', 'data.latitude' => 'latitude', 'data.longitude' => 'longitude'])['data'];
+        ], ['data.whatsapp.regex' => 'Nomor WhatsApp tidak valid.'], ['data.receipt_start_number' => 'nomor awal kwitansi', 'data.latitude' => 'latitude', 'data.longitude' => 'longitude'])['data'];
 
         $v['latitude'] = ($v['latitude'] ?? '') === '' ? null : (float) $v['latitude'];
         $v['longitude'] = ($v['longitude'] ?? '') === '' ? null : (float) $v['longitude'];

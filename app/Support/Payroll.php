@@ -321,14 +321,18 @@ class Payroll
             self::ROLE_ADMIN => ['hourly' => 0, 'overtime' => Settings::int('admin_overtime_rate'), 'percent' => 0.0],
         ];
 
-        // Tindakan pada kunjungan yang didampingi, per asisten per cabang.
+        // Tindakan pada kunjungan yang didampingi, per asisten per cabang. Maks 2 asisten per kunjungan;
+        // masing-masing mendapat fee penuh dari tindakan yang sama (keputusan Owner 27 Nov 2026).
         $assisted = InvoiceItem::query()
             ->whereNotNull('procedure_id')
             ->whereHas('invoice', fn ($q) => static::countedInvoices($q, $start, $end)
-                ->whereHas('visit', fn ($v) => $v->whereNotNull('assistant_id')))
-            ->with('invoice:id,visit_id,branch_id,subtotal,discount', 'invoice.visit:id,assistant_id', 'procedure:id,assistant_fee_amount')
+                ->whereHas('visit', fn ($v) => $v->where(fn ($v) => $v->whereNotNull('assistant_id')->orWhereNotNull('assistant2_id'))))
+            ->with('invoice:id,visit_id,branch_id,subtotal,discount', 'invoice.visit:id,assistant_id,assistant2_id', 'procedure:id,assistant_fee_amount')
             ->get(['id', 'invoice_id', 'procedure_id', 'quantity', 'amount'])
-            ->groupBy(fn (InvoiceItem $i) => $i->invoice->visit->assistant_id);
+            ->flatMap(fn (InvoiceItem $i) => collect([$i->invoice->visit->assistant_id, $i->invoice->visit->assistant2_id])
+                ->filter()->unique()->map(fn ($employeeId) => ['employee_id' => $employeeId, 'item' => $i]))
+            ->groupBy('employee_id')
+            ->map(fn ($rows) => $rows->pluck('item'));
 
         $attendances = EmployeeShiftAttendance::query()
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])

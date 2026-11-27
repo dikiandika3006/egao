@@ -88,7 +88,7 @@ class About
             'rules' => [
                 'Pemasukan dihitung dari pembayaran yang diterima; pengeluaran dari catatan pengeluaran per cabang.',
                 'Fee dokter dihitung dari tindakan (sebelum diskon) pada tagihan lunas, setelah dikurangi biaya modal tindakan (mis. alat behel, x-ray). Biaya order lab dokter di bulan itu ikut dipotong dari fee; bila ada tindakan bertanda "Potong biaya lab", lab pasien dipotong saat tindakan itu lunas. Tindakan bertahap (gigi palsu, behel) dapat memakai pembayaran tahap awal (cetak/DP) pasien yang sama sebagai dasar fee. Prioritas tarif: khusus dokter × tindakan → tindakan → dokter → global.',
-                'Dokter: gaji pokok + uang duduk per jam + fee. Asisten: gaji pokok + uang duduk per jam + fee % dari tindakan yang didampingi (dipilih dokter saat tindakan) + lembur per jam. Admin & staf lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang tiap bulan.',
+                'Dokter: gaji pokok + uang duduk per jam + fee. Asisten: gaji pokok + uang duduk per jam + fee % dari tindakan yang didampingi (dipilih dokter saat tindakan, maks 2 asisten per kunjungan, masing-masing fee penuh) + lembur per jam. Admin & staf lain: gaji pokok + lembur per jam. THR dan bonus akhir tahun diisi per orang tiap bulan.',
                 'Fee dibebankan ke cabang tempat tindakan; komponen lain ke cabang utama.',
                 'Mencatat gaji ke pengeluaran bisa diulang; catatan bulan yang sama diganti, tidak dobel.',
                 'Pengeluaran kategori "Gaji dan bagi hasil" hanya diisi otomatis dari menu Gaji.',
@@ -141,6 +141,7 @@ class About
         [
             'date' => '27 November 2026',
             'changes' => [
+                'Asisten pendamping boleh 2 per kunjungan ("Asisten 2 (opsional)" muncul setelah asisten 1 dipilih); masing-masing asisten mendapat fee asisten penuh.',
                 'Asisten pendamping kini dipilih saat tindakan (Pemeriksaan › Tindakan & tagihan) oleh dokter pemeriksa/Owner; pilihan hanya asisten cabang kunjungan (cabang utama atau berjadwal di cabang itu). Bisa diubah selama tagihan belum dibayar. Kasir hanya menampilkan nama asisten.',
                 'Biaya admin Rp5.000 kini ditagih di setiap transaksi tindakan (sebelumnya sekali per pasien). Pasien baru ditambah biaya pendaftaran & kartu Rp5.000 sekali (kunjungan pertama total Rp10.000). Semua pasien yang sudah ada, termasuk impor Assist.id, dianggap pasien lama. Penjualan langsung, tindakan Rp0 (garansi), dan cicilan tidak kena biaya admin. Nominal keduanya diatur di Tarif gaji & bagi hasil.',
                 'Tampilan tablet (lebar 768–1279 px): ukuran huruf dasar diperkecil agar tabel dan form tidak terpotong.',

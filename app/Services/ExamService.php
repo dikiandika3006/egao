@@ -30,7 +30,7 @@ use Illuminate\Validation\ValidationException;
  *  procedures[]    = {procedure_id, tooth, quantity}
  *  prescriptions[] = {drug_name, dose, quantity}
  *  goods[]         = {item_id, quantity}  barang lain-lain (bukan obat): hanya ditagihkan, tidak masuk rekam medis
- *  assistant_id    = asisten pendamping (opsional; kunci tidak ada = tidak diubah)
+ *  assistant_id, assistant2_id = asisten pendamping 1 & 2 (opsional; kunci tidak ada = tidak diubah)
  */
 class ExamService
 {
@@ -318,10 +318,6 @@ class ExamService
     }
 
     /**
-     * Diskon tagihan diberikan dokter penanggung jawab (atau Owner) di pemeriksaan, sebelum dikirim ke kasir.
-     * Admin/Asisten yang mengisi pemeriksaan atas nama dokter tidak bisa mengubahnya.
-     */
-    /**
      * Pilihan asisten pendamping: karyawan aktif berjabatan "Asisten dokter" di cabang kunjungan
      * (cabang utama, atau punya jadwal rutin di cabang itu), plus asisten yang sudah tersimpan di kunjungan.
      */
@@ -329,35 +325,55 @@ class ExamService
     {
         $visit->loadMissing('patient');
         $branchId = $visit->branch_id;
+        $saved = array_filter([$visit->assistant_id, $visit->assistant2_id]);
 
         return \App\Models\Employee::where('clinic_id', $visit->patient->clinic_id)->where('position', 'Asisten dokter')
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->where('is_active', true)->where(fn ($q) => $q->where('primary_branch_id', $branchId)
                     ->orWhereHas('schedules', fn ($s) => $s->where('branch_id', $branchId))))
-                ->when($visit->assistant_id, fn ($q) => $q->orWhere('id', $visit->assistant_id)))
+                ->when($saved, fn ($q) => $q->orWhereIn('id', $saved)))
             ->orderBy('name')->get(['id', 'name', 'is_active']);
     }
 
-    /** Asisten dipilih saat tindakan (27 Nov 2026; dulu di Kasir). Divalidasi ulang di server, perubahan dicatat di audit. */
+    /**
+     * Asisten dipilih saat tindakan (27 Nov 2026; dulu di Kasir), maksimal 2, masing-masing fee penuh.
+     * Divalidasi ulang di server (jabatan, cabang, tidak dobel); asisten 2 tanpa asisten 1 digeser ke 1. Perubahan dicatat di audit.
+     */
     private function syncAssistant(Visit $visit, array $data): void
     {
-        if (! array_key_exists('assistant_id', $data)) {
+        if (! array_key_exists('assistant_id', $data) && ! array_key_exists('assistant2_id', $data)) {
             return;
         }
 
-        $id = filled($data['assistant_id']) ? (int) $data['assistant_id'] : null;
-        if ($id !== null && ! $this->assistantOptions($visit)->contains('id', $id)) {
-            throw ValidationException::withMessages(['assistantId' => 'Pilih asisten berjabatan "Asisten dokter".']);
+        $toId = fn ($v) => filled($v) ? (int) $v : null;
+        $first = $toId($data['assistant_id'] ?? null);
+        $second = $toId($data['assistant2_id'] ?? null);
+        if ($first === null) {
+            [$first, $second] = [$second, null];
+        }
+        if ($first !== null && $first === $second) {
+            throw ValidationException::withMessages(['assistant2Id' => 'Asisten 2 tidak boleh sama dengan asisten 1.']);
         }
 
-        $before = $visit->assistant_id;
-        if ($before === $id) {
+        $options = $this->assistantOptions($visit);
+        foreach (['assistantId' => $first, 'assistant2Id' => $second] as $field => $id) {
+            if ($id !== null && ! $options->contains('id', $id)) {
+                throw ValidationException::withMessages([$field => 'Pilih asisten berjabatan "Asisten dokter" di cabang ini.']);
+            }
+        }
+
+        $before = [$visit->assistant_id, $visit->assistant2_id];
+        if ($before === [$first, $second]) {
             return;
         }
-        $visit->update(['assistant_id' => $id]);
-        AuditLog::record('visit.assistant.updated', $visit, ['before' => $before, 'after' => $id]);
+        $visit->update(['assistant_id' => $first, 'assistant2_id' => $second]);
+        AuditLog::record('visit.assistant.updated', $visit, ['before' => $before, 'after' => [$first, $second]]);
     }
 
+    /**
+     * Diskon tagihan diberikan dokter penanggung jawab (atau Owner) di pemeriksaan, sebelum dikirim ke kasir.
+     * Admin/Asisten yang mengisi pemeriksaan atas nama dokter tidak bisa mengubahnya.
+     */
     public function canGiveDiscount(Visit $visit): bool
     {
         return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner))

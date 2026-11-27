@@ -47,6 +47,35 @@ it('dokter memilih asisten pendamping saat tindakan, tersimpan di kunjungan dan 
     expect($this->visit->fresh()->assistant_id)->toBeNull();
 });
 
+it('boleh dua asisten: tersimpan, tidak boleh sama, dan asisten 2 naik bila asisten 1 dikosongkan', function () {
+    $kedua = Employee::create(['clinic_id' => $this->batu->clinic_id, 'primary_branch_id' => $this->batu->id, 'name' => 'Asisten Kedua Uji', 'position' => 'Asisten dokter', 'base_salary' => 0]);
+    masukDokterKunjungan($this->visit);
+
+    Livewire::test(Exam::class, ['visit' => $this->visit])
+        ->set('assistantId', $this->asisten->id)
+        ->assertSee('Asisten 2 (opsional)')
+        ->set('assistant2Id', $kedua->id)
+        ->call('saveDraft')
+        ->assertHasNoErrors();
+    $visit = $this->visit->fresh();
+    expect([$visit->assistant_id, $visit->assistant2_id])->toBe([$this->asisten->id, $kedua->id])
+        ->and($visit->assistantNames())->toBe('Asisten Pendamping Uji, Asisten Kedua Uji');
+
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->set('assistant2Id', $this->asisten->id)
+        ->call('saveDraft')
+        ->assertHasErrors('assistant2Id');
+
+    Livewire::test(Exam::class, ['visit' => $visit])
+        ->set('assistantId', null)
+        ->assertSet('assistantId', $kedua->id)
+        ->assertSet('assistant2Id', null)
+        ->call('saveDraft')
+        ->assertHasNoErrors();
+    $visit = $visit->fresh();
+    expect([$visit->assistant_id, $visit->assistant2_id])->toBe([$kedua->id, null]);
+});
+
 it('karyawan yang bukan asisten dokter ditolak', function () {
     masukDokterKunjungan($this->visit);
 

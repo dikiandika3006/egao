@@ -367,8 +367,21 @@
                         </select>
                     </label>
                     <x-error for="assistantId" />
+                    @if ($assistantId && $assistantOptions->count() > 1)
+                        <label class="mt-2 flex items-center gap-2 text-sm">
+                            <span class="shrink-0 text-muted">Asisten 2 (opsional)</span>
+                            <select wire:model.live="assistant2Id" class="input min-h-9 flex-1 py-1 text-sm">
+                                <option value="">— tanpa asisten 2 —</option>
+                                @foreach ($assistantOptions->except($assistantId) as $a)
+                                    <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (nonaktif)' }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <x-error for="assistant2Id" />
+                    @endif
                 @elseif ($assistantId)
-                    <p class="mt-3 text-sm"><span class="text-muted">Asisten pendamping</span> · {{ $assistantOptions->get($assistantId)?->name ?? '—' }}</p>
+                    <p class="mt-3 text-sm"><span class="text-muted">Asisten pendamping</span> ·
+                        {{ collect([$assistantId, $assistant2Id])->filter()->map(fn ($id) => $assistantOptions->get($id)?->name ?? '—')->implode(', ') }}</p>
                 @endif
 
                 @php

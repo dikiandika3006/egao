@@ -82,6 +82,9 @@ class Exam extends Component
     /** Asisten pendamping kunjungan (visits.assistant_id); dipilih saat tindakan, dasar fee asisten di Gaji. */
     public ?int $assistantId = null;
 
+    /** Asisten pendamping kedua (opsional, visits.assistant2_id); fee asisten penuh juga. */
+    public ?int $assistant2Id = null;
+
     /** @var list<array{tooth:int, condition_id:int, surfaces:list<string>, note:?string}> */
     public array $findings = [];
 
@@ -168,6 +171,7 @@ class Exam extends Component
         $this->discount = (int) $visit->invoice?->discount;
         $this->discountReason = (string) $visit->invoice?->discount_reason;
         $this->assistantId = $visit->assistant_id;
+        $this->assistant2Id = $visit->assistant2_id;
 
         $this->findings = $visit->findings->map(fn (ToothFinding $f) => [
             'tooth' => $f->tooth, 'condition_id' => $f->tooth_condition_type_id,
@@ -213,7 +217,7 @@ class Exam extends Component
         return md5(json_encode([
             $this->complaint, $this->anamnesis, $this->bloodPressure, $this->currentMedication, $this->plan,
             $this->followUp, $this->allergyConfirmed, $this->findings, $this->diagnoses, $this->procedures, $this->prescriptions, $this->goods,
-            $this->discount, $this->discountReason, $this->assistantId,
+            $this->discount, $this->discountReason, $this->assistantId, $this->assistant2Id,
         ]));
     }
 
@@ -865,7 +869,17 @@ class Exam extends Component
     /** Asisten belum dipilih padahal ada asisten di cabang ini → minta konfirmasi (boleh tetap kirim). */
     public function missingAssistant(): bool
     {
-        return $this->assistantId === null && $this->assistantOptions->isNotEmpty();
+        return $this->assistantId === null && $this->assistant2Id === null && $this->assistantOptions->isNotEmpty();
+    }
+
+    /** Asisten 1 dikosongkan → asisten 2 naik jadi asisten 1. */
+    public function updatedAssistantId(): void
+    {
+        if ($this->assistantId === null && $this->assistant2Id !== null) {
+            [$this->assistantId, $this->assistant2Id] = [$this->assistant2Id, null];
+        } elseif ($this->assistantId !== null && $this->assistantId === $this->assistant2Id) {
+            $this->assistant2Id = null;
+        }
     }
 
     /** Tindakan bertarif range wajib diisi harganya manual; tandai baris yang kosong. true = ada yang kosong. */
@@ -948,8 +962,9 @@ class Exam extends Component
             'discount' => 'nullable|integer|min:0',
             'discountReason' => 'nullable|string|max:255',
             'assistantId' => ['nullable', 'integer', Rule::in($this->assistantOptions->keys()->all())],
+            'assistant2Id' => ['nullable', 'integer', 'different:assistantId', Rule::in($this->assistantOptions->keys()->all())],
         ], ['bloodPressure.regex' => 'Format tekanan darah: sistolik/diastolik, mis. 120/80.'],
-            ['complaint' => 'keluhan utama', 'assistantId' => 'asisten pendamping', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
+            ['complaint' => 'keluhan utama', 'assistantId' => 'asisten pendamping', 'assistant2Id' => 'asisten 2', 'plan' => 'rencana perawatan', 'bloodPressure' => 'tekanan darah']);
     }
 
     private function payload(): array
@@ -971,6 +986,7 @@ class Exam extends Component
             'discount' => (int) $this->discount,
             'discount_reason' => $this->discountReason,
             'assistant_id' => $this->assistantId,
+            'assistant2_id' => $this->assistant2Id,
         ];
     }
 

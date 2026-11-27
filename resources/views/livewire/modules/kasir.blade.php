@@ -54,8 +54,8 @@
                         @endif
                         @if ($invoice->visit)
                             <p class="mt-1 text-sm text-muted">{{ $invoice->visit->doctor->name }} · {{ $invoice->visit->visit_date->translatedFormat('j M Y') }}</p>
-                            @if ($invoice->visit->assistant)
-                                <p class="mt-1 text-xs text-muted">Asisten · {{ $invoice->visit->assistant->name }}</p>
+                            @if ($invoice->visit->assistantNames())
+                                <p class="mt-1 text-xs text-muted">Asisten · {{ $invoice->visit->assistantNames() }}</p>
                             @endif
                         @else
                             <p class="mt-1 text-sm text-muted">Penjualan langsung · {{ $invoice->created_at->translatedFormat('j M Y') }}</p>

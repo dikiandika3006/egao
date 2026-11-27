@@ -336,7 +336,7 @@ class Kasir extends Component
             ->get();
 
         $invoice = $this->selected
-            ? $this->query()->with(['visit.patient', 'visit.doctor', 'visit.assistant', 'patient', 'branch', 'items', 'payments.receiver', 'receipts'])->find($this->selected)
+            ? $this->query()->with(['visit.patient', 'visit.doctor', 'visit.assistant', 'visit.assistant2', 'patient', 'branch', 'items', 'payments.receiver', 'receipts'])->find($this->selected)
             : null;
 
         return $this->page('kasir', 'livewire.modules.kasir', [

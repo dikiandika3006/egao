@@ -49,7 +49,7 @@ function paidVisit(array $o): Visit
     $t = test();
     $visit = Visit::create([
         'patient_id' => $t->patient->id, 'doctor_id' => $t->doctor->id, 'branch_id' => $t->batu->id,
-        'assistant_id' => $o['assistant_id'] ?? null, 'visit_date' => $t->month->copy()->addDays(4),
+        'assistant_id' => $o['assistant_id'] ?? null, 'assistant2_id' => $o['assistant2_id'] ?? null, 'visit_date' => $t->month->copy()->addDays(4),
         'queue_number' => random_int(100, 9999), 'status' => 'selesai',
     ]);
     $invoice = Invoice::create([
@@ -133,6 +133,24 @@ it('fee asisten dari tindakan yang ia dampingi (termasuk belum lunas), plus UD d
         ->and($row['ud'])->toBe(1_000_000)
         ->and($row['overtime'])->toBe(60_000)
         ->and($row['total'])->toBe(1_000_000 + 1_000_000 + 36_000 + 60_000);
+});
+
+it('dua asisten pada satu kunjungan masing-masing mendapat fee penuh (persen maupun nominal tetap)', function () {
+    Settings::set('assistant_share_percent', '2');
+    $asisten2 = Employee::create(['clinic_id' => $this->clinicId, 'primary_branch_id' => $this->batu->id, 'name' => 'Asisten Kedua', 'position' => 'Asisten dokter', 'base_salary' => 0]);
+    $proc = Procedure::where('clinic_id', $this->clinicId)->first();
+    $proc->update(['assistant_fee_amount' => null]);
+    $behel = Procedure::where('clinic_id', $this->clinicId)->where('id', '!=', $proc->id)->first();
+    $behel->update(['assistant_fee_amount' => 8_000]);
+
+    paidVisit(['procedure_id' => $proc->id, 'amount' => 1_000_000, 'assistant_id' => $this->assistant->id, 'assistant2_id' => $asisten2->id]);
+    paidVisit(['procedure_id' => $behel->id, 'amount' => 3_000_000, 'assistant_id' => $asisten2->id, 'assistant2_id' => $this->assistant->id]);
+
+    foreach ([$this->assistant, $asisten2] as $e) {
+        $row = employeeRow($e);
+        expect($row['assisted_count'])->toBe(2)
+            ->and($row['assistant_share'])->toBe(20_000 + 8_000);
+    }
 });
 
 it('admin hanya gaji pokok + lembur; jam hadir tidak menambah UD; THR dihitung bonus', function () {

@@ -353,7 +353,7 @@ class ExamService
      * dicatat di audit (bagi hasil ikut harga ini). Di bawah minimal hanya bila dicentang "tidak selesai" (atau tindakan
      * bertanda "harga boleh di bawah standar") dan beralasan. Tindakan bertarif terkunci selalu tarif minimal.
      * Peran lain tidak bisa mengubah harga, tetapi harga yang sudah tersimpan untuk tindakan yang sama dipertahankan.
-     * Biaya bahan resep dibekukan per baris (material_cost); biaya admin ditagih sekali di tagihan pertama pasien.
+     * Biaya bahan resep dibekukan per baris (material_cost); biaya admin per transaksi tindakan (+ pendaftaran pasien baru), lihat adminFeeLines().
      */
     private function persistBilling(Visit $visit, array $procedures, string $status, array $prescriptions = [], ?array $discount = null, array $goods = []): Invoice
     {
@@ -364,7 +364,7 @@ class ExamService
 
         // Harga yang sudah tersimpan per tindakan (antrian sesuai urutan) untuk dipertahankan saat Admin menyimpan.
         $existing = InvoiceItem::whereHas('invoice', fn ($q) => $q->where('visit_id', $visit->id))->orderBy('id')
-            ->get(['procedure_id', 'unit_price', 'price_reason', 'is_incomplete', 'is_admin_fee']);
+            ->get(['procedure_id', 'unit_price', 'price_reason', 'is_incomplete', 'is_admin_fee', 'fee_kind']);
         $saved = $existing->whereNotNull('procedure_id')->groupBy('procedure_id')
             ->map(fn ($g) => $g->map(fn ($i) => ['price' => (int) $i->unit_price, 'reason' => $i->price_reason, 'incomplete' => (bool) $i->is_incomplete])->values()->all())
             ->all();
@@ -461,17 +461,7 @@ class ExamService
 
         $invoice = Invoice::firstOrNew(['visit_id' => $visit->id]);
 
-        // Biaya admin & kartu: sekali per pasien. Ditambahkan selama tagihan masih baru/draf; setelah dikirim ke kasir
-        // hanya dipertahankan (bila Kasir menghapusnya, tidak muncul lagi).
-        $adminFee = Settings::int('admin_fee');
-        $hadAdmin = $existing->contains('is_admin_fee', true);
-        $fresh = ! $invoice->exists || $invoice->status === Invoice::STATUS_DRAFT;
-        if ($adminFee > 0 && ($hadAdmin || ($fresh && ! $this->patientHasAdminFee($visit->patient_id, $invoice->id)))) {
-            $items->push([
-                'doctor_id' => null, 'name' => self::ADMIN_FEE_NAME, 'tooth' => null, 'is_admin_fee' => true,
-                'quantity' => 1, 'unit_price' => $adminFee, 'amount' => $adminFee,
-            ]);
-        }
+        $items = $items->merge($this->adminFeeLines($visit, $invoice, $existing, (int) $items->whereNotNull('procedure_id')->sum('amount')));
 
         $total = (int) $items->sum('amount');
 
@@ -547,12 +537,49 @@ class ExamService
         return $rows;
     }
 
-    public const ADMIN_FEE_NAME = 'Biaya admin & kartu';
+    public const ADMIN_FEE_NAME = 'Biaya admin';
 
-    /** Pasien sudah pernah ditagih biaya admin (tagihan lain yang tidak batal). */
-    private function patientHasAdminFee(int $patientId, ?int $exceptInvoiceId): bool
+    public const REGISTRATION_FEE_NAME = 'Biaya pendaftaran & kartu';
+
+    /**
+     * Biaya admin (aturan Owner 27 Nov): Rp admin_fee tiap transaksi tindakan, plus registration_fee sekali untuk
+     * pasien baru. Tidak ditagih bila tindakannya Rp0 (garansi) atau tagihan hanya obat/barang.
+     * Ditambahkan otomatis selama tagihan baru/draf; setelah dikirim ke kasir hanya dipertahankan
+     * (baris yang dihapus Kasir tidak muncul lagi saat pemeriksaan disimpan ulang).
+     */
+    private function adminFeeLines(Visit $visit, Invoice $invoice, \Illuminate\Support\Collection $existing, int $procedureTotal): array
     {
-        return InvoiceItem::where('is_admin_fee', true)
+        if ($procedureTotal <= 0) {
+            return [];
+        }
+
+        $fresh = ! $invoice->exists || $invoice->status === Invoice::STATUS_DRAFT;
+        $had = fn (string $kind) => $existing->contains(fn ($i) => $i->is_admin_fee && $i->fee_kind === $kind);
+        $newPatient = ! $visit->patient->registration_paid;
+
+        $fees = [
+            [InvoiceItem::FEE_ADMIN, self::ADMIN_FEE_NAME, Settings::int('admin_fee'), true],
+            [InvoiceItem::FEE_REGISTRATION, self::REGISTRATION_FEE_NAME, Settings::int('registration_fee'),
+                $newPatient && ! $this->patientHasRegistrationFee($visit->patient_id, $invoice->id)],
+        ];
+
+        $rows = [];
+        foreach ($fees as [$kind, $name, $amount, $due]) {
+            if ($amount > 0 && ($had($kind) || ($fresh && $due))) {
+                $rows[] = [
+                    'doctor_id' => null, 'name' => $name, 'tooth' => null, 'is_admin_fee' => true, 'fee_kind' => $kind,
+                    'quantity' => 1, 'unit_price' => $amount, 'amount' => $amount,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /** Biaya pendaftaran pasien sudah ada di tagihan lain yang tidak batal. */
+    private function patientHasRegistrationFee(int $patientId, ?int $exceptInvoiceId): bool
+    {
+        return InvoiceItem::where('is_admin_fee', true)->where('fee_kind', InvoiceItem::FEE_REGISTRATION)
             ->whereHas('invoice', fn ($q) => $q->where('status', '!=', Invoice::STATUS_VOID)
                 ->when($exceptInvoiceId, fn ($q) => $q->whereKeyNot($exceptInvoiceId))
                 ->where(fn ($q) => $q->where('patient_id', $patientId)->orWhereHas('visit', fn ($v) => $v->where('patient_id', $patientId))))

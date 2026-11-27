@@ -16,6 +16,7 @@ class Patient extends Model
     protected $fillable = [
         'clinic_id', 'medical_record_number', 'name', 'gender', 'birth_date', 'birth_place', 'phone', 'nik',
         'address', 'occupation', 'emergency_contact', 'allergies', 'referred_by', 'ihs_patient_id',
+        'registration_paid',
     ];
 
     protected $hidden = ['nik', 'phone'];
@@ -32,7 +33,7 @@ class Patient extends Model
 
     protected function casts(): array
     {
-        return ['birth_date' => 'date'];
+        return ['birth_date' => 'date', 'registration_paid' => 'boolean'];
     }
 
     public function clinic(): BelongsTo

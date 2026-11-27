@@ -376,11 +376,11 @@ class Faq
         // ── Kasir ────────────────────────────────────────────────────
         [
             'group' => 'Kasir',
-            'q' => 'Kapan biaya admin & kartu ditagih?',
-            'a' => 'Sekali per pasien, otomatis di tagihan pertamanya (bawaan Rp5.000, untuk pendaftaran dan cetak kartu). Kunjungan berikutnya tidak ditagih lagi. Biaya admin tidak masuk bagi hasil dokter. Untuk pasien lama yang ternyata sudah pernah membayar, tekan ✕ pada baris "Biaya admin & kartu" di Kasir sebelum ada pembayaran; biaya admin tidak muncul lagi di tagihan itu. Nominal diatur di Master data › Tarif gaji & bagi hasil (0 = tidak dipakai).',
+            'q' => 'Kapan biaya admin dan biaya pendaftaran ditagih?',
+            'a' => '"Biaya admin" (bawaan Rp5.000) otomatis masuk setiap tagihan pemeriksaan yang ada tindakannya. Pasien baru juga kena "Biaya pendaftaran & kartu" (bawaan Rp5.000) sekali saja, jadi kunjungan pertamanya Rp10.000; setelah tagihan itu dibayar, pasien tercatat sebagai pasien lama. Semua pasien yang sudah ada sebelum 27 Nov 2026 (termasuk impor Assist.id) dianggap pasien lama. Tidak ada biaya admin untuk penjualan langsung, tindakan Rp0 (garansi), atau pembayaran cicilan. Biaya admin tidak masuk bagi hasil dokter. Bila pasien ternyata pasien lama, tekan ✕ pada baris "Biaya pendaftaran & kartu" di Kasir sebelum ada pembayaran: pasien dicatat sebagai pasien lama dan tidak ditagih pendaftaran lagi. Nominal diatur di Master data › Tarif gaji & bagi hasil (0 = tidak dipakai).',
             'where' => 'Kasir',
             'roles' => 'Admin, Owner',
-            'tags' => 'biaya admin administrasi kartu pendaftaran 5000 pasien baru',
+            'tags' => 'biaya admin administrasi kartu pendaftaran 5000 10000 pasien baru pasien lama transaksi garansi',
         ],
         [
             'group' => 'Kasir',

@@ -192,21 +192,97 @@ describe('pemeriksaan', function () {
         ];
     }
 
-    it('biaya admin ditagih sekali di tagihan pertama pasien', function () {
+    /** Jenis baris biaya admin di tagihan kunjungan → [fee_kind => amount]. */
+    function biayaAdmin(Visit $visit): array
+    {
+        return $visit->fresh()->invoice->items()->where('is_admin_fee', true)->pluck('amount', 'fee_kind')->map(fn ($a) => (int) $a)->all();
+    }
+
+    function sebagaiKasir(int $branchId): void
+    {
+        test()->actingAs(User::where('username', 'admin')->firstOrFail());
+        session([BranchContext::SESSION_ROLE => 'admin', BranchContext::SESSION_BRANCH => $branchId]);
+    }
+
+    function kunjunganLagi(Visit $visit, int $days = 1): Visit
+    {
+        return Visit::create([
+            'patient_id' => $visit->patient_id, 'doctor_id' => $visit->doctor_id, 'branch_id' => $visit->branch_id,
+            'visit_date' => today()->addDays($days)->toDateString(), 'queue_number' => 900 + $days, 'status' => 'diperiksa',
+        ]);
+    }
+
+    it('pasien lama: biaya admin tiap transaksi tindakan, tanpa pendaftaran', function () {
         Settings::set('admin_fee', '5000');
-        InvoiceItem::where('is_admin_fee', true)->delete();
+        Settings::set('registration_fee', '5000');
+        expect($this->visit->patient->registration_paid)->toBeTrue();
+
+        app(ExamService::class)->saveDraft($this->visit, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
+        expect(biayaAdmin($this->visit))->toBe([InvoiceItem::FEE_ADMIN => 5000])
+            ->and($this->visit->fresh()->invoice->total)->toBe($this->standard + 5000);
+
+        // Kunjungan berikutnya tetap kena admin.
+        $next = kunjunganLagi($this->visit);
+        app(ExamService::class)->saveDraft($next, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
+        expect(biayaAdmin($next))->toBe([InvoiceItem::FEE_ADMIN => 5000]);
+    });
+
+    it('pasien baru: admin + pendaftaran sekali, lalu tercatat pasien lama setelah membayar', function () {
+        Settings::set('admin_fee', '5000');
+        Settings::set('registration_fee', '5000');
+        $this->visit->patient->update(['registration_paid' => false]);
+
+        app(ExamService::class)->saveDraft($this->visit, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
+        expect(biayaAdmin($this->visit))->toBe([InvoiceItem::FEE_ADMIN => 5000, InvoiceItem::FEE_REGISTRATION => 5000])
+            ->and($this->visit->fresh()->invoice->total)->toBe($this->standard + 10_000);
+
+        // Belum dibayar: kunjungan lain tidak menagih pendaftaran dua kali.
+        $next = kunjunganLagi($this->visit);
+        app(ExamService::class)->saveDraft($next, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
+        expect(biayaAdmin($next))->toBe([InvoiceItem::FEE_ADMIN => 5000]);
+
+        // Bayar di Kasir → pasien lama.
+        $invoice = $this->visit->fresh()->invoice;
+        $invoice->update(['status' => Invoice::STATUS_UNPAID]);
+        sebagaiKasir($this->visit->branch_id);
+        Livewire\Livewire::test(\App\Livewire\Modules\Kasir::class)
+            ->call('open', $invoice->id)
+            ->set('pay.method', array_key_first(Settings::paymentMethods()))
+            ->set('pay.amount', 10_000)
+            ->call('submitPayment');
+        expect($this->visit->patient->fresh()->registration_paid)->toBeTrue();
+    });
+
+    it('tindakan Rp0 (garansi) dan tagihan tanpa tindakan tidak kena biaya admin', function () {
+        Settings::set('admin_fee', '5000');
+        Settings::set('registration_fee', '5000');
+        $this->visit->patient->update(['registration_paid' => false]);
+        $this->exam->update(['allow_lower_price' => true]);
+
+        app(ExamService::class)->saveDraft($this->visit, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1, 'unit_price' => 0, 'price_reason' => 'Garansi tambalan']]));
+        expect(biayaAdmin($this->visit))->toBe([]);
+
+        $next = kunjunganLagi($this->visit);
+        app(ExamService::class)->saveDraft($next, bayarPeriksa([]));
+        expect($next->fresh()->invoice?->items()->where('is_admin_fee', true)->exists() ?? false)->toBeFalse();
+    });
+
+    it('Kasir menghapus biaya pendaftaran → pasien dicatat pasien lama', function () {
+        Settings::set('admin_fee', '5000');
+        Settings::set('registration_fee', '5000');
+        $this->visit->patient->update(['registration_paid' => false]);
         app(ExamService::class)->saveDraft($this->visit, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
         $invoice = $this->visit->fresh()->invoice;
-        expect((int) $invoice->items()->where('is_admin_fee', true)->sum('amount'))->toBe(5000)
-            ->and($invoice->total)->toBe($this->standard + 5000);
+        $invoice->update(['status' => Invoice::STATUS_UNPAID]);
+        $line = $invoice->items()->where('fee_kind', InvoiceItem::FEE_REGISTRATION)->firstOrFail();
 
-        // Kunjungan berikutnya pasien yang sama: tanpa biaya admin.
-        $next = Visit::create([
-            'patient_id' => $this->visit->patient_id, 'doctor_id' => $this->visit->doctor_id, 'branch_id' => $this->visit->branch_id,
-            'visit_date' => today()->addDay()->toDateString(), 'queue_number' => 999, 'status' => 'diperiksa',
-        ]);
-        app(ExamService::class)->saveDraft($next, bayarPeriksa([['procedure_id' => $this->exam->id, 'quantity' => 1]]));
-        expect($next->fresh()->invoice->items()->where('is_admin_fee', true)->exists())->toBeFalse();
+        sebagaiKasir($this->visit->branch_id);
+        Livewire\Livewire::test(\App\Livewire\Modules\Kasir::class)
+            ->call('open', $invoice->id)
+            ->call('removeAdminFee', $line->id);
+
+        expect(biayaAdmin($this->visit))->toBe([InvoiceItem::FEE_ADMIN => 5000])
+            ->and($this->visit->patient->fresh()->registration_paid)->toBeTrue();
     });
 
     it('tarif terkunci selalu memakai harga standar', function () {

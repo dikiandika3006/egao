@@ -400,6 +400,7 @@ class DatabaseSeeder extends Seeder
             'nik' => fake()->boolean(60) ? fake()->numerify('35##############') : null,
             'address' => fake()->address(),
             'allergies' => $allergy,
+            'registration_paid' => true, // data contoh = pasien lama
         ]);
     }
 

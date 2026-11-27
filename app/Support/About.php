@@ -105,7 +105,7 @@ class About
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
                 'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan (atau lewat Mode edit selama tagihan belum dibayar): di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
-                'Biaya admin & kartu ditagih sekali per pasien di tagihan pertamanya dan tidak masuk bagi hasil.',
+                'Biaya admin ditagih di setiap tagihan pemeriksaan yang ada tindakannya (bukan penjualan langsung, tindakan Rp0/garansi, atau cicilan); pasien baru ditambah biaya pendaftaran & kartu sekali. Keduanya tidak masuk bagi hasil.',
                 'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
                 'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
                 'Bahan resep tindakan memotong stok tiap genap 1 satuan; pecahan disimpan sebagai saldo pemakaian.',
@@ -118,6 +118,8 @@ class About
         [
             'date' => '27 November 2026',
             'changes' => [
+                'Biaya admin Rp5.000 kini ditagih di setiap transaksi tindakan (sebelumnya sekali per pasien). Pasien baru ditambah biaya pendaftaran & kartu Rp5.000 sekali (kunjungan pertama total Rp10.000). Semua pasien yang sudah ada, termasuk impor Assist.id, dianggap pasien lama. Penjualan langsung, tindakan Rp0 (garansi), dan cicilan tidak kena biaya admin. Nominal keduanya diatur di Tarif gaji & bagi hasil.',
+                'Tampilan tablet (lebar 768–1279 px): ukuran huruf dasar diperkecil agar tabel dan form tidak terpotong.',
                 'Buku manual PDF per peran: unduh di Tentang aplikasi › Panduan & FAQ (Owner melihat semua manual dan bisa mengunggah/mengganti filenya; peran lain hanya manual perannya).',
                 'Ubah kata sandi sendiri: menu profil kanan atas (atau menu ☰ di ponsel) › "Ubah kata sandi", wajib memasukkan kata sandi lama; tercatat di audit.',
                 'Master user: daftar akun login (username, kata sandi, peran, cabang) pindah dari tab Pengaturan menjadi menu sendiri di grup Master data, khusus Owner.',

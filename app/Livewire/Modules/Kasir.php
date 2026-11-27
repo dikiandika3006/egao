@@ -7,6 +7,8 @@ use App\Livewire\Concerns\ModulePage;
 use App\Livewire\Concerns\PicksBranch;
 use App\Models\AuditLog;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Enums\Role;
@@ -134,6 +136,11 @@ class Kasir extends Component
                 'amount' => (int) $this->pay['amount'],
                 'paid_at' => now(),
             ]);
+
+            // Pembayaran pertama tagihan berbiaya pendaftaran → pasien tercatat sebagai pasien lama.
+            if ($invoice->visit && $invoice->items()->where('fee_kind', InvoiceItem::FEE_REGISTRATION)->exists()) {
+                Patient::whereKey($invoice->visit->patient_id)->update(['registration_paid' => true]);
+            }
 
             $paid = $invoice->paid + (int) $this->pay['amount'];
             $done = $paid >= $invoice->total;
@@ -264,14 +271,20 @@ class Kasir extends Component
         $this->pay['amount'] = $invoice->fresh()->outstanding();
     }
 
-    /** Hapus baris biaya admin (mis. pasien lama yang belum tercatat). Hanya sebelum ada pembayaran; tidak ditagih ulang. */
+    /**
+     * Hapus baris biaya admin. Hanya sebelum ada pembayaran; tidak ditagih ulang di tagihan ini.
+     * Menghapus biaya pendaftaran = pasien ternyata pasien lama → tidak ditagih pendaftaran lagi.
+     */
     public function removeAdminFee(int $lineId): void
     {
-        $invoice = $this->query()->findOrFail($this->selected);
+        $invoice = $this->query()->with('visit.patient')->findOrFail($this->selected);
         abort_unless($invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID, 422);
 
         $line = $invoice->items()->where('is_admin_fee', true)->findOrFail($lineId);
-        AuditLog::record('invoice.admin_fee.removed', $invoice, ['amount' => $line->amount]);
+        AuditLog::record('invoice.admin_fee.removed', $invoice, ['item' => $line->name, 'jenis' => $line->fee_kind, 'amount' => $line->amount]);
+        if ($line->fee_kind === InvoiceItem::FEE_REGISTRATION && $invoice->visit?->patient) {
+            $invoice->visit->patient->update(['registration_paid' => true]);
+        }
         $line->delete();
         $invoice->recalculate();
         $this->pay['amount'] = $invoice->fresh()->outstanding();

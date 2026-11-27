@@ -83,7 +83,7 @@
                             <span class="flex items-center gap-2">
                                 @rupiah($i->amount)
                                 @if ($i->is_admin_fee && $canEdit && $invoice->paid === 0 && $invoice->status === Invoice::STATUS_UNPAID)
-                                    <button type="button" wire:click="removeAdminFee({{ $i->id }})" wire:confirm="Hapus biaya admin dari tagihan ini? Biaya admin tidak akan ditagih ulang." class="text-muted hover:text-rose-ink" title="Hapus biaya admin">✕</button>
+                                    <button type="button" wire:click="removeAdminFee({{ $i->id }})" wire:confirm="{{ $i->fee_kind === \App\Models\InvoiceItem::FEE_REGISTRATION ? 'Hapus biaya pendaftaran? Pasien dicatat sebagai pasien lama dan tidak ditagih pendaftaran lagi.' : 'Hapus biaya admin dari tagihan ini? Biaya admin tidak akan ditagih ulang di tagihan ini.' }}" class="text-muted hover:text-rose-ink" title="Hapus biaya admin">✕</button>
                                 @endif
                                 @if ($i->item_id && $goodsOptions->isNotEmpty())
                                     <button type="button" wire:click="removeGoods({{ $i->id }})" class="text-muted hover:text-rose-ink" title="Hapus barang">✕</button>

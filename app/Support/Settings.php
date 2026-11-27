@@ -32,8 +32,10 @@ class Settings
         // Uang duduk dokter per shift hadir; hangus bila kotor tindakan shift itu ≥ ambang (dokter dapat % fee).
         'doctor_sitting_fee' => '40000',
         'doctor_sitting_threshold' => '100000',
-        // Biaya admin & cetak kartu, ditagih sekali per pasien (tagihan pertama).
+        // Biaya admin tiap transaksi tindakan (bukan penjualan langsung / tindakan Rp0).
         'admin_fee' => '5000',
+        // Biaya pendaftaran & kartu, sekali untuk pasien baru (pasien lama/impor tidak ditagih).
+        'registration_fee' => '5000',
         // Margin bawaan harga jual obat/produk (% di atas HPP).
         'default_margin_percent' => '0',
         // Absensi (Pengaturan → Absensi). Koordinat per cabang di Master › Cabang.
@@ -52,7 +54,7 @@ class Settings
     /** Key setting gaji yang berupa nominal rupiah. */
     public const PAYROLL_AMOUNT_KEYS = [
         'doctor_hourly_rate', 'assistant_hourly_rate', 'assistant_overtime_rate', 'assistant_morning_rate', 'assistant_evening_rate', 'admin_overtime_rate', 'annual_revenue_target',
-        'doctor_sitting_fee', 'doctor_sitting_threshold', 'admin_fee',
+        'doctor_sitting_fee', 'doctor_sitting_threshold', 'admin_fee', 'registration_fee',
     ];
 
     public static function int(string $key): int

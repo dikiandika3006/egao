@@ -145,9 +145,11 @@
                                     <p class="mt-1 text-[11px] text-muted">Berlaku untuk semua peran. Menu Gaji menampilkan apakah target tercapai. THR & bonus akhir tahun diisi per orang di menu Gaji.</p>
                                 </div>
                                 <div class="border-t border-line pt-3">
-                                    <label class="label">Biaya admin & kartu (sekali per pasien)</label>
+                                    <label class="label">Biaya admin per transaksi tindakan</label>
                                     <x-money model="shares.roles.admin_fee" placeholder="5000" />
-                                    <p class="mt-1 text-[11px] text-muted">Otomatis ditagih di tagihan pertama pasien, tidak masuk bagi hasil. 0 = tidak dipakai.</p>
+                                    <label class="label mt-3">Biaya pendaftaran & kartu (pasien baru)</label>
+                                    <x-money model="shares.roles.registration_fee" placeholder="5000" />
+                                    <p class="mt-1 text-[11px] text-muted">Otomatis masuk tagihan pemeriksaan yang ada tindakannya; pendaftaran hanya sekali untuk pasien baru. Tidak untuk penjualan langsung atau tindakan Rp0 (garansi), dan tidak masuk bagi hasil. 0 = tidak dipakai.</p>
                                 </div>
                                 <div>
                                     <label class="label">Margin harga jual obat/produk</label>

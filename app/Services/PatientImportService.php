@@ -139,6 +139,7 @@ class PatientImportService
                 'nik' => $nik !== '' ? $nik : null,
                 'address' => $address !== '' && $address !== '-' ? $address : null,
                 'allergies' => 'Tidak ada',
+                'registration_paid' => true, // pasien impor = pasien lama (sudah pernah datang)
                 'created_at' => $now,
                 'updated_at' => $now,
             ];

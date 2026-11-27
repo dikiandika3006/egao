@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceItem extends Model
 {
-    protected $fillable = ['invoice_id', 'procedure_id', 'item_id', 'doctor_id', 'name', 'tooth', 'quantity', 'unit_price', 'standard_price', 'price_reason', 'is_incomplete', 'material_cost', 'is_admin_fee', 'amount'];
+    protected $fillable = ['invoice_id', 'procedure_id', 'item_id', 'doctor_id', 'name', 'tooth', 'quantity', 'unit_price', 'standard_price', 'price_reason', 'is_incomplete', 'material_cost', 'is_admin_fee', 'fee_kind', 'amount'];
+
+    /** Jenis baris biaya admin (is_admin_fee): per transaksi tindakan / pendaftaran pasien baru. */
+    public const FEE_ADMIN = 'admin';
+
+    public const FEE_REGISTRATION = 'pendaftaran';
 
     protected function casts(): array
     {

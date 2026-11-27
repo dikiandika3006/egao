@@ -872,6 +872,26 @@ class Exam extends Component
         return $this->assistantId === null && $this->assistant2Id === null && $this->assistantOptions->isNotEmpty();
     }
 
+    /** Combobox multi-pilih asisten: centang/lepas satu asisten, maksimal 2. Disimpan saat simpan draf/kirim. */
+    public function toggleAssistant(int $employeeId): void
+    {
+        abort_unless($this->billingEditable, 403, 'Asisten tidak dapat diubah setelah tagihan dibayar.');
+        abort_unless($this->assistantOptions->has($employeeId), 404);
+
+        $chosen = collect([$this->assistantId, $this->assistant2Id])->filter()->values();
+        if ($chosen->contains($employeeId)) {
+            $chosen = $chosen->reject(fn ($id) => $id === $employeeId)->values();
+        } elseif ($chosen->count() < 2) {
+            $chosen->push($employeeId);
+        } else {
+            $this->addError('assistant2Id', 'Maksimal 2 asisten pendamping.');
+
+            return;
+        }
+
+        [$this->assistantId, $this->assistant2Id] = [$chosen->get(0), $chosen->get(1)];
+    }
+
     /** Asisten 1 dikosongkan → asisten 2 naik jadi asisten 1. */
     public function updatedAssistantId(): void
     {

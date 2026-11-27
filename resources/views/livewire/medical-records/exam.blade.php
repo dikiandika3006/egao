@@ -356,32 +356,41 @@
 
                 {{-- Asisten pendamping: dipilih di sini saja (dasar fee asisten); Kasir hanya menampilkan. --}}
                 @php $assistantOptions = $this->assistantOptions; @endphp
+                @php
+                    $chosenAssistants = collect([$assistantId, $assistant2Id])->filter()->values();
+                    $chosenNames = $chosenAssistants->map(fn ($id) => $assistantOptions->get($id)?->name ?? '—')->implode(', ');
+                @endphp
                 @if ($billing && $assistantOptions->isNotEmpty())
-                    <label class="mt-3 flex items-center gap-2 text-sm">
-                        <span class="shrink-0 text-muted">Asisten pendamping</span>
-                        <select wire:model.live="assistantId" class="input min-h-9 flex-1 py-1 text-sm">
-                            <option value="">— tanpa asisten —</option>
-                            @foreach ($assistantOptions as $a)
-                                <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (nonaktif)' }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <x-error for="assistantId" />
-                    @if ($assistantId && $assistantOptions->count() > 1)
-                        <label class="mt-2 flex items-center gap-2 text-sm">
-                            <span class="shrink-0 text-muted">Asisten 2 (opsional)</span>
-                            <select wire:model.live="assistant2Id" class="input min-h-9 flex-1 py-1 text-sm">
-                                <option value="">— tanpa asisten 2 —</option>
-                                @foreach ($assistantOptions->except($assistantId) as $a)
-                                    <option value="{{ $a->id }}">{{ $a->name }}{{ $a->is_active ? '' : ' (nonaktif)' }}</option>
+                    {{-- Satu combobox multi-pilih, maksimal 2 asisten. --}}
+                    <div class="mt-3 flex items-start gap-2 text-sm">
+                        <span class="shrink-0 pt-2 text-muted">Asisten pendamping</span>
+                        <div class="relative flex-1" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+                            <button type="button" @click="open = ! open" class="input flex min-h-9 w-full items-center justify-between gap-2 py-1 text-left text-sm" aria-haspopup="listbox" :aria-expanded="open">
+                                <span class="truncate {{ $chosenAssistants->isEmpty() ? 'text-muted' : '' }}">{{ $chosenNames ?: '— tanpa asisten —' }}</span>
+                                <span class="shrink-0 text-xs text-muted">{{ $chosenAssistants->count() }}/2 ▾</span>
+                            </button>
+                            <ul x-show="open" x-cloak role="listbox" aria-multiselectable="true" class="card absolute z-20 mt-1 max-h-60 w-full overflow-auto p-1 text-sm">
+                                @foreach ($assistantOptions as $a)
+                                    @php
+                                        $checked = $chosenAssistants->contains($a->id);
+                                        $full = ! $checked && $chosenAssistants->count() >= 2;
+                                    @endphp
+                                    <li wire:key="asisten-{{ $a->id }}">
+                                        <button type="button" role="option" aria-selected="{{ $checked ? 'true' : 'false' }}" wire:click="toggleAssistant({{ $a->id }})" @disabled($full)
+                                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40">
+                                            <span class="grid size-4 shrink-0 place-items-center rounded border {{ $checked ? 'border-brand-600 bg-brand-600 text-white' : 'border-line' }} text-[10px]">{{ $checked ? '✓' : '' }}</span>
+                                            {{ $a->name }}{{ $a->is_active ? '' : ' (nonaktif)' }}
+                                        </button>
+                                    </li>
                                 @endforeach
-                            </select>
-                        </label>
-                        <x-error for="assistant2Id" />
-                    @endif
-                @elseif ($assistantId)
-                    <p class="mt-3 text-sm"><span class="text-muted">Asisten pendamping</span> ·
-                        {{ collect([$assistantId, $assistant2Id])->filter()->map(fn ($id) => $assistantOptions->get($id)?->name ?? '—')->implode(', ') }}</p>
+                                <li class="px-2 py-1 text-[11px] text-muted">Pilih maksimal 2 asisten.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <x-error for="assistantId" />
+                    <x-error for="assistant2Id" />
+                @elseif ($chosenAssistants->isNotEmpty())
+                    <p class="mt-3 text-sm"><span class="text-muted">Asisten pendamping</span> · {{ $chosenNames }}</p>
                 @endif
 
                 @php

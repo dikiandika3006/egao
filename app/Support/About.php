@@ -141,7 +141,7 @@ class About
         [
             'date' => '27 November 2026',
             'changes' => [
-                'Asisten pendamping boleh 2 per kunjungan ("Asisten 2 (opsional)" muncul setelah asisten 1 dipilih); masing-masing asisten mendapat fee asisten penuh.',
+                'Asisten pendamping boleh 2 per kunjungan (satu kotak pilihan dengan centang, maksimal 2); masing-masing asisten mendapat fee asisten penuh.',
                 'Asisten pendamping kini dipilih saat tindakan (Pemeriksaan › Tindakan & tagihan) oleh dokter pemeriksa/Owner; pilihan hanya asisten cabang kunjungan (cabang utama atau berjadwal di cabang itu). Bisa diubah selama tagihan belum dibayar. Kasir hanya menampilkan nama asisten.',
                 'Biaya admin Rp5.000 kini ditagih di setiap transaksi tindakan (sebelumnya sekali per pasien). Pasien baru ditambah biaya pendaftaran & kartu Rp5.000 sekali (kunjungan pertama total Rp10.000). Semua pasien yang sudah ada, termasuk impor Assist.id, dianggap pasien lama. Penjualan langsung, tindakan Rp0 (garansi), dan cicilan tidak kena biaya admin. Nominal keduanya diatur di Tarif gaji & bagi hasil.',
                 'Tampilan tablet (lebar 768–1279 px): ukuran huruf dasar diperkecil agar tabel dan form tidak terpotong.',

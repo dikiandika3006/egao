@@ -53,7 +53,7 @@ it('boleh dua asisten: tersimpan, tidak boleh sama, dan asisten 2 naik bila asis
 
     Livewire::test(Exam::class, ['visit' => $this->visit])
         ->set('assistantId', $this->asisten->id)
-        ->assertSee('Asisten 2 (opsional)')
+        ->assertSee('Pilih maksimal 2 asisten.')
         ->set('assistant2Id', $kedua->id)
         ->call('saveDraft')
         ->assertHasNoErrors();
@@ -74,6 +74,23 @@ it('boleh dua asisten: tersimpan, tidak boleh sama, dan asisten 2 naik bila asis
         ->assertHasNoErrors();
     $visit = $visit->fresh();
     expect([$visit->assistant_id, $visit->assistant2_id])->toBe([$kedua->id, null]);
+});
+
+it('combobox multi-pilih: centang maksimal 2 asisten, centang lagi untuk melepas', function () {
+    $kedua = Employee::create(['clinic_id' => $this->batu->clinic_id, 'primary_branch_id' => $this->batu->id, 'name' => 'Asisten Kedua Uji', 'position' => 'Asisten dokter', 'base_salary' => 0]);
+    $ketiga = Employee::create(['clinic_id' => $this->batu->clinic_id, 'primary_branch_id' => $this->batu->id, 'name' => 'Asisten Ketiga Uji', 'position' => 'Asisten dokter', 'base_salary' => 0]);
+    masukDokterKunjungan($this->visit);
+
+    Livewire::test(Exam::class, ['visit' => $this->visit])
+        ->call('toggleAssistant', $this->asisten->id)
+        ->call('toggleAssistant', $kedua->id)
+        ->assertSet('assistantId', $this->asisten->id)->assertSet('assistant2Id', $kedua->id)
+        ->call('toggleAssistant', $ketiga->id)
+        ->assertHasErrors('assistant2Id')->assertSet('assistant2Id', $kedua->id)
+        ->call('toggleAssistant', $this->asisten->id)
+        ->assertSet('assistantId', $kedua->id)->assertSet('assistant2Id', null)
+        ->call('toggleAssistant', $this->adminStaff->id)
+        ->assertNotFound();
 });
 
 it('karyawan yang bukan asisten dokter ditolak', function () {

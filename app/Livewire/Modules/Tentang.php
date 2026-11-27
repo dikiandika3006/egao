@@ -94,7 +94,7 @@ class Tentang extends Component
             'tagline' => Settings::get('clinic_tagline'),
             'branches' => $context->options(),
             'version' => About::VERSION,
-            'lastUpdate' => About::CHANGELOG[0]['date'] ?? '-',
+            'lastUpdate' => ($at = About::updatedAt()) ? $at->translatedFormat('j F Y, H.i').' WIB' : (About::CHANGELOG[0]['date'] ?? '-'),
             'platform' => 'Laravel '.app()->version().' · PHP '.PHP_VERSION,
             'database' => DB::connection()->getDriverName(),
             'tabs' => self::TABS,

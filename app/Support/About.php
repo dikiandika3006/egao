@@ -10,6 +10,29 @@ class About
 {
     public const VERSION = '1.0.0';
 
+    /**
+     * Waktu kode terakhir diperbarui: waktu ref cabang aktif di .git berubah (commit lokal / git pull deploy server).
+     * Null bila .git tidak terbaca.
+     */
+    public static function updatedAt(): ?\Illuminate\Support\Carbon
+    {
+        $git = (string) (config('app.git_dir') ?: base_path('.git'));
+        $head = @file_get_contents($git.'/HEAD');
+        if ($head === false) {
+            return null;
+        }
+        $head = trim($head);
+        $files = str_starts_with($head, 'ref:') ? [$git.'/'.trim(substr($head, 4)), $git.'/packed-refs'] : [$git.'/HEAD'];
+
+        foreach ($files as $file) {
+            if (is_file($file) && ($time = @filemtime($file))) {
+                return \Illuminate\Support\Carbon::createFromTimestamp($time, config('app.timezone'));
+            }
+        }
+
+        return null;
+    }
+
     public const RULES = [
         [
             'title' => 'Pasien & cabang',

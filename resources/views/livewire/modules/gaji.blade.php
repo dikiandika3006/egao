@@ -2,7 +2,7 @@
     $pct = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, ',', '.'), '0'), ',');
 @endphp
 
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canEdit)
         <button type="button" wire:click="post" wire:confirm="Catat gaji dokter & karyawan {{ $start->translatedFormat('F Y') }} ke pengeluaran? Catatan sebelumnya untuk bulan ini akan diganti." class="btn-primary" @disabled($start->isAfter(now()))>

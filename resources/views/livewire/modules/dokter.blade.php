@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canEdit)<button type="button" wire:click="create" class="btn-primary">+ &nbsp;Tambah dokter</button>@endif
     </x-page-header>

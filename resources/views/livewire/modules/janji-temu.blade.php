@@ -1,6 +1,6 @@
 @php use App\Models\Appointment; use App\Support\Format; @endphp
 
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canWrite)
             <button type="button" wire:click="create" class="btn-primary">+ Buat janji</button>

@@ -39,11 +39,20 @@ class BranchSwitcher extends Component
         $user = auth()->user();
 
         // Slip gaji milik sendiri: akun yang terhubung ke data dokter atau karyawan.
+        // Hanya bulan sejak orang itu mulai tercatat (tanggal bergabung / dibuat di aplikasi), tidak menampilkan bulan sebelumnya.
         $payslip = null;
-        if ($id = Doctor::where('user_id', $user->id)->value('id')) {
-            $payslip = ['type' => 'doctor', 'id' => $id];
-        } elseif ($id = Employee::where('user_id', $user->id)->value('id')) {
-            $payslip = ['type' => 'employee', 'id' => $id];
+        $person = Doctor::where('user_id', $user->id)->first(['id', 'joined_at', 'created_at']);
+        $type = 'doctor';
+        if (! $person) {
+            $person = Employee::where('user_id', $user->id)->first(['id', 'joined_at', 'created_at']);
+            $type = 'employee';
+        }
+        if ($person) {
+            $start = collect([$person->joined_at, $person->created_at])->filter()
+                ->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->startOfMonth())->max();
+            $months = collect([now()->subMonthNoOverflow(), now()])
+                ->filter(fn ($m) => ! $start || $m->copy()->startOfMonth()->gte($start))->values();
+            $payslip = ['type' => $type, 'id' => $person->id, 'months' => $months];
         }
 
         return view('livewire.branch-switcher', [

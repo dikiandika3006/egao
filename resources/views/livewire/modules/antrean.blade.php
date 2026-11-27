@@ -2,7 +2,7 @@
     use App\Enums\VisitStatus;
     use App\Support\Format;
 @endphp
-<div wire:poll.30s class="mx-auto max-w-[1152px]">
+<div wire:poll.30s class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canRegister)
             <button type="button" wire:click="register" class="btn-primary">+ &nbsp;Daftarkan kunjungan</button>

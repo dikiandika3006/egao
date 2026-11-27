@@ -4,7 +4,7 @@
 @endphp
 
 {{-- Urutan ponsel: ringkasan owner tampil tepat di bawah judul ("Klinik dalam genggaman", FR-MOB-02). --}}
-<div wire:poll.30s class="mx-auto flex max-w-[1152px] flex-col">
+<div wire:poll.30s class="flex w-full flex-col">
     {{-- Judul (FR-DSH-01) --}}
     <div class="order-0 flex flex-wrap items-start justify-between gap-4">
         <div>

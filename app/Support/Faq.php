@@ -269,8 +269,8 @@ class Faq
         [
             'group' => 'Akun & pengaturan',
             'q' => 'Ada peran apa saja dan bisa apa?',
-            'a' => 'Ada 3 peran. (1) Owner / Administrator: semua menu termasuk Laporan, Pengeluaran, Gaji, Master data, Pengaturan, dan rekap & koreksi Absensi. (2) Admin / Asisten (satu peran): Dashboard (termasuk omzet hari ini untuk totalan kas), Antrean, Janji temu, Data pasien, Rekam medis (hanya membaca; yang memeriksa dokter), Kasir, Jadwal dokter, Manajemen stok (hanya melihat Posisi stok dan Kartu stok tanpa harga), Order lab, dan Absensi untuk dirinya sendiri. Laporan, Pengeluaran, Gaji, dan Master data tertutup. (3) Dokter: Dashboard, Antrean, Janji temu, Data pasien, Rekam medis, Jadwal dokter, dan Absensi untuk dirinya sendiri. Owner bisa membuka/menutup menu per peran di Pengaturan › Hak akses peran. Buat akun di Pengaturan › Pengguna & peran; agar bisa absen, hubungkan akun ke data karyawan (Gaji › Karyawan) atau data dokter.',
-            'where' => 'Pengaturan › Pengguna & peran',
+            'a' => 'Ada 3 peran. (1) Owner / Administrator: semua menu termasuk Laporan, Pengeluaran, Gaji, Master data, Pengaturan, dan rekap & koreksi Absensi. (2) Admin / Asisten (satu peran): Dashboard (termasuk omzet hari ini untuk totalan kas), Antrean, Janji temu, Data pasien, Rekam medis (hanya membaca; yang memeriksa dokter), Kasir, Jadwal dokter, Manajemen stok (hanya melihat Posisi stok dan Kartu stok tanpa harga), Order lab, dan Absensi untuk dirinya sendiri. Laporan, Pengeluaran, Gaji, dan Master data tertutup. (3) Dokter: Dashboard, Antrean, Janji temu, Data pasien, Rekam medis, Jadwal dokter, dan Absensi untuk dirinya sendiri. Owner bisa membuka/menutup menu per peran di Pengaturan › Hak akses peran. Buat akun di Master data › Master user; agar bisa absen, hubungkan akun ke data karyawan (Gaji › Karyawan) atau data dokter.',
+            'where' => 'Master data › Master user',
             'roles' => 'Owner',
             'tags' => 'asisten admin owner administrator dokter perawat peran role akun baru pengguna',
         ],
@@ -293,7 +293,7 @@ class Faq
         [
             'group' => 'Akun & pengaturan',
             'q' => 'Di mana menu Data pasien, Data dokter, barang, dan tarif tindakan?',
-            'a' => 'Semuanya dikumpulkan di grup menu "Master data" di sidebar: Data pasien, Data dokter, Master barang (daftar barang di menu Stok), Tindakan & tarif, Kategori pengeluaran, dan Tarif gaji & bagi hasil (khusus Owner). Klik judul "Master data" untuk membuka atau menutup grup; pilihan ini diingat di browser. Di ponsel, menu ini ada di Lainnya. Dokter hanya melihat Data pasien.',
+            'a' => 'Semuanya dikumpulkan di grup menu "Master data" di sidebar: Data pasien, Data dokter, Master barang (daftar barang di menu Stok), Tindakan & tarif, Kategori pengeluaran, dan Tarif gaji & bagi hasil (khusus Owner). Klik judul "Master data" untuk membuka atau menutup grup; pilihan ini diingat di browser. Di layar sempit (ponsel/tablet), buka menu lewat tombol ☰ di kiri atas. Dokter hanya melihat Data pasien.',
             'where' => 'Sidebar › Master data',
             'roles' => 'Semua peran',
             'tags' => 'master data menu sidebar grup pasien dokter barang tindakan tarif kategori pengeluaran gaji bagi hasil persen pengaturan letak',
@@ -334,8 +334,16 @@ class Faq
         // ── Rekam medis ──────────────────────────────────────────────
         [
             'group' => 'Rekam medis',
+            'q' => 'Mengubah tindakan atau harga setelah dikirim ke kasir',
+            'a' => 'Selama tagihan belum dibayar sama sekali, Dokter pemeriksa atau Owner bisa membuka pemeriksaan lalu menekan "✎ Edit" di kartu Tindakan & tagihan (Mode lihat → Mode edit). Ubah gigi, jumlah, harga, tambah/hapus baris, barang Lain-lain, atau diskon, lalu tekan "Simpan perubahan tagihan". Tagihan tetap di antrean Kasir dengan total terbaru dan perubahan tercatat di jejak audit. Aturan harga sama seperti saat pemeriksaan. Resep dan catatan klinis tidak ikut diubah di mode ini (pakai "Simpan koreksi"). Bila sudah ada pembayaran (sebagian/lunas), tagihan terkunci.',
+            'where' => 'Rekam medis › Pemeriksaan › Tindakan & tagihan',
+            'roles' => 'Dokter, Owner',
+            'tags' => 'edit ubah tagihan harga tindakan setelah kirim kasir mode lihat mode edit belum dibayar',
+        ],
+        [
+            'group' => 'Rekam medis',
             'q' => 'Cara cepat mengisi tindakan dan resep di pemeriksaan',
-            'a' => 'Setelah diagnosis ICD-10 dipilih, muncul kotak hijau "Saran dari diagnosis" (mis. K03.6 karang gigi → Scaling). Klik saran untuk langsung menambah tindakan; bila sebuah gigi sedang dipilih di peta gigi, nomor gigi ikut terisi. Tindakan lain dicari dengan mengetik nama/kode di "+ Tambah tindakan". Tagihan dikelompokkan Tindakan dan Obat; item yang baru ditambah disorot sebentar. Resep ada di kartu biru tersendiri: ketik nama obat (stok tampil; yang habis tidak bisa dipilih) atau pilih "Obat luar", klik tombol aturan pakai (3×1, 2×1, 1×1, sesudah/sebelum makan), lalu isi lama hari agar jumlah dihitung otomatis. Bila alergi belum dicek atau ada tindakan bertarif Rp0, saat "Simpan & kirim ke kasir" muncul satu jendela "Periksa sebelum kirim" berisi ringkasan dan peringatannya; tekan "Sudah dicek, kirim" untuk lanjut. Tarif Rp0 diisi di Master data › Tindakan & tarif.',
+            'a' => 'Setelah diagnosis ICD-10 dipilih, muncul kotak hijau "Saran dari diagnosis" (mis. K03.6 karang gigi → Scaling). Klik saran untuk langsung menambah tindakan; bila sebuah gigi sedang dipilih di peta gigi, nomor gigi ikut terisi. Tindakan lain ditambah lewat "+ Tambah baris" (ketik nama/kode); gigi, jumlah, dan harga diisi langsung di barisnya. Tagihan dikelompokkan Tindakan dan Obat; item yang baru ditambah disorot sebentar. Resep ada di kartu biru tersendiri: ketik nama obat (stok tampil; yang habis tidak bisa dipilih) atau pilih "Obat luar", klik tombol aturan pakai (3×1, 2×1, 1×1, sesudah/sebelum makan), lalu isi lama hari agar jumlah dihitung otomatis. Bila alergi belum dicek atau ada tindakan bertarif Rp0, saat "Simpan & kirim ke kasir" muncul satu jendela "Periksa sebelum kirim" berisi ringkasan dan peringatannya; tekan "Sudah dicek, kirim" untuk lanjut. Tarif Rp0 diisi di Master data › Tindakan & tarif.',
             'where' => 'Rekam medis › Pemeriksaan',
             'roles' => 'Dokter, Owner, Admin',
             'tags' => 'tindakan resep obat saran diagnosis icd cepat aturan pakai dosis stok tarif rp0 tagihan',
@@ -510,9 +518,17 @@ class Faq
         // ── Akun & pengaturan ────────────────────────────────────────
         [
             'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana mengganti kata sandi saya sendiri?',
+            'a' => 'Klik nama Anda di kanan atas › "Ubah kata sandi" (di ponsel: buka menu ☰ › "Ubah kata sandi"). Masukkan kata sandi lama, lalu kata sandi baru minimal 8 karakter dua kali. Perubahan tercatat di jejak audit. Lupa kata sandi lama? Minta Owner mengisi kata sandi baru di Master data › Master user.',
+            'where' => 'Menu profil (kanan atas)',
+            'roles' => 'Semua peran',
+            'tags' => 'ubah ganti kata sandi password akun profil lupa',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
             'q' => 'Bagaimana menambah pengguna atau mengganti password?',
-            'a' => 'Pengaturan › tab "Pengguna & peran". Tambah pengguna dengan username, nama, peran (Owner/Admin/Dokter), dan cabang aksesnya. Untuk mengganti password, ubah pengguna tersebut lalu isi password baru.',
-            'where' => 'Pengaturan › Pengguna & peran',
+            'a' => 'Master data › Master user (khusus Owner). Tambah pengguna dengan username, nama, peran (Owner/Admin/Dokter), dan cabang aksesnya. Untuk mengganti password, ubah pengguna tersebut lalu isi password baru.',
+            'where' => 'Master data › Master user',
             'roles' => 'Owner',
             'tags' => 'user pengguna akun login username password kata sandi peran role',
         ],

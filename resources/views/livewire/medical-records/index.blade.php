@@ -1,6 +1,6 @@
 @php use App\Enums\VisitStatus; use App\Support\Format; @endphp
 
-<div wire:poll.30s class="mx-auto max-w-[1152px]">
+<div wire:poll.30s class="w-full">
     <h1 class="text-[26px] font-semibold tracking-tight lg:text-[32px]">Rekam medis</h1>
     <p class="mt-2 max-w-2xl text-sm text-muted lg:text-[15px]">Odontogram, diagnosis ICD-10, tindakan, dan resep dalam satu layar. Riwayat pasien dari Batu dan Malang tetap tersambung.</p>
 

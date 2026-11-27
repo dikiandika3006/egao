@@ -2,7 +2,8 @@
     use App\Support\Format;
     $conditions = $this->conditions;
     $editable = $this->editable;
-    $billing = $this->canEditBilling;
+    $examOpen = $this->canEditBilling; // pemeriksaan masih terbuka (sebelum kirim ke kasir)
+    $billing = $this->billingEditable; // kartu tindakan     $billing = $this->canEditBilling; tagihan bisa diubah (termasuk Mode edit setelah kirim)
     $toothStyle = function (int $tooth) use ($findingsByTooth, $conditions) {
         $f = $findingsByTooth->get($tooth)?->last();
         $c = $f ? $conditions->get($f['condition_id']) : null;
@@ -11,7 +12,7 @@
 @endphp
 
 {{-- Peringatan "belum disimpan": $wire.unsaved (server) atau sedang mengetik di kolom yang belum terkirim. --}}
-<div class="mx-auto max-w-[1152px] pb-40 lg:pb-0"
+<div class="max-w-[1600px] pb-40 lg:pb-0"
     x-data="{
         typing: false,
         get dirty() { return this.typing || $wire.unsaved },
@@ -61,7 +62,7 @@
         </div>
     @elseif ($this->isCorrection)
         <div class="mt-5 rounded-xl bg-orange-soft px-5 py-3 text-sm text-orange-ink">
-            Rekam medis sudah final. Perubahan catatan klinis akan disimpan sebagai <strong>versi baru</strong>; tindakan & tagihan tidak berubah.
+            Rekam medis sudah final. Perubahan catatan klinis akan disimpan sebagai <strong>versi baru</strong>. Tindakan & harga diubah lewat tombol <strong>✎ Edit</strong> di kartu Tindakan & tagihan selama belum dibayar.
         </div>
     @endif
 
@@ -88,7 +89,7 @@
         <button type="button" wire:click="$set('showHistory', true)" class="link-arrow justify-self-start sm:justify-self-end">Riwayat lintas cabang <span aria-hidden="true">→</span></button>
     </div>
 
-    <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_368px]">
+    <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_500px]">
         <div class="min-w-0 space-y-6">
             {{-- Peta gigi (FR-RM-03 … 08) --}}
             <section class="card p-5">
@@ -327,8 +328,31 @@
         <div class="space-y-6">
             {{-- Tindakan & tagihan (FR-RM-15 … 19): dikelompokkan Tindakan / Obat, item baru disorot sebentar. --}}
             <section class="card p-5" x-data x-init="window.__examReady = false; setTimeout(() => window.__examReady = true, 600)">
-                <h2 class="text-xl font-semibold">Tindakan & tagihan</h2>
-                <p class="mt-1.5 text-xs text-muted">Terisi otomatis untuk kasir • harga {{ $visit->branch->name }}</p>
+                <div class="flex items-start justify-between gap-3">
+                    <h2 class="text-xl font-semibold">Tindakan & tagihan</h2>
+                    {{-- Setelah dikirim ke kasir: Mode lihat ↔ Mode edit (hanya bila belum ada pembayaran). --}}
+                    @if (! $examOpen && $visit->invoice && $visit->invoice->status !== \App\Models\Invoice::STATUS_DRAFT)
+                        @if ($billing)
+                            <span class="pill shrink-0 bg-amber-soft text-amber-ink">Mode edit</span>
+                        @elseif ($this->canEditSentBilling)
+                            <div class="flex shrink-0 items-center gap-2">
+                                <span class="pill bg-mist text-muted">Mode lihat</span>
+                                <button type="button" wire:click="startBillingEdit" class="rounded-md bg-leaf-100 px-2.5 py-1 text-xs font-semibold text-brand-600 hover:bg-leaf-200">✎ Edit</button>
+                            </div>
+                        @else
+                            <span class="pill shrink-0 bg-mist text-muted">Mode lihat</span>
+                        @endif
+                    @endif
+                </div>
+                <p class="mt-1.5 text-xs text-muted">
+                    @if ($billing && ! $examOpen)
+                        Tagihan sudah di kasir & belum dibayar — perubahan langsung memperbarui tagihan.
+                    @elseif (! $examOpen && $visit->invoice?->payments()->exists())
+                        Terkunci — sudah ada pembayaran di kasir.
+                    @else
+                        Terisi otomatis untuk kasir • harga {{ $visit->branch->name }}
+                    @endif
+                </p>
 
                 @php
                     $procedureSubtotal = collect($procedures)->sum(fn ($p) => $this->priceOf($p) * max(1, (int) $p['quantity']));
@@ -592,7 +616,7 @@
                             }">
                             <div class="flex items-start gap-2">
                                 <div class="min-w-0 flex-1">
-                                    @if ($billing && $this->drugOptions->isNotEmpty())
+                                    @if ($examOpen && $this->drugOptions->isNotEmpty())
                                         <div class="relative" x-on:click.outside="open = false">
                                             <input type="text" x-model="q" x-on:input="open = true; active = 0" x-on:focus="open = true"
                                                 x-on:keydown.arrow-down.prevent="open = true; active = Math.min(active + 1, list.length - 1)"
@@ -655,11 +679,11 @@
                                 <div class="flex flex-wrap items-center gap-2 text-[13px]">
                                     <label class="flex items-center gap-1.5">
                                         <span class="text-muted">Jumlah</span>
-                                        <input type="number" wire:model.blur="prescriptions.{{ $i }}.item_quantity" min="1" max="999" @disabled(! $billing)
+                                        <input type="number" wire:model.blur="prescriptions.{{ $i }}.item_quantity" min="1" max="999" @disabled(! $examOpen)
                                             class="input min-h-9 w-20 bg-white text-[13px]" aria-label="Jumlah ditagihkan">
                                         <span class="text-muted">{{ $chosen->unit }}</span>
                                     </label>
-                                    @if ($billing)
+                                    @if ($examOpen)
                                         <label class="flex items-center gap-1.5" x-show="perDay() > 0">
                                             <span class="text-muted">atau</span>
                                             <input type="number" x-model="days" x-on:change="calc()" min="1" max="60" placeholder="hari"
@@ -808,8 +832,8 @@
 
     {{-- Bar aksi (FR-RM-20/21) --}}
     <div class="fixed inset-x-0 bottom-[68px] z-30 border-t border-line bg-canvas/95 px-5 py-3 backdrop-blur lg:static lg:mt-6 lg:border-0 lg:bg-transparent lg:p-0">
-        <div class="mx-auto flex max-w-[1152px] flex-wrap items-center justify-between gap-3">
-            @if ($billing)
+        <div class="flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
+            @if ($examOpen)
                 {{-- Indikator kelengkapan: wajib (✓ / !) dan opsional (✓ / –). --}}
                 <ul class="flex flex-wrap items-center gap-1.5 text-[11px] font-medium" aria-label="Kelengkapan pemeriksaan">
                     @foreach ($this->checklist as [$label, $done, $required])
@@ -833,9 +857,13 @@
                 @else
                     <button type="button" disabled title="Simpan draf rekam medis dulu agar bisa dicetak." class="btn-ghost cursor-not-allowed opacity-50">Cetak</button>
                 @endif
-                @if ($billing)
+                @if ($examOpen)
                     <button type="button" wire:click="saveDraft" wire:loading.attr="disabled" class="btn-soft min-w-[154px] flex-1 sm:flex-none">Simpan draf</button>
                     <button type="button" wire:click="confirmSend" wire:loading.attr="disabled" class="btn-primary min-w-[300px] flex-1 sm:flex-none">Simpan & kirim ke kasir</button>
+                @elseif ($billing)
+                    {{-- Mode edit tagihan setelah dikirim ke kasir (belum dibayar). --}}
+                    <button type="button" wire:click="cancelBillingEdit" class="btn-ghost flex-1 sm:flex-none">Batal</button>
+                    <button type="button" wire:click="saveBillingChanges" wire:loading.attr="disabled" class="btn-primary min-w-[240px] flex-1 sm:flex-none">Simpan perubahan tagihan</button>
                 @elseif ($this->isCorrection)
                     <button type="button" wire:click="$set('showCorrection', true)" class="btn-primary flex-1 sm:flex-none">Simpan koreksi</button>
                 @endif

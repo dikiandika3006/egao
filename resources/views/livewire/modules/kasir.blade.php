@@ -1,5 +1,5 @@
 @php use App\Models\Invoice; use App\Support\Format; @endphp
-<div wire:poll.30s class="mx-auto max-w-[1152px]">
+<div wire:poll.30s class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canEdit)<button type="button" wire:click="openDirectSale" class="btn-soft">+ Penjualan langsung</button>@endif
     </x-page-header>

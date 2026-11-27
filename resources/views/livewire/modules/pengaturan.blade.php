@@ -1,5 +1,5 @@
 @php use App\Enums\Role; use App\Support\Format; @endphp
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     @php $header = $masterItem ?? $item; @endphp
     <x-page-header :title="$header['title']" :subtitle="$header['subtitle']" />
 
@@ -469,7 +469,7 @@
                     <h2 class="font-semibold">Hak akses menu per peran</h2>
                     <p class="mt-1 text-sm text-muted">
                         <b>Lihat</b> = menu tampil & halaman bisa dibuka. <b>Edit</b> = boleh menambah/mengubah data. <b>Keuangan</b> = angka rupiah tampil (bila mati tertulis Rp•••).
-                        Owner selalu akses penuh. Satu akun bisa punya beberapa peran (atur di Pengguna & peran); izin mengikuti peran yang sedang dipilih saat login.
+                        Owner selalu akses penuh. Satu akun bisa punya beberapa peran (atur di Master data › Master user); izin mengikuti peran yang sedang dipilih saat login.
                     </p>
                 </section>
                 @php

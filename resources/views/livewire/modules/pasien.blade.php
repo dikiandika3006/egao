@@ -1,5 +1,5 @@
 @php use App\Support\Format; @endphp
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         @if ($canImport)
             <button type="button" wire:click="openImport" class="btn-soft">Impor dari Excel</button>

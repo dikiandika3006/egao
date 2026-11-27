@@ -25,8 +25,8 @@ class Access
     /** Menu yang isinya seluruhnya angka uang: keuangan ikut izin lihat. */
     public const MONEY_ONLY_MENUS = ['kasir', 'laporan', 'pengeluaran', 'tarif-gaji', 'laporan-stok'];
 
-    /** Menu yang tidak diatur di matriks: Pengaturan program khusus Owner, Tentang terbuka untuk semua. */
-    public const FIXED_MENUS = ['pengaturan', 'tentang'];
+    /** Menu yang tidak diatur di matriks: Pengaturan & Master user khusus Owner, Tentang terbuka untuk semua. */
+    public const FIXED_MENUS = ['pengaturan', 'master-user', 'tentang'];
 
     /**
      * Bawaan peran Admin / Asisten (25 Nov 2026): menu operasional saja. Laporan, Pengeluaran, Gaji, Master data

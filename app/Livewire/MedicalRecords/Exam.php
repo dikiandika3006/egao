@@ -30,7 +30,7 @@ class Exam extends Component
 
     public const READ_ACTIONS = [
         'visit', 'conditions', 'procedureOptions', 'icdResults', 'icdLabels', 'favorites', 'history', 'previousTeeth', 'total',
-        'drugOptions', 'drugTotal', 'goodsOptions', 'goodsTotal','standardPrice', 'maxPrice', 'defaultPrice', 'needsPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'isCorrection',
+        'drugOptions', 'drugTotal', 'goodsOptions', 'goodsTotal','standardPrice', 'maxPrice', 'defaultPrice', 'needsPrice', 'priceOf', 'canEditPrice', 'canEditClinical', 'canEditBilling', 'canEditSentBilling', 'billingEditable', 'isCorrection',
         'editable', 'selectTooth', 'suggestions', 'zeroPriceProcedures', 'checklist', 'diagnosisSuggestions',
     ];
 
@@ -138,6 +138,9 @@ class Exam extends Component
     public bool $unsaved = false;
 
     public bool $showCorrection = false;
+
+    /** Mode edit tagihan setelah dikirim ke kasir (diverifikasi ulang di server lewat canEditSentBilling). */
+    public bool $editingBilling = false;
 
     public string $correctionReason = '';
 
@@ -431,7 +434,7 @@ class Exam extends Component
     #[Computed]
     public function canEditPrice(): bool
     {
-        return $this->canEditBilling && app(ExamService::class)->canRaisePrice();
+        return $this->billingEditable && app(ExamService::class)->canRaisePrice();
     }
 
     /** Ubah baris tindakan (gigi, jumlah, harga). Harga kosong = tarif tunggal terisi lagi / tarif range belum diisi; di bawah standar hanya untuk tindakan berizin (wajib alasan). */
@@ -526,6 +529,20 @@ class Exam extends Component
     public function canEditBilling(): bool
     {
         return app(ExamService::class)->canEditBilling($this->visit);
+    }
+
+    /** Tagihan sudah dikirim ke kasir tetapi belum dibayar: Dokter pemeriksa/Owner boleh masuk Mode edit. */
+    #[Computed]
+    public function canEditSentBilling(): bool
+    {
+        return app(ExamService::class)->canEditSentBilling($this->visit);
+    }
+
+    /** Kartu tindakan & tagihan bisa diubah: pemeriksaan masih terbuka, atau Mode edit setelah kirim. */
+    #[Computed]
+    public function billingEditable(): bool
+    {
+        return $this->canEditBilling || ($this->editingBilling && $this->canEditSentBilling);
     }
 
     /** Mode koreksi: rekam medis final dan dokter pemilik → form klinis terbuka, tagihan terkunci. */
@@ -783,15 +800,7 @@ class Exam extends Component
         $this->authorizeBilling();
         $this->validateFields();
 
-        // Tindakan bertarif range wajib diisi harganya manual sebelum dikirim ke kasir.
-        $missingPrice = false;
-        foreach ($this->procedures as $i => $p) {
-            if ($this->needsPrice($p)) {
-                $missingPrice = true;
-                $this->addError("procedures.{$i}.unit_price", 'Isi harga '.Format::rupiah($this->standardPrice($p['procedure_id'])).' – '.Format::rupiah((int) $this->maxPrice($p['procedure_id'])).'.');
-            }
-        }
-        if ($missingPrice) {
+        if ($this->flagMissingPrices()) {
             return;
         }
 
@@ -835,6 +844,57 @@ class Exam extends Component
         session()->flash('status', 'Rekam medis tersimpan dan tagihan terkirim ke kasir '.$this->visit->branch->name.'.');
 
         return $this->redirectRoute('rekam-medis', navigate: true);
+    }
+
+    /** Tindakan bertarif range wajib diisi harganya manual; tandai baris yang kosong. true = ada yang kosong. */
+    private function flagMissingPrices(): bool
+    {
+        $missing = false;
+        foreach ($this->procedures as $i => $p) {
+            if ($this->needsPrice($p)) {
+                $missing = true;
+                $this->addError("procedures.{$i}.unit_price", 'Isi harga '.Format::rupiah($this->standardPrice($p['procedure_id'])).' – '.Format::rupiah((int) $this->maxPrice($p['procedure_id'])).'.');
+            }
+        }
+
+        return $missing;
+    }
+
+    // ── Edit tagihan setelah dikirim ke kasir (edit di tempat, belum dibayar) ──
+
+    public function startBillingEdit(): void
+    {
+        abort_unless($this->canEditSentBilling, 403, 'Tagihan ini tidak dapat diubah.');
+        $this->editingBilling = true;
+        unset($this->billingEditable, $this->canEditPrice, $this->canGiveDiscount);
+    }
+
+    /** Batal: isian dimuat ulang dari tagihan tersimpan. */
+    public function cancelBillingEdit()
+    {
+        return $this->redirectRoute('rekam-medis.periksa', ['visit' => $this->visitId], navigate: true);
+    }
+
+    public function saveBillingChanges(ExamService $exam): void
+    {
+        $this->authorizeBilling();
+        $this->validateFields();
+        if ($this->flagMissingPrices()) {
+            return;
+        }
+
+        try {
+            $exam->updateSentBilling($this->visit, $this->payload());
+        } catch (ValidationException $e) {
+            $this->setErrorBag($e->validator->getMessageBag());
+
+            return;
+        }
+
+        $this->editingBilling = false;
+        $this->savedHash = $this->formHash();
+        unset($this->visit, $this->billingEditable, $this->canEditSentBilling, $this->canEditPrice, $this->canGiveDiscount);
+        $this->dispatch('toast', message: 'Tagihan diperbarui. Kasir melihat total terbaru.');
     }
 
     public function saveCorrection(ExamService $exam): void
@@ -897,7 +957,7 @@ class Exam extends Component
 
     private function authorizeBilling(): void
     {
-        abort_unless($this->canEditBilling, 403, 'Tindakan tidak dapat diubah setelah dikirim ke kasir.');
+        abort_unless($this->billingEditable, 403, 'Tindakan tidak dapat diubah setelah dikirim ke kasir.');
     }
 
     public function render(BranchContext $context)

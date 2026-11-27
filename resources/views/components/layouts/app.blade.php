@@ -11,138 +11,81 @@
 <head>
     @include('components.layouts.partials.head')
 </head>
-<body class="min-h-dvh font-sans">
+<body class="min-h-dvh font-sans" x-data="{ navOpen: false, sidebarOpen: $persist(true).as('sidebar-open') }" @keydown.escape.window="navOpen = false" x-on:livewire:navigating.window="navOpen = false">
 <div class="lg:flex">
-    {{-- Sidebar desktop (SRS §2.3) --}}
+    {{-- Sidebar layar lebar (SRS §2.3) --}}
     {{-- Dibuat ringkas agar seluruh menu muat satu layar; scroll hanya cadangan untuk layar sangat pendek (tanpa scrollbar terlihat). --}}
-    <aside class="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col overflow-y-auto border-r border-line bg-white px-4 [scrollbar-width:none] lg:flex [&::-webkit-scrollbar]:hidden">
-        <a href="{{ route('dashboard') }}" wire:navigate class="block px-2 pt-6">
-            <x-logo size="sm" />
-        </a>
-
-        <nav class="mt-6 flex-1">
-            @foreach (Navigation::GROUPS as $group => $heading)
-                @if ($items = Navigation::visible($role, $group))
-                    @php
-                        $collapsible = $group === 'master';
-                        $groupActive = collect($items)->contains(fn ($item, $key) => Navigation::isActive($key, $item, $active));
-                    @endphp
-                    {{-- Grup "Master data" bisa dilipat; status buka/tutup diingat di browser, dan selalu terbuka bila isinya sedang aktif. --}}
-                    <div @if ($collapsible) x-data="{ open: $persist(true).as('nav-master-open') }" @if ($groupActive) x-init="open = true" @endif @endif>
-                        @if ($collapsible)
-                            <button type="button" @click="open = ! open" :aria-expanded="open" @class(['eyebrow flex w-full items-center justify-between px-3 text-[10px]', 'mt-4' => ! $loop->first])>
-                                {{ $heading }}
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 transition-transform" :class="open ? '' : '-rotate-90'" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                            </button>
-                        @else
-                            <p @class(['eyebrow px-3 text-[10px]', 'mt-4' => ! $loop->first])>{{ $heading }}</p>
-                        @endif
-                        <ul class="mt-1.5 space-y-0.5" @if ($collapsible) x-show="open" @endif>
-                            @foreach ($items as $key => $item)
-                                @php $on = Navigation::isActive($key, $item, $active); @endphp
-                                <li>
-                                    <a href="{{ Navigation::url($item) }}" wire:navigate @class([
-                                        'flex h-[38px] items-center gap-3 rounded-xl px-2 text-[14px] transition',
-                                        'bg-leaf-100 font-semibold text-brand-600' => $on,
-                                        'font-medium text-brand-700 hover:bg-mist' => ! $on,
-                                    ])>
-                                        <x-nav-icon :name="$key" :active="$on" compact />
-                                        {{ $item['label'] }}
-                                    </a>
-                                </li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-            @endforeach
-        </nav>
-
-        <div class="mt-4 space-y-0.5 border-t border-line pt-3 pb-4">
-            <a href="{{ route('tentang') }}" wire:navigate @class([
-                'flex h-[38px] items-center gap-3 rounded-xl px-2 text-[14px] transition',
-                'bg-leaf-100 font-semibold text-brand-600' => $active === 'tentang',
-                'font-medium text-brand-700 hover:bg-mist' => $active !== 'tentang',
-            ])>
-                <x-nav-icon name="tentang" :active="$active === 'tentang'" compact />
-                Bantuan & aturan
-            </a>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button class="flex h-[38px] w-full items-center gap-3 rounded-xl px-2 text-[14px] font-medium text-rose-ink transition hover:bg-rose-soft">
-                    <x-nav-icon name="keluar" compact />
-                    Keluar
-                </button>
-            </form>
-        </div>
+    {{-- Bisa dilipat lewat tombol ☰ di topbar; pilihan diingat di browser. --}}
+    <aside x-show="sidebarOpen" class="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col overflow-y-auto border-r border-line bg-white px-4 [scrollbar-width:none] lg:flex [&::-webkit-scrollbar]:hidden">
+        @include('components.layouts.partials.sidebar-nav')
     </aside>
+
+    {{-- Laci menu layar sempit: dibuka dari tombol hamburger di header; isinya sama dengan sidebar. --}}
+    <div x-show="navOpen" x-cloak class="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div x-show="navOpen" x-transition.opacity @click="navOpen = false" class="absolute inset-0 bg-brand-700/40"></div>
+        <aside x-show="navOpen"
+               x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
+               x-transition:leave="transition duration-150 ease-in" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full"
+               class="relative flex h-dvh w-[272px] max-w-[85vw] flex-col overflow-y-auto bg-white px-4 shadow-xl">
+            <button type="button" @click="navOpen = false" class="absolute top-5 right-3 grid size-10 place-items-center rounded-xl text-brand-700 hover:bg-mist" aria-label="Tutup menu">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="size-5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+            @include('components.layouts.partials.sidebar-nav')
+        </aside>
+    </div>
 
     <div class="min-w-0 flex-1">
         {{-- Topbar desktop --}}
         <header class="sticky top-0 z-30 hidden h-[76px] items-center justify-between bg-white px-8 lg:flex">
-            <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm text-muted">
-                @foreach ($breadcrumb as $crumb)
-                    @if (! $loop->first)<span>/</span>@endif
-                    <span @class(['text-brand-700' => $loop->last])>{{ $crumb }}</span>
-                @endforeach
-            </nav>
+            <div class="flex items-center gap-3">
+                <button type="button" @click="sidebarOpen = ! sidebarOpen" :aria-expanded="sidebarOpen" class="-ml-3 grid size-10 place-items-center rounded-xl text-brand-700 hover:bg-mist" :aria-label="sidebarOpen ? 'Sembunyikan menu' : 'Tampilkan menu'" data-sidebar-toggle>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="size-6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <x-logo size="sm" x-show="! sidebarOpen" x-cloak />
+                <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-sm text-muted">
+                    @foreach ($breadcrumb as $crumb)
+                        @if (! $loop->first)<span>/</span>@endif
+                        <span @class(['text-brand-700' => $loop->last])>{{ $crumb }}</span>
+                    @endforeach
+                </nav>
+            </div>
             <div class="flex items-center gap-4">
                 <livewire:attendance-button />
                 <livewire:branch-switcher />
             </div>
         </header>
 
-        {{-- Header ponsel --}}
-        <header class="bg-white px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 lg:hidden">
-            <div class="flex items-start justify-between">
-                <a href="{{ route('dashboard') }}" wire:navigate><x-logo size="sm" /></a>
+        {{-- Header layar sempit --}}
+        <header class="sticky top-0 z-30 bg-white px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 lg:hidden">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button type="button" @click="navOpen = true" class="-ml-2 grid size-11 place-items-center rounded-xl text-brand-700 hover:bg-mist" aria-label="Buka menu" data-nav-toggle>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="size-6" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+                    <a href="{{ route('dashboard') }}" wire:navigate><x-logo size="sm" /></a>
+                </div>
                 <div class="flex items-center gap-2">
                     <livewire:attendance-button compact />
                     <livewire:branch-switcher compact />
                 </div>
             </div>
-            <div class="mt-3 flex items-center justify-between text-[10px] text-muted">
-                <p>{{ $role?->label() }} / {{ last($breadcrumb) ?: 'Dashboard' }}</p>
-                <span class="flex items-center gap-3">
-                    <a href="{{ route('tentang') }}" wire:navigate class="underline">Tentang</a>
-                    <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button class="font-medium text-rose-ink underline">Keluar</button>
-                    </form>
-                </span>
-            </div>
+            <p class="mt-2 text-[10px] text-muted">{{ $role?->label() }} / {{ last($breadcrumb) ?: 'Dashboard' }}</p>
         </header>
 
-        <main class="px-5 pt-6 pb-28 lg:px-8 lg:pt-10 lg:pb-12">
+        <main class="px-5 pt-6 pb-12 lg:px-8 lg:pt-10">
             {{ $slot }}
         </main>
     </div>
 </div>
 
-{{-- Bottom bar ponsel (SRS §2.3, tombol min 44px) --}}
-<nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
-    <ul class="mx-auto flex max-w-md items-center justify-between gap-2">
-        @foreach (Navigation::mobile($role) as $item)
-            @php $on = in_array($active, $item['active'], true); @endphp
-            <li class="flex-1">
-                <a href="{{ route($item['route']) }}" wire:navigate @class([
-                    'flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-[11.5px] transition',
-                    'bg-leaf-100 font-semibold text-brand-600' => $on,
-                    'font-medium text-brand-700' => ! $on,
-                ])>
-                    <x-nav-icon :name="$item['active'][0]" :tile="false" />
-                    {{ $item['label'] }}
-                </a>
-            </li>
-        @endforeach
-    </ul>
-</nav>
+<livewire:change-password />
 
 {{-- Notifikasi singkat dari komponen: $this->dispatch('toast', message: '...') --}}
 <div x-data="{ show: false, msg: '', t: null }" x-cloak
      @if (session('toast')) x-init="$nextTick(() => $dispatch('toast', { message: @js(session('toast')) }))" @endif
      @toast.window="msg = $event.detail.message; show = true; clearTimeout(t); t = setTimeout(() => show = false, 2800)"
      x-show="show" x-transition.opacity
-     class="fixed inset-x-0 bottom-24 z-[60] flex justify-center px-5 lg:bottom-8" role="status">
+     class="fixed inset-x-0 bottom-8 z-[60] flex justify-center px-5" role="status">
     <p class="rounded-xl bg-brand-700 px-5 py-3 text-sm text-white shadow-lg" x-text="msg"></p>
 </div>
 

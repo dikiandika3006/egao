@@ -76,6 +76,51 @@ class ExamService
             && ($this->context->id() === $visit->branch_id || ($this->context->isAll() && $this->isStaffEditor($visit)));
     }
 
+    /**
+     * Edit di tempat (26 Nov 2026): setelah dikirim ke kasir, Dokter pemeriksa/Owner masih boleh mengubah tindakan, harga,
+     * barang & diskon selama tagihan belum dibayar sama sekali. Tagihan tetap di antrean Kasir.
+     */
+    public function canEditSentBilling(Visit $visit): bool
+    {
+        $visit->loadMissing('invoice');
+
+        return $this->canEditClinical($visit)
+            && $visit->status === VisitStatus::MenungguPembayaran
+            && $visit->invoice?->status === Invoice::STATUS_UNPAID
+            && ! $visit->invoice->payments()->exists()
+            && ($this->context->id() === $visit->branch_id || ($this->context->isAll() && $this->isStaffEditor($visit)));
+    }
+
+    /** Simpan perubahan tagihan yang sudah dikirim ke kasir (belum dibayar). Catatan klinis & resep tidak diubah. */
+    public function updateSentBilling(Visit $visit, array $data): Invoice
+    {
+        abort_unless($this->canEditSentBilling($visit), 403, 'Tagihan ini tidak dapat diubah (sudah ada pembayaran atau bukan kunjungan Anda).');
+
+        if (empty($data['procedures'])) {
+            throw ValidationException::withMessages(['procedures' => 'Tambahkan minimal satu tindakan.']);
+        }
+
+        return DB::transaction(function () use ($visit, $data) {
+            // Kunci tagihan: cegah balapan dengan pembayaran di Kasir.
+            $locked = Invoice::whereKey($visit->invoice->id)->lockForUpdate()->first();
+            if (! $locked || $locked->status !== Invoice::STATUS_UNPAID || $locked->payments()->exists()) {
+                throw ValidationException::withMessages(['procedures' => 'Tagihan sudah dibayar di kasir, tidak bisa diubah lagi.']);
+            }
+            $before = (int) $locked->total;
+
+            $invoice = $this->persistBilling($visit, $data['procedures'], Invoice::STATUS_UNPAID, $data['prescriptions'] ?? [], $this->discountFrom($visit, $data), $data['goods'] ?? []);
+
+            AuditLog::record('tagihan.diubah_setelah_kirim', $invoice, [
+                'total_lama' => $before,
+                'total_baru' => (int) $invoice->total,
+                'tindakan' => $invoice->items()->whereNotNull('procedure_id')->get()
+                    ->map(fn ($i) => "{$i->name} ×{$i->quantity} @ {$i->unit_price}")->all(),
+            ]);
+
+            return $invoice;
+        });
+    }
+
     /** FR-ANT-06: dokter membuka rekam medis → status Sedang diperiksa. */
     public function start(Visit $visit): void
     {
@@ -274,7 +319,8 @@ class ExamService
      */
     public function canGiveDiscount(Visit $visit): bool
     {
-        return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner)) && $this->canEditBilling($visit);
+        return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner))
+            && ($this->canEditBilling($visit) || $this->canEditSentBilling($visit));
     }
 
     /** Batas diskon dokter (% dari subtotal) dari Pengaturan; Owner tidak dibatasi. */

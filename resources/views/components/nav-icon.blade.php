@@ -23,8 +23,10 @@
         'tindakan' => '<path d="M12 5.5c-1.5-2-4.5-2.5-6-1C4 6 4.5 10 5.5 13c.7 2 1 4.5 1.5 6.5.3 1.2 1.8 1.3 2.2.1L10.5 15c.3-1 2.7-1 3 0l1.3 4.6c.4 1.2 1.9 1.1 2.2-.1.5-2 .8-4.5 1.5-6.5 1-3 1.5-7-.5-8.5-1.5-1.5-4.5-1-6 1Z"/>',
         'kategori-pengeluaran' => '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
         'tarif-gaji' => '<line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+        'master-user' => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         'absensi' => '<path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><path d="m9 10 2 2 4-4"/>',
         'tentang' => '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+        'sandi' => '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
         'keluar' => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
         'lainnya' => '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
     ];
@@ -51,8 +53,10 @@
         'tindakan' => 'bg-sky-soft text-sky-ink',
         'kategori-pengeluaran' => 'bg-rose-soft text-rose-ink',
         'tarif-gaji' => 'bg-amber-soft text-amber-ink',
+        'master-user' => 'bg-sky-soft text-sky-ink',
         'absensi' => 'bg-leaf-200 text-brand-600',
         'tentang' => 'bg-leaf-50 text-brand-600',
+        'sandi' => 'bg-sky-soft text-sky-ink',
         'keluar' => 'bg-rose-soft text-rose-ink',
         'lainnya' => 'bg-mist text-brand-500',
     ];

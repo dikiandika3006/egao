@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Enums\Role;
 
 /**
- * Struktur menu sesuai SRS §2.3. Satu sumber untuk sidebar, bottom bar, route, dan halaman placeholder.
+ * Struktur menu sesuai SRS §2.3. Satu sumber untuk sidebar (juga laci hamburger layar sempit), route, dan halaman placeholder.
  */
 class Navigation
 {
@@ -99,6 +99,14 @@ class Navigation
                 'subtitle' => 'Bagi hasil global, per dokter, per tindakan, gaji pokok, dan komponen gaji per peran.',
                 'breadcrumb' => ['Master data', 'Tarif gaji & bagi hasil'], 'requirements' => 'FR-GJI',
             ],
+            // Akun login khusus Owner: tidak diatur di matriks Hak akses peran (lihat Access::FIXED_MENUS).
+            'master-user' => [
+                'group' => 'master', 'number' => null, 'label' => 'Master user', 'route' => 'pengaturan', 'path' => '/pengaturan',
+                'query' => ['tab' => 'pengguna'], 'shortcut' => true,
+                'roles' => [Role::Owner], 'menu_roles' => [Role::Owner], 'title' => 'Master user',
+                'subtitle' => 'Akun login: username, kata sandi, peran, dan cabang yang boleh diakses.',
+                'breadcrumb' => ['Master data', 'Master user'], 'requirements' => 'FR-SET-07/08',
+            ],
             'laporan' => [
                 'group' => 'manajemen', 'number' => null, 'label' => 'Laporan', 'route' => 'laporan', 'path' => '/laporan',
                 'roles' => [Role::Owner], 'title' => 'Angka yang mudah dipahami.',
@@ -156,7 +164,7 @@ class Navigation
                 'group' => 'manajemen', 'number' => null, 'label' => 'Pengaturan', 'route' => 'pengaturan', 'path' => '/pengaturan',
                 // Route tetap Owner+Admin (pintasan Master data milik Admin membuka tab di sini); menunya hanya untuk Owner.
                 'roles' => [Role::Owner, Role::Admin], 'menu_roles' => [Role::Owner], 'title' => 'Pengaturan',
-                'subtitle' => 'Pengaturan program: profil klinik & cabang, aplikasi, integrasi, pengguna dan peran.',
+                'subtitle' => 'Pengaturan program: profil klinik & cabang, aplikasi, integrasi, hak akses peran.',
                 'breadcrumb' => ['Manajemen', 'Pengaturan'], 'requirements' => 'FR-SET-01 – 10',
             ],
             // Grup "bantuan" tidak tampil di sidebar; dibuka dari kotak "Butuh bantuan?" dan menu Lainnya.
@@ -228,30 +236,5 @@ class Navigation
                 && (! $group || $i['group'] === $group),
             ARRAY_FILTER_USE_BOTH,
         );
-    }
-
-    /**
-     * Bottom bar ponsel (SRS §2.3): admin & dokter = Dashboard, Antrean, Pasien;
-     * owner = Dashboard, Antrean, Keuangan, Lainnya.
-     *
-     * @return list<array{label:string, route:string, active:list<string>}>
-     */
-    public static function mobile(?Role $role): array
-    {
-        $base = [
-            ['label' => 'Dashboard', 'route' => 'dashboard', 'active' => ['dashboard']],
-            ['label' => 'Antrean', 'route' => 'antrean', 'active' => ['antrean']],
-        ];
-
-        if ($role === Role::Owner) {
-            return [...$base,
-                ['label' => 'Keuangan', 'route' => 'laporan', 'active' => ['laporan', 'pengeluaran', 'gaji']],
-                ['label' => 'Lainnya', 'route' => 'lainnya', 'active' => ['lainnya', 'pasien', 'jadwal', 'dokter', 'pengaturan', 'kasir', 'rekam-medis', 'tentang']],
-            ];
-        }
-
-        return Access::can('pasien', 'lihat', $role)
-            ? [...$base, ['label' => 'Pasien', 'route' => 'pasien', 'active' => ['pasien']]]
-            : $base;
     }
 }

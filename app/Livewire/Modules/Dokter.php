@@ -118,7 +118,7 @@ class Dokter extends Component
 
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
 
-        // Akun login hanya boleh diatur Owner (sama seperti Pengaturan › Pengguna & peran).
+        // Akun login hanya boleh diatur Owner (sama seperti Master data › Master user).
         $userId = $this->isOwner()
             ? $this->resolveAccount($data['name'])
             : ($this->editingId ? $this->doctorQuery()->whereKey($this->editingId)->value('user_id') : null);

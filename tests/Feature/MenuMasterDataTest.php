@@ -21,7 +21,7 @@ function masukSebagaiPeran(string $username, string $role, string|int $branch)
 
 it('mengelompokkan data master dalam satu grup', function () {
     expect(array_keys(Navigation::visible(Role::Owner, 'master')))
-        ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran', 'tarif-gaji'])
+        ->toBe(['pasien', 'dokter', 'master-barang', 'tindakan', 'kategori-pengeluaran', 'tarif-gaji', 'master-user'])
         ->and(array_keys(Navigation::visible(Role::Admin, 'master')))->toBe(['pasien'])
         ->and(array_keys(Navigation::visible(Role::Dokter, 'master')))->toBe(['pasien'])
         ->and(Navigation::visible(Role::Owner, 'klinik'))->not->toHaveKeys(['pasien', 'dokter']);
@@ -71,7 +71,18 @@ it('hak akses data pasien dan dokter tidak berubah', function () {
     $this->get(route('stok', ['tab' => 'barang']))->assertForbidden();
 });
 
-it('menu Lainnya di ponsel ikut dikelompokkan', function () {
+it('layar sempit memakai menu hamburger berisi sidebar, tanpa bar bawah', function () {
+    masukSebagaiPeran('owner', 'owner', 'all')
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee('data-nav-toggle', false)
+        ->assertSee('data-sidebar-toggle', false)
+        ->assertSee('Buka menu')
+        ->assertSee('aria-label="Menu"', false)
+        ->assertDontSee(route('lainnya'), false);
+});
+
+it('halaman Lainnya lama tetap bisa dibuka dan menunya dikelompokkan', function () {
     masukSebagaiPeran('owner', 'owner', 'all')
         ->get(route('lainnya'))
         ->assertOk()
@@ -96,7 +107,8 @@ it('Pengaturan hanya berisi pengaturan program; tab data master tidak tampil di 
 
     $this->get(route('pengaturan'))->assertOk()
         ->assertSee("setTab('klinik')", false)
-        ->assertSee("setTab('pengguna')", false)
+        ->assertSee("setTab('hak-akses')", false)
+        ->assertDontSee("setTab('pengguna')", false)
         ->assertDontSee("setTab('bagi-hasil')", false)
         ->assertDontSee("setTab('kategori')", false);
 
@@ -122,4 +134,26 @@ it('menu Pengaturan disembunyikan untuk Admin; data master yang dibuka Owner tet
     $this->get(route('pengaturan'))->assertOk()->assertSee('Impor Excel');
     $this->get(route('pengaturan', ['tab' => 'kategori']))->assertOk()->assertSee('Kategori pengeluaran');
     $this->get(route('pengaturan', ['tab' => 'bagi-hasil']))->assertOk()->assertDontSee('wire:submit="saveShares"', false);
+});
+
+it('Master user jadi menu sendiri di Master data, khusus Owner', function () {
+    expect(Navigation::url(Navigation::item('master-user')))->toBe(route('pengaturan', ['tab' => 'pengguna']))
+        ->and(Navigation::visible(Role::Admin, 'master'))->not->toHaveKey('master-user')
+        ->and(Navigation::visible(Role::Dokter, 'master'))->not->toHaveKey('master-user')
+        ->and(\App\Support\Access::menus())->not->toHaveKey('master-user');
+
+    masukSebagaiPeran('owner', 'owner', 'all');
+    $this->get(route('pengaturan', ['tab' => 'pengguna']))->assertOk()
+        ->assertSee('Master user')
+        ->assertSee('editUser', false)
+        ->assertDontSee("setTab('klinik')", false);
+});
+
+it('Admin tidak bisa membuka atau menyimpan Master user', function () {
+    masukSebagaiPeran('admin', 'admin', $this->batu->id);
+
+    $this->get(route('pengaturan', ['tab' => 'pengguna']))->assertDontSee('editUser', false);
+
+    \Livewire\Livewire::test(\App\Livewire\Modules\Pengaturan::class)
+        ->call('editUser')->assertForbidden();
 });

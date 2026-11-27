@@ -104,7 +104,7 @@ class About
         [
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
-                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan: di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
+                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan (atau lewat Mode edit selama tagihan belum dibayar): di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
                 'Biaya admin & kartu ditagih sekali per pasien di tagihan pertamanya dan tidak masuk bagi hasil.',
                 'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
                 'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
@@ -116,12 +116,22 @@ class About
 
     public const CHANGELOG = [
         [
+            'date' => '27 November 2026',
+            'changes' => [
+                'Ubah kata sandi sendiri: menu profil kanan atas (atau menu ☰ di ponsel) › "Ubah kata sandi", wajib memasukkan kata sandi lama; tercatat di audit.',
+                'Master user: daftar akun login (username, kata sandi, peran, cabang) pindah dari tab Pengaturan menjadi menu sendiri di grup Master data, khusus Owner.',
+            ],
+        ],
+        [
             'date' => '26 November 2026',
             'changes' => [
+                'Mode lihat / Mode edit tagihan: setelah dikirim ke kasir dan selama belum ada pembayaran, Dokter pemeriksa/Owner bisa menekan "✎ Edit" untuk mengubah tindakan, harga, barang, dan diskon langsung (tagihan tetap di Kasir, tercatat di audit).',
                 'Tindakan & tagihan di Pemeriksaan kini seperti nota penjualan: gigi, jumlah, dan harga diketik langsung di tiap baris; "+ Tambah baris" untuk menambah tindakan.',
                 'Tindakan bertarif range kini wajib diisi harganya manual oleh Dokter/Owner saat Pemeriksaan (tidak terisi otomatis). Draf boleh disimpan dulu; kirim ke kasir ditolak selama ada harga yang belum diisi.',
                 'Pricelist 2024 diterapkan: Konsultasi Rp35.000, Cabut anak Rp200.000, Tambal anak Rp150.000–200.000, Scaling Rp200.000, Tambal gigi Rp250.000–500.000, PSA tunggal Rp250.000, PSA ganda (2-3 akar) Rp350.000; tindakan baru: Tambal + Cal LC, PSA 4-5 akar, PSA >5 akar, dan Pulpektomi/Pulpotomi anak (devitalisasi, preparasi, sterilisasi, pengisian).',
                 'Kartu baru "Lain-lain" di halaman Periksa (di bawah Resep) untuk menjual barang selain obat, mis. odol atau sikat gigi. Barang diambil dari stok cabang, ikut ditagihkan ke kasir, stok berkurang saat lunas, tidak tercatat di rekam medis, dan tidak dihitung dalam bagi hasil. Kategori stok baru: "Barang jual".',
+                'Tombol hamburger (☰) di kiri atas: di layar lebar menyembunyikan/menampilkan sidebar agar konten lebih lega (pilihan diingat di browser); di layar sempit membuka menu yang sama dengan sidebar. Bar bawah dan tombol "Lainnya" dihapus.',
+                'Setelah masuk, halaman terakhir yang teringat hanya dibuka bila peran aktif boleh membukanya; selain itu langsung ke Dashboard (tidak lagi muncul 403).',
             ],
         ],
         [

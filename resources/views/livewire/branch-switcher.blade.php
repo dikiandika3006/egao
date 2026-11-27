@@ -40,10 +40,11 @@
                 @if ($payslip)
                     {{-- Slip gaji milik sendiri (FR-GJI: dokter dapat melihat slip miliknya) --}}
                     <p class="eyebrow border-t border-line px-3 pt-2.5 pb-1">Slip gaji saya</p>
-                    @foreach ([now()->subMonthNoOverflow(), now()] as $m)
+                    @foreach ($payslip['months'] as $m)
                         <a href="{{ route('gaji.slip', ['type' => $payslip['type'], 'id' => $payslip['id'], 'bulan' => $m->format('Y-m')]) }}" target="_blank" class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm hover:bg-mist">{{ $m->translatedFormat('F Y') }}</a>
                     @endforeach
                 @endif
+                <button type="button" @click="open = false; $dispatch('buka-ubah-sandi')" class="flex min-h-10 w-full items-center border-t border-line rounded-lg px-3 text-left text-sm hover:bg-mist" data-ubah-sandi>Ubah kata sandi</button>
                 <form method="POST" action="{{ route('logout') }}" class="border-t border-line pt-1.5">
                     @csrf
                     <button class="flex min-h-10 w-full items-center rounded-lg px-3 text-left text-sm text-rose-ink hover:bg-rose-soft">Keluar</button>

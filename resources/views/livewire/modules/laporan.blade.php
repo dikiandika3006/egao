@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-[1152px]">
+<div class="w-full">
     <x-page-header :title="$item['title']" :subtitle="$item['subtitle']">
         <div class="flex gap-2">
             <button type="button" wire:click="export" class="btn-soft">Ekspor Excel</button>

@@ -48,6 +48,7 @@ class Pengaturan extends Component
         'editProcedure' => 'tindakan', 'saveProcedure' => 'tindakan', 'openProcedureImport' => 'tindakan', 'importProcedures' => 'tindakan',
         'editCategory' => 'kategori-pengeluaran', 'saveCategory' => 'kategori-pengeluaran', 'deleteCategory' => 'kategori-pengeluaran',
         'saveShares' => 'tarif-gaji', 'addSpecial' => 'tarif-gaji', 'removeSpecial' => 'tarif-gaji',
+        'editUser' => 'master-user', 'saveUser' => 'master-user',
     ];
 
     /** Matriks tab Hak akses peran: [role][menu] => ['lihat' => bool, 'edit' => bool, 'keuangan' => bool]. */
@@ -85,7 +86,7 @@ class Pengaturan extends Component
      * Tab data master (tab => key pintasan di Navigation): dibuka dari menu Master data, tidak tampil di deretan
      * tab Pengaturan. Pengaturan sendiri hanya berisi pengaturan program.
      */
-    private const MASTER_TABS = ['tindakan' => 'tindakan', 'kategori' => 'kategori-pengeluaran', 'bagi-hasil' => 'tarif-gaji'];
+    private const MASTER_TABS = ['tindakan' => 'tindakan', 'kategori' => 'kategori-pengeluaran', 'bagi-hasil' => 'tarif-gaji', 'pengguna' => 'master-user'];
 
     /** null | clinic | branch | procedure | user | category */
     public ?string $form = null;

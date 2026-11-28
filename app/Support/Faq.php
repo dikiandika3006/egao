@@ -268,8 +268,16 @@ class Faq
         ],
         [
             'group' => 'Akun & pengaturan',
+            'q' => 'Bagaimana agar Admin/Asisten bisa memeriksa pasien seperti dokter (ubah tindakan & harga)?',
+            'a' => 'Bawaannya Admin/Asisten hanya membaca rekam medis. Owner buka Pengaturan › Hak akses peran, pada blok Admin / Asisten baris Rekam medis centang Edit, lalu Simpan hak akses. Setelah itu Admin/Asisten melihat tombol Periksa di Antrean dan bisa mengisi pemeriksaan atas nama dokter kunjungan di cabang aktifnya: odontogram, diagnosis, tindakan, resep, barang, diskon (batas % sama dengan dokter), dan Mode edit selama tagihan belum dibayar. Untuk mengubah harga tindakan centang juga Keuangan (tanpa Keuangan harga disamarkan dan tidak bisa diubah). Bagi hasil tetap milik dokter kunjungan; penginput tercatat di Jejak audit sehingga bisa dicek lewat laporan.',
+            'where' => 'Pengaturan › Hak akses peran',
+            'roles' => 'Owner',
+            'tags' => 'admin asisten periksa pemeriksaan tindakan harga ubah dokter rekam medis edit izin diskon',
+        ],
+        [
+            'group' => 'Akun & pengaturan',
             'q' => 'Ada peran apa saja dan bisa apa?',
-            'a' => 'Ada 3 peran. (1) Owner / Administrator: semua menu termasuk Laporan, Pengeluaran, Gaji, Master data, Pengaturan, dan rekap & koreksi Absensi. (2) Admin / Asisten (satu peran): Dashboard (termasuk omzet hari ini untuk totalan kas), Antrean, Janji temu, Data pasien, Rekam medis (hanya membaca; yang memeriksa dokter), Kasir, Jadwal dokter, Manajemen stok (hanya melihat Posisi stok dan Kartu stok tanpa harga), Order lab, dan Absensi untuk dirinya sendiri. Laporan, Pengeluaran, Gaji, dan Master data tertutup. (3) Dokter: Dashboard, Antrean, Janji temu, Data pasien, Rekam medis, Jadwal dokter, dan Absensi untuk dirinya sendiri. Owner bisa membuka/menutup menu per peran di Pengaturan › Hak akses peran. Buat akun di Master data › Master user; agar bisa absen, hubungkan akun ke data karyawan (Gaji › Karyawan) atau data dokter.',
+            'a' => 'Ada 3 peran. (1) Owner / Administrator: semua menu termasuk Laporan, Pengeluaran, Gaji, Master data, Pengaturan, dan rekap & koreksi Absensi. (2) Admin / Asisten (satu peran): Dashboard (termasuk omzet hari ini untuk totalan kas), Antrean, Janji temu, Data pasien, Rekam medis (bawaan hanya membaca; Owner bisa mengizinkan memeriksa lewat Hak akses peran), Kasir, Jadwal dokter, Manajemen stok (hanya melihat Posisi stok dan Kartu stok tanpa harga), Order lab, dan Absensi untuk dirinya sendiri. Laporan, Pengeluaran, Gaji, dan Master data tertutup. (3) Dokter: Dashboard, Antrean, Janji temu, Data pasien, Rekam medis, Jadwal dokter, dan Absensi untuk dirinya sendiri. Owner bisa membuka/menutup menu per peran di Pengaturan › Hak akses peran. Buat akun di Master data › Master user; agar bisa absen, hubungkan akun ke data karyawan (Gaji › Karyawan) atau data dokter.',
             'where' => 'Master data › Master user',
             'roles' => 'Owner',
             'tags' => 'asisten admin owner administrator dokter perawat peran role akun baru pengguna',

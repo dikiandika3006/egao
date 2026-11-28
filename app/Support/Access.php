@@ -31,13 +31,14 @@ class Access
     /**
      * Bawaan peran Admin / Asisten (25 Nov 2026): menu operasional saja. Laporan, Pengeluaran, Gaji, Master data
      * tertutup; omzet hari ini di dashboard tampil (admin menghitung totalan kas). Rekam medis hanya baca: yang memeriksa dokter.
+     * Owner bisa mencentang Rekam medis › Edit agar Admin/Asisten memeriksa atas nama dokter (+ Keuangan = boleh ubah harga).
      */
     private const ADMIN = [
         'dashboard' => ['lihat' => true, 'edit' => true, 'keuangan' => true],
         'antrean' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
         'janji' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
         'pasien' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
-        'rekam-medis' => ['lihat' => true, 'edit' => false, 'keuangan' => false], // hanya baca; yang memeriksa dokter
+        'rekam-medis' => ['lihat' => true, 'edit' => false, 'keuangan' => false], // hanya baca; Edit = boleh memeriksa atas nama dokter (ExamService::isStaffEditor)
         'kasir' => ['lihat' => true, 'edit' => true, 'keuangan' => true],
         'jadwal' => ['lihat' => true, 'edit' => true, 'keuangan' => false],
         'absensi' => ['lihat' => true, 'edit' => true, 'keuangan' => false],

@@ -323,7 +323,7 @@
                                 <label class="label">Batas diskon dokter (% dari subtotal)</label>
                                 <input type="number" min="0" max="100" wire:model="app.admin_max_discount_percent" class="input">
                                 <x-error for="app.admin_max_discount_percent" />
-                                <p class="mt-1 text-xs text-muted">Diskon diberikan dokter saat pemeriksaan. Owner tidak dibatasi; Admin/Asisten tidak bisa memberi diskon. 0 = dokter tidak boleh memberi diskon.</p>
+                                <p class="mt-1 text-xs text-muted">Diskon diberikan dokter saat pemeriksaan. Owner tidak dibatasi; Admin/Asisten yang diizinkan memeriksa (Hak akses peran › Rekam medis › Edit) memakai batas yang sama. 0 = tidak boleh memberi diskon.</p>
                             </div>
                         </div>
                     </section>

@@ -58,7 +58,7 @@ class About
         [
             'title' => 'Rekam medis',
             'rules' => [
-                'Pemeriksaan diisi dokter kunjungan (Owner boleh mengisi/mengoreksi atas nama dokter, penginput tercatat). Admin/Asisten dan dokter lain hanya membaca rekam medis.',
+                'Pemeriksaan diisi dokter kunjungan (Owner boleh mengisi/mengoreksi atas nama dokter, penginput tercatat). Admin/Asisten bawaannya hanya membaca; bila Owner mencentang Rekam medis › Edit di Hak akses peran, Admin/Asisten boleh memeriksa atas nama dokter di cabang aktifnya (tindakan, harga bila Keuangan juga dicentang, diskon) dan bagi hasil tetap milik dokter kunjungan. Dokter lain hanya membaca.',
                 'Tindakan yang dicatat dokter otomatis menjadi rincian tagihan di kasir, dengan harga sesuai tarif cabang saat itu.',
                 'Pasien beralergi wajib dikonfirmasi alerginya sebelum dikirim ke kasir.',
                 'Rekam medis tidak dihapus. Koreksi menjadi versi baru, versi lama tetap tersimpan.',
@@ -67,7 +67,7 @@ class About
         [
             'title' => 'Kasir & kwitansi',
             'rules' => [
-                'Diskon diberikan dokter penanggung jawab saat pemeriksaan, wajib beralasan, dan dibatasi persentase di Pengaturan. Admin/Asisten tidak bisa memberi diskon; mereka mencatat pembayaran dan mencetak kwitansi. Owner boleh memberi diskon di Kasir tanpa batas sebelum ada pembayaran.',
+                'Diskon diberikan dokter penanggung jawab saat pemeriksaan, wajib beralasan, dan dibatasi persentase di Pengaturan. Admin/Asisten yang diizinkan memeriksa boleh memberi diskon di pemeriksaan dengan batas yang sama; di Kasir mereka hanya mencatat pembayaran dan mencetak kwitansi. Owner boleh memberi diskon di Kasir tanpa batas sebelum ada pembayaran.',
                 'Pembayaran boleh sebagian. Kunjungan baru Selesai setelah tagihan lunas.',
                 'Kwitansi terbit saat lunas, bernomor urut per cabang mulai dari "nomor awal kwitansi" di pengaturan cabang.',
                 'Metode bayar yang tampil di kasir mengikuti pengaturan Owner.',
@@ -127,7 +127,7 @@ class About
         [
             'title' => 'Harga tindakan & jam kerja',
             'rules' => [
-                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter dan Owner saat pemeriksaan (atau lewat Mode edit selama tagihan belum dibayar): di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
+                'Tarif tindakan bisa berupa range (minimal–maksimal) atau satu harga. Harga tindakan bertarif range wajib diisi manual saat tindakan (tidak terisi otomatis); kirim ke kasir ditolak bila belum diisi. Harga tindakan hanya boleh diubah Dokter, Owner, dan Admin/Asisten berizin Rekam medis › Edit + Keuangan saat pemeriksaan (atau lewat Mode edit selama tagihan belum dibayar): di dalam range bebas, di atas maksimal boleh (tercatat di audit), di bawah minimal hanya bila dicentang "Tidak selesai" (atau tindakan bertanda "harga boleh di bawah standar") dengan alasan wajib. Tindakan bertarif terkunci tidak bisa diubah. Potongan harga lain hanya lewat diskon Kasir.',
                 'Biaya admin ditagih di setiap tagihan pemeriksaan yang ada tindakannya (bukan penjualan langsung, tindakan Rp0/garansi, atau cicilan); pasien baru ditambah biaya pendaftaran & kartu sekali. Keduanya tidak masuk bagi hasil.',
                 'Bagi hasil dokter dihitung saat tindakan dikirim ke kasir (tidak menunggu lunas), dari harga setelah diskon dikurangi biaya modal, bahan resep, dan lab. Kenaikan/penurunan harga tercatat di jejak audit.',
                 'Uang duduk dokter per shift hadir (ditandai Owner di Jadwal): kotor tindakan shift di bawah ambang → uang duduk dan fee shift itu 0; sama/lebih → fee %.',
@@ -141,6 +141,7 @@ class About
         [
             'date' => '28 November 2026',
             'changes' => [
+                'Admin/Asisten bisa memeriksa pasien seperti dokter (tindakan, harga, odontogram, diagnosis, resep, diskon) bila Owner mencentang Rekam medis › Edit di Hak akses peran; mengubah harga butuh centang Keuangan juga. Bawaan tetap hanya baca. Bagi hasil tetap milik dokter kunjungan; penginput tercatat di audit.',
                 'Kwitansi: kolom Petugas kini berisi nama pengguna yang mencetak kwitansi (sebelumnya penerima pembayaran terakhir).',
                 'Kasir: tab baru "Riwayat" untuk mencari tagihan lunas di tanggal mana pun (nama, No. RM, nomor kwitansi) dan mencetak ulang kwitansinya.',
                 'Nomor WhatsApp kini per cabang (Pengaturan › Klinik & cabang › Ubah) dan tampil di kwitansi cabang tersebut. WA di tab Aplikasi hanya cadangan bila WA cabang kosong.',

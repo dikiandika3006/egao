@@ -49,13 +49,25 @@ class ExamService
 
     /**
      * Owner boleh mengisi/mengoreksi pemeriksaan atas nama dokter kunjungan, hanya untuk cabang yang boleh diakses.
-     * Admin/Asisten tidak memeriksa (25 Nov 2026): yang memeriksa hanya dokter; Admin hanya membaca rekam medis.
-     * Penginput tercatat di created_by / audit.
+     * Admin/Asisten (28 Nov 2026) juga boleh, bila Owner mencentang Rekam medis › Edit di Hak akses peran, dan hanya
+     * untuk kunjungan di cabang aktifnya. Bawaan tertutup (Admin hanya membaca). Penginput tercatat di created_by / audit;
+     * bagi hasil tetap milik dokter kunjungan.
      */
     public function isStaffEditor(Visit $visit): bool
     {
+        if ($this->context->is(Role::Admin)) {
+            return Access::can('rekam-medis', 'edit') && $this->context->id() === $visit->branch_id;
+        }
+
         return $this->context->is(Role::Owner)
             && $this->context->options()->contains('id', $visit->branch_id);
+    }
+
+    /** Boleh membuka pemeriksaan dari antrean: Dokter, Owner, atau Admin/Asisten yang diberi izin Rekam medis › Edit. */
+    public function canExamine(): bool
+    {
+        return $this->context->is(Role::Dokter, Role::Owner)
+            || ($this->context->is(Role::Admin) && Access::can('rekam-medis', 'edit'));
     }
 
     /** Catatan klinis boleh diubah: dokter pemilik atau Owner, kunjungan tidak batal. Setelah final, perubahan = koreksi berversi. */
@@ -371,12 +383,12 @@ class ExamService
     }
 
     /**
-     * Diskon tagihan diberikan dokter penanggung jawab (atau Owner) di pemeriksaan, sebelum dikirim ke kasir.
-     * Admin/Asisten yang mengisi pemeriksaan atas nama dokter tidak bisa mengubahnya.
+     * Diskon tagihan diberikan dokter penanggung jawab, Owner, atau Admin/Asisten yang diizinkan memeriksa
+     * (batas % sama dengan dokter, lihat maxDiscount()), sebelum tagihan dibayar.
      */
     public function canGiveDiscount(Visit $visit): bool
     {
-        return ($this->isOwningDoctor($visit) || $this->context->is(Role::Owner))
+        return ($this->isOwningDoctor($visit) || $this->isStaffEditor($visit))
             && ($this->canEditBilling($visit) || $this->canEditSentBilling($visit));
     }
 
@@ -398,10 +410,14 @@ class ExamService
         return ['amount' => max(0, (int) $data['discount']), 'reason' => $this->clean($data['discount_reason'] ?? null, 255)];
     }
 
-    /** Dokter & Owner boleh mengubah harga tindakan (≥ tarif minimal; di bawahnya hanya bila tidak selesai). */
+    /**
+     * Dokter & Owner boleh mengubah harga tindakan (≥ tarif minimal; di bawahnya hanya bila tidak selesai).
+     * Admin/Asisten boleh bila diizinkan Rekam medis › Edit + Keuangan (tanpa Keuangan harga disamarkan).
+     */
     public function canRaisePrice(): bool
     {
-        return $this->context->is(Role::Dokter, Role::Owner);
+        return $this->context->is(Role::Dokter, Role::Owner)
+            || ($this->context->is(Role::Admin) && Access::can('rekam-medis', 'edit') && Access::can('rekam-medis', 'keuangan'));
     }
 
     /**

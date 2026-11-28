@@ -448,7 +448,7 @@ class Exam extends Component
         return $this->mayLower($p) ? max(0, (int) $p['unit_price']) : max($standard, (int) $p['unit_price']);
     }
 
-    /** Hanya Dokter & Owner yang boleh mengubah harga tindakan (≥ tarif minimal, kecuali tidak selesai). */
+    /** Dokter, Owner, atau Admin berizin Rekam medis › Edit + Keuangan boleh mengubah harga (≥ tarif minimal, kecuali tidak selesai). */
     #[Computed]
     public function canEditPrice(): bool
     {
@@ -476,7 +476,7 @@ class Exam extends Component
         if ($field === 'is_incomplete') {
             if (! $this->canEditPrice) {
                 $this->procedures[$index]['is_incomplete'] = false;
-                abort(403, 'Hanya Dokter dan Owner yang boleh menandai tindakan tidak selesai.');
+                abort(403, 'Anda tidak berhak menandai tindakan tidak selesai.');
             }
             $this->procedures[$index]['is_incomplete'] = (bool) $value;
             $standard = $this->standardPrice($this->procedures[$index]['procedure_id']);
@@ -499,7 +499,7 @@ class Exam extends Component
 
         if (! $this->canEditPrice) {
             $this->procedures[$index]['unit_price'] = $this->defaultPrice($this->procedures[$index]['procedure_id']);
-            abort(403, 'Hanya Dokter dan Owner yang boleh mengubah harga tindakan.');
+            abort(403, 'Anda tidak berhak mengubah harga tindakan.');
         }
 
         $price = (int) preg_replace('/\D/', '', (string) $value);

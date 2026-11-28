@@ -3,8 +3,8 @@
     @case(VisitStatus::Menunggu)
     @case(VisitStatus::Dipanggil)
     @case(VisitStatus::Diperiksa)
-        {{-- Yang memeriksa hanya dokter (Owner akses penuh); Admin/Asisten melihat status saja. --}}
-        @if (app(\App\Support\BranchContext::class)->is(\App\Enums\Role::Dokter, \App\Enums\Role::Owner))
+        {{-- Yang memeriksa: Dokter, Owner, atau Admin/Asisten yang diizinkan Rekam medis › Edit; lainnya melihat status saja. --}}
+        @if (app(\App\Services\ExamService::class)->canExamine())
             <a href="{{ route('rekam-medis.periksa', $visit) }}" wire:navigate class="link-arrow">{{ $visit->status === VisitStatus::Diperiksa ? 'Lanjut periksa' : 'Periksa' }} <span aria-hidden="true">→</span></a>
         @else
             <span class="text-xs text-muted">{{ $visit->status === VisitStatus::Diperiksa ? 'Sedang diperiksa' : 'Menunggu' }}</span>

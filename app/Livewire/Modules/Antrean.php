@@ -11,6 +11,7 @@ use App\Models\AuditLog;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Visit;
+use App\Services\ExamService;
 use App\Support\AppointmentRules;
 use App\Support\BranchContext;
 use Carbon\Carbon;
@@ -145,7 +146,7 @@ class Antrean extends Component
 
     public function examine(int $id, BranchContext $context)
     {
-        abort_unless($context->is(Role::Dokter, Role::Owner), 403); // yang memeriksa hanya dokter (Owner akses penuh)
+        abort_unless(app(ExamService::class)->canExamine(), 403); // Dokter, Owner, atau Admin yang diizinkan Rekam medis › Edit
         $visit = $this->find($id, $context);
 
         return $this->redirectRoute('rekam-medis.periksa', ['visit' => $visit->id], navigate: true);
@@ -350,7 +351,7 @@ class Antrean extends Component
             'counts' => $counts,
             'tab' => $tab,
             'canRegister' => $context->is(Role::Admin, Role::Owner) && $this->canEditMenu(),
-            'canExamine' => $context->is(Role::Dokter, Role::Owner),
+            'canExamine' => app(ExamService::class)->canExamine(),
             'isDoctor' => (bool) $myDoctorId,
             'candidates' => $candidates,
             'chosen' => $chosen,

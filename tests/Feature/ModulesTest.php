@@ -98,6 +98,21 @@ it('melunasi tagihan, menyelesaikan kunjungan, dan menerbitkan kwitansi', functi
         ->assertOk()->assertHeader('content-type', 'application/pdf');
 });
 
+it('kolom petugas kwitansi berisi nama pengguna yang mencetak', function () {
+    moduleLogin('admin', 'admin', $this->batu->id);
+    $invoice = Invoice::where('branch_id', $this->batu->id)->where('status', Invoice::STATUS_UNPAID)->firstOrFail();
+    Livewire::test(Kasir::class)->call('open', $invoice->id)
+        ->set('pay.method', 'qris')->set('pay.amount', $invoice->total)->call('submitPayment');
+
+    $receipt = $invoice->receipts()->with(['branch.clinic', 'invoice.items', 'invoice.payments', 'invoice.visit.patient', 'invoice.visit.doctor', 'invoice.patient'])->firstOrFail();
+
+    $html = view('pdf.receipt', ['receipt' => $receipt, 'printedBy' => 'Pencetak Uji'])->render();
+    expect($html)->toContain('Pencetak Uji');
+
+    $kosong = view('pdf.receipt', ['receipt' => $receipt, 'printedBy' => null])->render();
+    expect($kosong)->toContain('________________');
+});
+
 it('diskon di kasir khusus owner dan wajib beralasan', function () {
     moduleLogin('admin', 'admin', $this->batu->id);
     $invoice = Invoice::where('branch_id', $this->batu->id)->where('status', Invoice::STATUS_UNPAID)->firstOrFail();

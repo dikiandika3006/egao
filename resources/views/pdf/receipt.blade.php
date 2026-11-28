@@ -99,14 +99,14 @@
 
     <div class="box">Terbilang: {{ ucfirst(Format::terbilang($invoice->total)) }} rupiah</div>
 
-    {{-- Tanda tangan: Dokter (bila ada pemeriksaan) dan Petugas; pesan penutup di bawahnya. --}}
+    {{-- Tanda tangan: Dokter (bila ada pemeriksaan) dan Petugas (= pengguna yang mencetak); pesan penutup di bawahnya. --}}
     <table style="margin-top: 26px">
         <tr>
             <td style="width: 40%"></td>
             @if ($visit)
                 <td style="width: 30%; text-align: center">Dokter,<br><br><br>{{ $visit->doctor->name }}</td>
             @endif
-            <td class="r">Petugas,<br><br><br>{{ $invoice->payments->last()?->receiver?->name ?? '________________' }}</td>
+            <td class="r">Petugas,<br><br><br>{{ ($printedBy ?? null) ?: '________________' }}</td>
         </tr>
     </table>
     @if ($branch->receipt_footer)

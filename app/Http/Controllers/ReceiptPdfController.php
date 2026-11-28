@@ -16,13 +16,13 @@ class ReceiptPdfController extends Controller
         abort_unless($context->options()->contains('id', $receipt->branch_id), 403);
         abort_if($context->id() && $context->id() !== $receipt->branch_id, 403);
 
-        $receipt->load(['branch.clinic', 'invoice.items', 'invoice.payments.receiver', 'invoice.visit.patient', 'invoice.visit.doctor', 'invoice.patient']);
+        $receipt->load(['branch.clinic', 'invoice.items', 'invoice.payments', 'invoice.visit.patient', 'invoice.visit.doctor', 'invoice.patient']);
 
         if (! $receipt->printed_at) {
             $receipt->update(['printed_at' => now()]);
         }
 
-        return Pdf::loadView('pdf.receipt', ['receipt' => $receipt])
+        return Pdf::loadView('pdf.receipt', ['receipt' => $receipt, 'printedBy' => auth()->user()?->name])
             ->setPaper('a5', 'portrait')
             ->stream(str_replace('/', '-', $receipt->code).'.pdf');
     }

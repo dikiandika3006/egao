@@ -28,7 +28,7 @@ function tagihanLunas(Branch $branch, string $buyer, \DateTimeInterface $paidAt,
         'subtotal' => 50_000, 'total' => 50_000, 'paid' => 50_000,
         'status' => Invoice::STATUS_PAID, 'paid_at' => $paidAt,
     ]);
-    $invoice->receipts()->create(['branch_id' => $branch->id, 'number' => random_int(90000, 99999), 'code' => $code]);
+    $invoice->receipts()->create(['branch_id' => $branch->id, 'number' => (int) \App\Models\Receipt::where('branch_id', $branch->id)->max('number') + 1,'code' => $code]);
 
     return $invoice;
 }

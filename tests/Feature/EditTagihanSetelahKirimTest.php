@@ -128,3 +128,28 @@ it('tambah baris saat Mode edit ikut tersimpan di tagihan', function () {
 
     expect($this->visit->fresh()->invoice->items()->where('procedure_id', $other->id)->exists())->toBeTrue();
 });
+
+it('tombol Edit di Kasir muncul untuk tagihan belum dibayar dan membuka Mode edit langsung', function () {
+    editLogin('owner', 'owner');
+
+    Livewire::test(\App\Livewire\Modules\Kasir::class)
+        ->assertSeeHtml('href="'.route('rekam-medis.periksa', ['visit' => $this->visit->id, 'edit' => 1]).'"');
+
+    Livewire::withQueryParams(['edit' => 1])->test(Exam::class, ['visit' => $this->visit])
+        ->assertSet('editingBilling', true)
+        ->assertSeeHtml('data-price-input');
+});
+
+it('tombol Edit di Kasir hilang setelah ada pembayaran, dan ?edit=1 tanpa hak diabaikan', function () {
+    editLogin('admin', 'admin');
+    $link = route('rekam-medis.periksa', ['visit' => $this->visit->id, 'edit' => 1]);
+
+    // Admin tanpa izin Rekam medis › Edit: tidak ada tombol, parameter diabaikan.
+    Livewire::test(\App\Livewire\Modules\Kasir::class)->assertDontSeeHtml('href="'.$link.'"');
+    Livewire::withQueryParams(['edit' => 1])->test(Exam::class, ['visit' => $this->visit])->assertSet('editingBilling', false);
+
+    // Sudah ada pembayaran sebagian: Owner pun tidak melihat tombol.
+    editLogin('owner', 'owner');
+    $this->visit->invoice->payments()->create(['received_by' => auth()->id(), 'method' => 'tunai', 'amount' => 1_000, 'paid_at' => now()]);
+    Livewire::test(\App\Livewire\Modules\Kasir::class)->assertDontSeeHtml('href="'.$link.'"');
+});

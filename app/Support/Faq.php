@@ -343,10 +343,10 @@ class Faq
         [
             'group' => 'Rekam medis',
             'q' => 'Mengubah tindakan atau harga setelah dikirim ke kasir',
-            'a' => 'Selama tagihan belum dibayar sama sekali, Dokter pemeriksa atau Owner bisa membuka pemeriksaan lalu menekan "✎ Edit" di kartu Tindakan & tagihan (Mode lihat → Mode edit). Ubah gigi, jumlah, harga, tambah/hapus baris, barang Lain-lain, atau diskon, lalu tekan "Simpan perubahan tagihan". Tagihan tetap di antrean Kasir dengan total terbaru dan perubahan tercatat di jejak audit. Aturan harga sama seperti saat pemeriksaan. Resep dan catatan klinis tidak ikut diubah di mode ini (pakai "Simpan koreksi"). Bila sudah ada pembayaran (sebagian/lunas), tagihan terkunci.',
-            'where' => 'Rekam medis › Pemeriksaan › Tindakan & tagihan',
-            'roles' => 'Dokter, Owner',
-            'tags' => 'edit ubah tagihan harga tindakan setelah kirim kasir mode lihat mode edit belum dibayar',
+            'a' => 'Cara cepat: di Kasir tab "Menunggu pembayaran", tekan tombol "Edit" di baris pasien; pemeriksaan langsung terbuka dalam Mode edit. Tombol hanya muncul bila tagihan belum dibayar sama sekali dan Anda berhak (Owner, dokter pemeriksa, atau Admin/Asisten yang diizinkan Rekam medis › Edit); penjualan langsung tidak punya tombol ini. Cara lain: selama tagihan belum dibayar sama sekali, Dokter pemeriksa atau Owner bisa membuka pemeriksaan lalu menekan "✎ Edit" di kartu Tindakan & tagihan (Mode lihat → Mode edit). Ubah gigi, jumlah, harga, tambah/hapus baris, barang Lain-lain, atau diskon, lalu tekan "Simpan perubahan tagihan". Tagihan tetap di antrean Kasir dengan total terbaru dan perubahan tercatat di jejak audit. Aturan harga sama seperti saat pemeriksaan. Resep dan catatan klinis tidak ikut diubah di mode ini (pakai "Simpan koreksi"). Bila sudah ada pembayaran (sebagian/lunas), tagihan terkunci.',
+            'where' => 'Kasir › Menunggu pembayaran › Edit, atau Rekam medis › Pemeriksaan › Tindakan & tagihan',
+            'roles' => 'Dokter, Owner, Admin/Asisten (bila diizinkan)',
+            'tags' => 'edit ubah tagihan harga tindakan setelah kirim kasir mode lihat mode edit belum dibayar tombol edit kasir',
         ],
         [
             'group' => 'Rekam medis',

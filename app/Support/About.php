@@ -141,6 +141,7 @@ class About
         [
             'date' => '28 November 2026',
             'changes' => [
+                'Kasir: tombol "Edit" di tab Menunggu pembayaran membuka pemeriksaan pasien langsung dalam Mode edit (ubah tindakan, harga, barang, diskon). Hanya untuk tagihan kunjungan yang belum dibayar sama sekali dan pengguna yang berhak.',
                 'Admin/Asisten bisa memeriksa pasien seperti dokter (tindakan, harga, odontogram, diagnosis, resep, diskon) bila Owner mencentang Rekam medis › Edit di Hak akses peran; mengubah harga butuh centang Keuangan juga. Bawaan tetap hanya baca. Bagi hasil tetap milik dokter kunjungan; penginput tercatat di audit.',
                 'Kwitansi: kolom Petugas kini berisi nama pengguna yang mencetak kwitansi (sebelumnya penerima pembayaran terakhir).',
                 'Kasir: tab baru "Riwayat" untuk mencari tagihan lunas di tanggal mana pun (nama, No. RM, nomor kwitansi) dan mencetak ulang kwitansinya.',

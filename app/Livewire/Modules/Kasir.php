@@ -12,6 +12,7 @@ use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Enums\Role;
+use App\Services\ExamService;
 use App\Support\BranchContext;
 use App\Support\Format;
 use App\Support\Receipts;
@@ -424,6 +425,8 @@ class Kasir extends Component
             'rangeFrom' => $historyFrom,
             'rangeTo' => $historyTo,
             'pending' => $pending,
+            // Tombol Edit: tagihan kunjungan yang belum dibayar sama sekali dan boleh diubah pengguna ini (aturan Mode edit pemeriksaan).
+            'editableIds' => $pending->filter(fn (Invoice $i) => $i->visit && app(ExamService::class)->canEditSentBilling($i->visit))->pluck('id')->all(),
             'paidToday' => $paidToday,
             'receivables' => $receivables,
             'invoice' => $invoice,

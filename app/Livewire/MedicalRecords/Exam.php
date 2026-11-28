@@ -172,6 +172,8 @@ class Exam extends Component
         $this->discountReason = (string) $visit->invoice?->discount_reason;
         $this->assistantId = $visit->assistant_id;
         $this->assistant2Id = $visit->assistant2_id;
+        // Dari tombol Edit di Kasir (?edit=1): langsung Mode edit bila berhak; selain itu diabaikan.
+        $this->editingBilling = request()->boolean('edit') && $this->canEditSentBilling;
 
         $this->findings = $visit->findings->map(fn (ToothFinding $f) => [
             'tooth' => $f->tooth, 'condition_id' => $f->tooth_condition_type_id,

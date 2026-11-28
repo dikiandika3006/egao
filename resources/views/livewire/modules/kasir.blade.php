@@ -49,8 +49,8 @@
             @else
             <ul class="divide-y divide-line">
                 @forelse (match ($tab) { 'lunas' => $paidToday, 'piutang' => $receivables, default => $pending } as $inv)
-                    <li wire:key="i-{{ $inv->id }}">
-                        <button type="button" wire:click="open({{ $inv->id }})" @class(['flex w-full flex-wrap items-center gap-3 px-5 py-4 text-left hover:bg-mist', 'bg-leaf-50' => $invoice?->id === $inv->id])>
+                    <li wire:key="i-{{ $inv->id }}" @class(['flex items-center', 'bg-leaf-50' => $invoice?->id === $inv->id])>
+                        <button type="button" wire:click="open({{ $inv->id }})" class="flex min-w-0 flex-1 flex-wrap items-center gap-3 px-5 py-4 text-left hover:bg-mist">
                             <div class="min-w-0 flex-1">
                                 <p class="font-semibold">{{ $inv->payerName() }}@if ($inv->isDirectSale()) <span class="ml-1 rounded bg-orange-soft px-1.5 py-0.5 text-[10px] font-semibold text-orange-ink">Penjualan langsung</span>@endif</p>
                                 <p class="mt-0.5 text-[12px] text-muted">{{ $inv->payerPatient()?->rmCode() ?? 'Tanpa RM' }}@if ($context->isAll()) · {{ $inv->branch->shortName() }}@endif
@@ -62,6 +62,10 @@
                                 <p class="text-[11px] text-muted">{{ $inv->statusLabel() }}</p>
                             </div>
                         </button>
+                        {{-- Edit tindakan/harga lewat Mode edit pemeriksaan (hanya bila belum ada pembayaran & pengguna berhak). --}}
+                        @if ($tab === 'tagihan' && in_array($inv->id, $editableIds, true))
+                            <a href="{{ route('rekam-medis.periksa', ['visit' => $inv->visit_id, 'edit' => 1]) }}" wire:navigate class="mr-3 inline-flex shrink-0 items-center gap-1 rounded-lg border border-orange-ink/30 bg-orange-soft px-3 py-1.5 text-xs font-semibold text-orange-ink transition hover:bg-orange-ink hover:text-white" data-edit-billing>✎ Edit</a>
+                        @endif
                     </li>
                 @empty
                     <li class="py-14 text-center text-sm text-muted">{{ match ($tab) { 'lunas' => 'Belum ada pembayaran lunas hari ini.', 'piutang' => 'Tidak ada piutang.', default => 'Tidak ada tagihan yang menunggu.' } }}</li>

@@ -6,8 +6,8 @@
 
     <div class="mt-7 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
         <section class="card overflow-hidden">
-            <div class="flex gap-8 border-b border-line px-5 pt-4 text-sm">
-                @foreach (['tagihan' => 'Menunggu pembayaran ('.$pending->count().')', 'piutang' => 'Piutang ('.$receivables->count().')', 'lunas' => 'Lunas hari ini ('.$paidToday->count().')'] as $key => $label)
+            <div class="flex gap-x-8 gap-y-1 overflow-x-auto border-b border-line px-5 pt-4 text-sm whitespace-nowrap">
+                @foreach (['tagihan' => 'Menunggu pembayaran ('.$pending->count().')', 'piutang' => 'Piutang ('.$receivables->count().')', 'lunas' => 'Lunas hari ini ('.$paidToday->count().')', 'riwayat' => 'Riwayat'] as $key => $label)
                     <button type="button" wire:click="$set('tab', '{{ $key }}')" @class([
                         '-mb-px border-b-2 pb-3',
                         'border-leaf-500 font-semibold text-brand-600' => $tab === $key,
@@ -15,6 +15,38 @@
                     ])>{{ $label }}</button>
                 @endforeach
             </div>
+            @if ($tab === 'riwayat')
+                <div class="grid gap-2 border-b border-line px-5 py-4 sm:grid-cols-[minmax(0,1fr)_150px_150px]">
+                    <input type="search" wire:model.live.debounce.300ms="historySearch" class="input" placeholder="Cari nama, No. RM, atau nomor kwitansi…" aria-label="Cari riwayat">
+                    <input type="date" wire:model.live="historyFrom" class="input" aria-label="Dari tanggal">
+                    <input type="date" wire:model.live="historyTo" class="input" aria-label="Sampai tanggal">
+                    <p class="text-xs text-muted sm:col-span-3">Tagihan lunas {{ $rangeFrom->translatedFormat('j M Y') }} – {{ $rangeTo->translatedFormat('j M Y') }}. Klik untuk melihat rincian & cetak ulang kwitansi.</p>
+                </div>
+                <ul class="divide-y divide-line">
+                    @forelse ($history as $inv)
+                        <li wire:key="h-{{ $inv->id }}">
+                            <button type="button" wire:click="open({{ $inv->id }})" @class(['flex w-full flex-wrap items-center gap-3 px-5 py-4 text-left hover:bg-mist', 'bg-leaf-50' => $invoice?->id === $inv->id])>
+                                <div class="min-w-0 flex-1">
+                                    <p class="font-semibold">{{ $inv->payerName() }}@if ($inv->isDirectSale()) <span class="ml-1 rounded bg-orange-soft px-1.5 py-0.5 text-[10px] font-semibold text-orange-ink">Penjualan langsung</span>@endif</p>
+                                    <p class="mt-0.5 text-[12px] text-muted">{{ $inv->payerPatient()?->rmCode() ?? 'Tanpa RM' }}@if ($context->isAll()) · {{ $inv->branch->shortName() }}@endif · {{ $inv->paid_at->translatedFormat('j M Y, H.i') }} · {{ $inv->receipts->first()?->code ?? '—' }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-semibold">@rupiah($inv->total)</p>
+                                    <p class="text-[11px] text-muted">{{ $inv->statusLabel() }}</p>
+                                </div>
+                            </button>
+                        </li>
+                    @empty
+                        <li class="py-14 text-center text-sm text-muted">Tidak ada tagihan lunas yang cocok di periode ini.</li>
+                    @endforelse
+                </ul>
+                @if ($history->total())
+                    <p class="flex justify-between border-t border-line px-5 py-3 text-sm"><span class="text-muted">{{ $history->total() }} tagihan · total</span><b>@rupiah($historyTotal)</b></p>
+                @endif
+                @if ($history->hasPages())
+                    <div class="border-t border-line p-4">{{ $history->links() }}</div>
+                @endif
+            @else
             <ul class="divide-y divide-line">
                 @forelse (match ($tab) { 'lunas' => $paidToday, 'piutang' => $receivables, default => $pending } as $inv)
                     <li wire:key="i-{{ $inv->id }}">
@@ -40,6 +72,7 @@
             @endif
             @if ($tab === 'lunas' && $paidToday->isNotEmpty())
                 <p class="flex justify-between border-t border-line px-5 py-3 text-sm"><span class="text-muted">Total lunas hari ini</span><b>@rupiah($totalToday)</b></p>
+            @endif
             @endif
         </section>
 

@@ -16,18 +16,20 @@ use App\Support\BranchContext;
 use App\Support\Format;
 use App\Support\Receipts;
 use App\Support\Settings;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 /**
  * 05 Kasir (FR-KSR-01 … 06, FR-CTK-01 … 03): tagihan dari tindakan dokter, diskon, pembayaran, kwitansi.
  */
 class Kasir extends Component
 {
-    use ModulePage, PicksBranch;
+    use ModulePage, PicksBranch, WithPagination;
 
     public const MENU = 'kasir';
 
@@ -40,10 +42,81 @@ class Kasir extends Component
     #[Url(as: 'tab', except: 'tagihan')]
     public string $tab = 'tagihan';
 
+    // ── Riwayat: tagihan lunas semua tanggal, untuk melihat & cetak ulang kwitansi lama ──
+
+    #[Url(as: 'cari', except: '')]
+    public string $historySearch = '';
+
+    #[Url(as: 'dari', except: '')]
+    public ?string $historyFrom = '';
+
+    #[Url(as: 'sampai', except: '')]
+    public ?string $historyTo = '';
+
+    public function updatedTab(): void
+    {
+        $this->resetPage();
+        $this->tab === 'riwayat' && $this->fillHistoryRange();
+    }
+
+    /** Isi input tanggal riwayat dengan rentang yang berlaku (bawaan 30 hari terakhir). */
+    private function fillHistoryRange(): void
+    {
+        [$from, $to] = $this->historyRange();
+        $this->historyFrom = $from->toDateString();
+        $this->historyTo = $to->toDateString();
+    }
+
+    public function updatedHistorySearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedHistoryFrom(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedHistoryTo(): void
+    {
+        $this->resetPage();
+    }
+
+    /** Rentang riwayat; bawaan 30 hari terakhir, tanggal tidak valid diabaikan, dari > sampai ditukar. */
+    private function historyRange(): array
+    {
+        $parse = fn (?string $d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d)
+            ? rescue(fn () => Carbon::createFromFormat('!Y-m-d', $d), null, false)
+            : null;
+        $from = $parse($this->historyFrom) ?? today()->subDays(30);
+        $to = $parse($this->historyTo) ?? today();
+
+        return $from->gt($to) ? [$to, $from] : [$from, $to];
+    }
+
+    private function history()
+    {
+        [$from, $to] = $this->historyRange();
+        $term = trim($this->historySearch);
+
+        return $this->query()
+            ->where('status', Invoice::STATUS_PAID)
+            ->whereDate('paid_at', '>=', $from)
+            ->whereDate('paid_at', '<=', $to)
+            ->when($term !== '', fn ($q) => $q->where(function ($q) use ($term) {
+                $q->where('buyer_name', 'like', "%{$term}%")
+                    ->orWhereHas('receipts', fn ($r) => $r->where('code', 'like', "%{$term}%"))
+                    ->orWhereHas('patient', fn ($p) => $p->search($term))
+                    ->orWhereHas('visit.patient', fn ($p) => $p->search($term));
+            }));
+    }
+
     public array $pay = ['discount' => 0, 'discount_reason' => '', 'method' => 'tunai', 'amount' => 0, 'cash' => null];
 
     public function mount(): void
     {
+        $this->tab === 'riwayat' && $this->fillHistoryRange();
+
         if ($visitId = request()->integer('kunjungan')) {
             $invoice = $this->query()->where('visit_id', $visitId)->first();
             $invoice && $this->open($invoice->id);
@@ -339,8 +412,17 @@ class Kasir extends Component
             ? $this->query()->with(['visit.patient', 'visit.doctor', 'visit.assistant', 'visit.assistant2', 'patient', 'branch', 'items', 'payments.receiver', 'receipts'])->find($this->selected)
             : null;
 
+        [$historyFrom, $historyTo] = $this->historyRange();
+        $history = $this->tab === 'riwayat'
+            ? $this->history()->with(['visit.patient', 'patient', 'branch', 'receipts'])->latest('paid_at')->paginate(25)
+            : null;
+
         return $this->page('kasir', 'livewire.modules.kasir', [
             'context' => $context,
+            'history' => $history,
+            'historyTotal' => $history ? (int) $this->history()->sum('total') : 0,
+            'rangeFrom' => $historyFrom,
+            'rangeTo' => $historyTo,
             'pending' => $pending,
             'paidToday' => $paidToday,
             'receivables' => $receivables,

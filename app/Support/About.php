@@ -141,6 +141,8 @@ class About
         [
             'date' => '28 November 2026',
             'changes' => [
+                'Kwitansi: kolom Petugas kini berisi nama pengguna yang mencetak kwitansi (sebelumnya penerima pembayaran terakhir).',
+                'Kasir: tab baru "Riwayat" untuk mencari tagihan lunas di tanggal mana pun (nama, No. RM, nomor kwitansi) dan mencetak ulang kwitansinya.',
                 'Nomor WhatsApp kini per cabang (Pengaturan › Klinik & cabang › Ubah) dan tampil di kwitansi cabang tersebut. WA di tab Aplikasi hanya cadangan bila WA cabang kosong.',
             ],
         ],

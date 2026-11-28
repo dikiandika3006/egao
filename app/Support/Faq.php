@@ -392,6 +392,14 @@ class Faq
         ],
         [
             'group' => 'Kasir & pembayaran',
+            'q' => 'Bagaimana melihat dan mencetak ulang nota/kwitansi hari sebelumnya?',
+            'a' => 'Buka Kasir › tab "Riwayat". Isinya semua tagihan lunas, bawaan 30 hari terakhir; ubah tanggal "dari" dan "sampai" untuk periode lain. Ketik nama pasien/pembeli, No. RM, atau nomor kwitansi di kotak cari. Klik tagihannya, lalu tekan "Cetak kwitansi" di panel kanan untuk membuka PDF A5 dan mencetaknya. Owner di "Semua cabang" melihat riwayat kedua cabang; peran lain hanya cabang aktif.',
+            'where' => 'Kasir › Riwayat',
+            'roles' => 'Owner, Admin',
+            'tags' => 'riwayat nota kwitansi lama cetak ulang print struk kemarin',
+        ],
+        [
+            'group' => 'Kasir & pembayaran',
             'q' => 'Bagaimana menerima pembayaran dan mencetak kwitansi?',
             'a' => 'Buka Kasir, pilih tagihan pasien, isi pembayaran (boleh sebagian). Saat lunas, kwitansi terbit otomatis dan bisa dicetak/diunduh PDF A5.',
             'where' => 'Kasir',
